@@ -1,0 +1,28 @@
+{
+  "case_name": "survival_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_survival_fit": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_survival_fit"
+      },
+      "ok": true,
+      "result": {
+        "converged": true,
+        "model": "cox_ph",
+        "nll": 1.115170624261488,
+        "parameters": [
+          0.34014303331669693
+        ],
+        "uncertainties": [
+          2.4717719317702715
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

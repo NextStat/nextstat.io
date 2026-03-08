@@ -128,6 +128,14 @@ pub fn export_hs3(
                             parameter: None,
                         });
                     }
+                    ModelModifier::TemplateMorphing { .. } => {
+                        // TemplateMorphing has no standard HS3 representation yet — skip.
+                        log::warn!(
+                            "TemplateMorphing modifier on sample '{}' in channel '{}' cannot be exported to HS3 — skipped",
+                            sample_name,
+                            ch_name
+                        );
+                    }
                 }
             }
 

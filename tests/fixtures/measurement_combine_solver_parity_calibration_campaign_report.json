@@ -1,0 +1,56 @@
+{
+  "aggregate": {
+    "all_scenarios_converged": true,
+    "max_calibration_ratio_center_abs_diff": 0.00009780819244942229,
+    "max_calibration_ratio_center_abs_diff_scenario": "bjes_0p05",
+    "max_fit_mu_abs_diff": 0.005697092810805771,
+    "max_fit_mu_abs_diff_scenario": "bjes_0p05",
+    "max_fit_q_star_abs_diff": 333.7482528347566,
+    "max_fit_q_star_abs_diff_scenario": "bjes_0p05",
+    "max_fit_sigma_rel_diff": 0.009982408573757033,
+    "max_fit_sigma_rel_diff_scenario": "bjes_0p05",
+    "n_scenarios": 1
+  },
+  "baseline": {
+    "chi2_abs_diff": 0.0,
+    "lhs_optimizer_method": "closed_form_blue",
+    "mu_abs_diff": 0.0,
+    "q_star_abs_diff": null,
+    "rhs_optimizer_method": "closed_form_blue",
+    "sigma_abs_diff": 0.0,
+    "sigma_rel_diff": 0.0
+  },
+  "ci_level": 0.68,
+  "lhs_solver": "numerical-paper",
+  "n_toys": 8,
+  "poi": "m_top",
+  "rhs_solver": "analytic-perturbative",
+  "scenarios": [
+    {
+      "assignments": [
+        {
+          "systematic": "b-JES",
+          "value": 0.05
+        }
+      ],
+      "bartlett_improves_mean_q_fraction_abs_diff": 1.0,
+      "fit_mu_abs_diff": 0.005697092810805771,
+      "fit_q_star_abs_diff": 333.7482528347566,
+      "fit_sigma_abs_diff": 0.005212879775072565,
+      "fit_sigma_rel_diff": 0.009982408573757033,
+      "lhs_fit_optimizer_method": "numerical_profile_gvm_original_theta",
+      "lhs_toy_generation_method": "measurement_side_gvm_unbiased_sigma2_star_normalized_spec_original_theta",
+      "mean_sigma_star_to_sigma_ratio_center_abs_diff": 0.00009780819244942229,
+      "name": "bjes_0p05",
+      "rhs_fit_optimizer_method": "analytic_perturbative_order_eps2",
+      "rhs_toy_generation_method": "measurement_side_gvm_unbiased_sigma2_star_normalized_spec_original_theta",
+      "sigma_star_ge_sigma_fraction_abs_diff": 0.0
+    }
+  ],
+  "schema_version": "nextstat_measurement_combination_calibration_campaign_solver_parity_v0",
+  "seeds": [
+    2026,
+    2027
+  ],
+  "stability": "research-grade"
+}

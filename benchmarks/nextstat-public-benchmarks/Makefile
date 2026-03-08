@@ -1,4 +1,4 @@
-.PHONY: venv install hep hep-fit pharma pharma-fit bayesian ml econometrics validate snapshot
+.PHONY: venv install hep hep-fit pharma pharma-fit bayesian ml econometrics validate snapshot registry check-registry
 
 PY ?= python3
 VENV ?= .venv
@@ -36,6 +36,13 @@ econometrics: install
 validate: install
 	@if [ -d out ]; then $(PYBIN) scripts/validate_artifacts.py --strict out; fi
 	@if [ -d manifests/snapshots ]; then $(PYBIN) scripts/validate_artifacts.py --strict manifests/snapshots; fi
+	@if [ -d manifests/snapshots ]; then $(PYBIN) scripts/write_snapshot_registry.py --snapshots-root manifests/snapshots --out manifests/snapshot_registry.json --check; fi
+
+registry: install
+	$(PYBIN) scripts/write_snapshot_registry.py --snapshots-root manifests/snapshots --out manifests/snapshot_registry.json
+
+check-registry: install
+	$(PYBIN) scripts/write_snapshot_registry.py --snapshots-root manifests/snapshots --out manifests/snapshot_registry.json --check
 
 snapshot: install
 	$(PYBIN) scripts/publish_snapshot.py --deterministic --fit --fit-repeat 3

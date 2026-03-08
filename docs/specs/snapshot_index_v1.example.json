@@ -26,6 +26,41 @@
       "bytes": 6122,
       "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
+  ],
+  "suite_health": [
+    {
+      "suite": "bayesian",
+      "assessment_path": "bayesian/bayesian_assessment.json",
+      "assessment_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "assessment_schema_version": "nextstat.bayesian_assessment.v1",
+      "core_quality": {
+        "passed": true,
+        "status": "passed",
+        "failure_count": 0,
+        "warning_count": 0
+      },
+      "promotion_gate": {
+        "passed": false,
+        "status": "failed",
+        "target_backend": "nextstat",
+        "failure_count": 1,
+        "reviewed_case_count": 4,
+        "failing_cases": ["hier_random_intercept_non_centered"],
+        "review_summary": {
+          "n_reviewed_cases": 4,
+          "n_failures": 1,
+          "n_failing_cases": 1,
+          "failing_cases": ["hier_random_intercept_non_centered"],
+          "worst_max_r_hat": {
+            "case": "hier_random_intercept_non_centered",
+            "value": 1.0142
+          },
+          "worst_min_ebfmi": {
+            "case": "hier_random_intercept_non_centered",
+            "value": 0.57
+          }
+        }
+      }
+    }
   ]
 }
-

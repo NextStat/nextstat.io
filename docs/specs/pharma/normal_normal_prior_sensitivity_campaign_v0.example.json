@@ -1,0 +1,27 @@
+{
+  "schema_version": "nextstat_normal_normal_prior_sensitivity_campaign_v0",
+  "variants": [
+    {
+      "id": "skeptical",
+      "control_prior": {
+        "mean": 0.0,
+        "sd": 10.0
+      },
+      "treatment_prior": {
+        "mean": -1.0,
+        "sd": 0.2
+      }
+    },
+    {
+      "id": "enthusiastic",
+      "control_prior": {
+        "mean": 0.0,
+        "sd": 10.0
+      },
+      "treatment_prior": {
+        "mean": 1.0,
+        "sd": 0.2
+      }
+    }
+  ]
+}

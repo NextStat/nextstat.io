@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/mams_multiseed_assessment_v1.schema.json",
+  "title": "NextStat MAMS Multi-Seed Assessment v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "suite", "source_summary_path", "source_summary_sha256", "repeatability_gate"],
+  "properties": {
+    "schema_version": { "const": "nextstat.mams_multiseed_assessment.v1" },
+    "suite": { "const": "mams" },
+    "source_summary_path": { "type": "string", "const": "mams_multiseed_summary.json" },
+    "source_summary_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "repeatability_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "status", "target_backend", "policy", "reviewed_cases", "reviewed_parity_cases", "failures", "review_summary"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["passed", "failed"] },
+        "target_backend": { "type": "string", "minLength": 1 },
+        "policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["max_r_hat", "parity_warn_z", "parity_fail_z", "require_complete_seed_coverage", "require_all_backend_statuses_ok", "require_all_parity_statuses_ok"],
+          "properties": {
+            "max_r_hat": { "type": "number", "minimum": 0 },
+            "parity_warn_z": { "type": ["number", "null"], "minimum": 0 },
+            "parity_fail_z": { "type": ["number", "null"], "minimum": 0 },
+            "require_complete_seed_coverage": { "type": "boolean" },
+            "require_all_backend_statuses_ok": { "type": "boolean" },
+            "require_all_parity_statuses_ok": { "type": "boolean" }
+          }
+        },
+        "reviewed_cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["case", "backend", "n_observed_seeds", "statuses", "worst_max_r_hat", "worst_min_ess_bulk", "worst_min_ess_tail", "worst_ess_per_sec", "worst_accept_rate"],
+            "properties": {
+              "case": { "type": "string", "minLength": 1 },
+              "backend": { "type": "string", "minLength": 1 },
+              "n_observed_seeds": { "type": "integer", "minimum": 0 },
+              "statuses": { "type": "array", "items": { "type": "string" } },
+              "worst_max_r_hat": { "type": ["number", "null"], "minimum": 0 },
+              "worst_min_ess_bulk": { "type": ["number", "null"], "minimum": 0 },
+              "worst_min_ess_tail": { "type": ["number", "null"], "minimum": 0 },
+              "worst_ess_per_sec": { "type": ["number", "null"], "minimum": 0 },
+              "worst_accept_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "reviewed_parity_cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["case", "n_observed_seeds", "statuses", "worst_max_z"],
+            "properties": {
+              "case": { "type": "string", "minLength": 1 },
+              "n_observed_seeds": { "type": "integer", "minimum": 0 },
+              "statuses": { "type": "array", "items": { "type": "string" } },
+              "worst_max_z": { "type": ["number", "null"], "minimum": 0 }
+            }
+          }
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["case", "reason"],
+            "properties": {
+              "case": { "type": ["string", "null"] },
+              "reason": { "type": "string", "minLength": 1 },
+              "backend": { "type": "string", "minLength": 1 },
+              "statuses": { "type": "array", "items": { "type": "string" } },
+              "observed": { "type": "number", "minimum": 0 },
+              "threshold": { "type": "number", "minimum": 0 },
+              "warn_threshold": { "type": "number", "minimum": 0 },
+              "fail_threshold": { "type": "number", "minimum": 0 },
+              "observed_count": { "type": "integer", "minimum": 0 },
+              "expected_count": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "review_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["n_reviewed_cases", "n_reviewed_parity_cases", "n_failures", "n_failing_cases", "failing_cases"],
+          "properties": {
+            "n_reviewed_cases": { "type": "integer", "minimum": 0 },
+            "n_reviewed_parity_cases": { "type": "integer", "minimum": 0 },
+            "n_failures": { "type": "integer", "minimum": 0 },
+            "n_failing_cases": { "type": "integer", "minimum": 0 },
+            "failing_cases": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "worst_max_r_hat": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["case", "value"],
+              "properties": {
+                "case": { "type": ["string", "null"] },
+                "value": { "type": ["number", "null"], "minimum": 0 }
+              }
+            },
+            "worst_min_ess_bulk": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["case", "value"],
+              "properties": {
+                "case": { "type": ["string", "null"] },
+                "value": { "type": ["number", "null"], "minimum": 0 }
+              }
+            },
+            "worst_min_ess_tail": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["case", "value"],
+              "properties": {
+                "case": { "type": ["string", "null"] },
+                "value": { "type": ["number", "null"], "minimum": 0 }
+              }
+            },
+            "worst_ess_per_sec": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["case", "value"],
+              "properties": {
+                "case": { "type": ["string", "null"] },
+                "value": { "type": ["number", "null"], "minimum": 0 }
+              }
+            },
+            "worst_accept_rate": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["case", "value"],
+              "properties": {
+                "case": { "type": ["string", "null"] },
+                "value": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+              }
+            },
+            "worst_parity_max_z": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["case", "value"],
+              "properties": {
+                "case": { "type": ["string", "null"] },
+                "value": { "type": ["number", "null"], "minimum": 0 }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

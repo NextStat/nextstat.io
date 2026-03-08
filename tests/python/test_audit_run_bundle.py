@@ -78,3 +78,24 @@ def test_audit_write_bundle_errors_on_non_empty_dir():
         else:
             raise AssertionError("expected ValueError")
 
+
+def test_audit_write_bundle_supports_deterministic_timestamp():
+    from nextstat import audit
+
+    repo = Path(__file__).resolve().parents[1]
+    fixture = repo / "fixtures" / "simple_workspace.json"
+    assert fixture.exists()
+
+    with tempfile.TemporaryDirectory() as td:
+        bundle = Path(td) / "bundle"
+        audit.write_bundle(
+            bundle,
+            command="test",
+            args={"k": 1},
+            input_path=fixture,
+            output_value={"ok": True},
+            deterministic=True,
+        )
+
+        meta = json.loads((bundle / "meta.json").read_text())
+        assert meta["created_unix_ms"] == 0

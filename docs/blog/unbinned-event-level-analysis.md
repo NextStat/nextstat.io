@@ -430,11 +430,11 @@ the repo now includes a minimal SSH-based farm workflow:
 This path is explicitly designed for HEP-scale runs where total load is large
 (`O(10k)` toys and beyond) and temporary compute stands must not lose artifacts.
 
-### 8.11 GEX44 recovery snapshot (2026-02-13): CUDA is faster than CPU on toy batches
+### 8.11 dedicated-bench recovery snapshot (2026-02-13): CUDA is faster than CPU on toy batches
 
-Latest rerun on GEX44 after CUDA optimizer stabilization and branch-level routing updates:
+Latest rerun on dedicated-bench after CUDA optimizer stabilization and branch-level routing updates:
 
-- stand: GEX44, RTX 4000 SFF Ada 20GB, CUDA 12.0
+- stand: dedicated-bench, RTX 4000 SFF Ada 20GB, CUDA 12.0
 - artifacts:
   - `benchmarks/unbinned/artifacts/2026-02-13/rtx4000_cuda_opt1_20260213T091253Z/summary_200.json`
   - `benchmarks/unbinned/artifacts/2026-02-13/rtx4000_cuda_opt1_scale_20260213T091410Z/summary_scale.json`
@@ -502,7 +502,7 @@ optimizer stabilization pass in both CUDA-native and lockstep codepaths:
   early-stop behavior.
 
 This pass targets pathological "run to max_iter" tails. Quantitative impact is
-measured in the next GEX44 rerun matrix (10k/100k toy scale).
+measured in the next dedicated-bench rerun matrix (10k/100k toy scale).
 
 ### 8.13 4x A40 large-scale snapshot (2026-02-13): `2M events/toy × 10k toys`
 

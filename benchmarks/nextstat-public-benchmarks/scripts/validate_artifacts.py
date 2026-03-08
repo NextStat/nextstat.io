@@ -23,7 +23,9 @@ SCHEMA_MAP = {
     # Bayesian (NUTS) suite
     "nextstat.bayesian_benchmark_result.v1": "manifests/schema/bayesian_benchmark_result_v1.schema.json",
     "nextstat.bayesian_benchmark_suite_result.v1": "manifests/schema/bayesian_benchmark_suite_result_v1.schema.json",
+    "nextstat.bayesian_assessment.v1": "manifests/schema/bayesian_assessment_v1.schema.json",
     "nextstat.bayesian_multiseed_summary.v1": "manifests/schema/bayesian_multiseed_summary_v1.schema.json",
+    "nextstat.bayesian_derived_metrics.v2": "manifests/schema/bayesian_derived_metrics_v2.schema.json",
     # ML suite
     "nextstat.ml_benchmark_result.v1": "manifests/schema/ml_benchmark_result_v1.schema.json",
     "nextstat.ml_benchmark_suite_result.v1": "manifests/schema/ml_benchmark_suite_result_v1.schema.json",
@@ -45,6 +47,12 @@ SCHEMA_MAP = {
     "nextstat.meta_analysis_benchmark_suite_result.v1": "manifests/schema/meta_analysis_benchmark_suite_result_v1.schema.json",
     "nextstat.mams_benchmark_result.v1": "manifests/schema/mams_benchmark_result_v1.schema.json",
     "nextstat.mams_benchmark_suite_result.v1": "manifests/schema/mams_benchmark_suite_result_v1.schema.json",
+    "nextstat.mams_assessment.v1": "manifests/schema/mams_assessment_v1.schema.json",
+    "nextstat.mams_multiseed_summary.v1": "manifests/schema/mams_multiseed_summary_v1.schema.json",
+    "nextstat.mams_multiseed_assessment.v1": "manifests/schema/mams_multiseed_assessment_v1.schema.json",
+    "nextstat.mams_stress_benchmark_suite_result.v1": "manifests/schema/mams_stress_benchmark_suite_result_v1.schema.json",
+    "nextstat.mams_stress_multiseed_summary.v1": "manifests/schema/mams_stress_multiseed_summary_v1.schema.json",
+    "nextstat.mams_stress_assessment.v1": "manifests/schema/mams_stress_assessment_v1.schema.json",
     "nextstat.montecarlo_safety_benchmark_result.v1": "manifests/schema/montecarlo_safety_benchmark_result_v1.schema.json",
     "nextstat.montecarlo_safety_benchmark_suite_result.v1": "manifests/schema/montecarlo_safety_benchmark_suite_result_v1.schema.json",
     "nextstat.laps_h100_benchmark_result.v1": "manifests/schema/laps_h100_benchmark_result_v1.schema.json",
@@ -70,6 +78,7 @@ SCHEMA_MAP = {
     # Snapshot artifacts
     "nextstat.baseline_manifest.v1": "manifests/schema/baseline_manifest_v1.schema.json",
     "nextstat.snapshot_index.v1": "manifests/schema/snapshot_index_v1.schema.json",
+    "nextstat.snapshot_registry.v1": "manifests/schema/snapshot_registry_v1.schema.json",
     "nextstat.replication_report.v1": "manifests/schema/replication_report_v1.schema.json",
     # Baselines
     "nextstat.hep_root_baseline_result.v1": "manifests/schema/hep_root_baseline_result_v1.schema.json",

@@ -27,6 +27,8 @@ mod analysis_spec;
 mod churn;
 mod convert;
 mod discover;
+mod hepdata;
+mod m15;
 mod report;
 mod run;
 mod survival;
@@ -66,10 +68,240 @@ const SCHEMA_VALIDATION_REPORT_V1: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../docs/schemas/validation/validation_report_v1.schema.json"
 ));
+const SCHEMA_M15_CONFIG_V1: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/validation/m15_config_v1.schema.json"
+));
+const SCHEMA_M15_ASSESSMENT_TABLE_V1: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/validation/m15_assessment_table_v1.schema.json"
+));
+const SCHEMA_M15_MAP_V1: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/validation/m15_map_v1.schema.json"
+));
+const SCHEMA_M15_MAR_V1: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/validation/m15_mar_v1.schema.json"
+));
+const SCHEMA_M15_PROFILE_DIFF_REPORT_V1: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/validation/m15_profile_diff_report_v1.schema.json"
+));
+const SCHEMA_M15_BUNDLE_MANIFEST_V1: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/validation/m15_bundle_manifest_v1.schema.json"
+));
+const SCHEMA_HEPDATA_IMPORT_V1: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/io/hepdata_import_v1.schema.json"
+));
+const SCHEMA_HEPDATA_LOCK_V1: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/io/hepdata_lock_v1.schema.json"
+));
 const SCHEMA_UNBINNED_SPEC_V0: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../docs/schemas/unbinned/unbinned_spec_v0.schema.json"
 ));
+const SCHEMA_BETA_BINOMIAL_DESIGN_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/beta_binomial_design_v0.schema.json"
+));
+const SCHEMA_BETA_BINOMIAL_DESIGN_ANALYSIS_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/beta_binomial_design_analysis_v0.schema.json"
+));
+const SCHEMA_BETA_BINOMIAL_OPERATING_CHARACTERISTICS_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/beta_binomial_operating_characteristics_v0.schema.json"
+));
+const SCHEMA_BETA_BINOMIAL_POSTERIOR_PREDICTIVE_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/beta_binomial_posterior_predictive_v0.schema.json"
+));
+const SCHEMA_BETA_BINOMIAL_PRIOR_SENSITIVITY_CAMPAIGN_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/beta_binomial_prior_sensitivity_campaign_v0.schema.json"
+));
+const SCHEMA_BETA_BINOMIAL_PRIOR_SENSITIVITY_REPORT_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/beta_binomial_prior_sensitivity_report_v0.schema.json"
+));
+const SCHEMA_BETA_BINOMIAL_DESIGN_REPORT_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/beta_binomial_design_report_v0.schema.json"
+));
+const SCHEMA_BAYESIAN_DESIGN_REPORT_BUNDLE_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/bayesian_design_report_bundle_v0.schema.json"
+));
+const SCHEMA_BAYESIAN_DESIGN_REGULATORY_APPENDIX_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/bayesian_design_regulatory_appendix_v0.schema.json"
+));
+const SCHEMA_BAYESIAN_PRIOR_CONFLICT_DIAGNOSTIC_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/bayesian_prior_conflict_diagnostic_v0.schema.json"
+));
+const SCHEMA_NORMAL_NORMAL_DESIGN_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/normal_normal_design_v0.schema.json"
+));
+const SCHEMA_NORMAL_NORMAL_DESIGN_ANALYSIS_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/normal_normal_design_analysis_v0.schema.json"
+));
+const SCHEMA_NORMAL_NORMAL_OPERATING_CHARACTERISTICS_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/normal_normal_operating_characteristics_v0.schema.json"
+));
+const SCHEMA_NORMAL_NORMAL_POSTERIOR_PREDICTIVE_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/normal_normal_posterior_predictive_v0.schema.json"
+));
+const SCHEMA_NORMAL_NORMAL_PRIOR_SENSITIVITY_CAMPAIGN_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/normal_normal_prior_sensitivity_campaign_v0.schema.json"
+));
+const SCHEMA_NORMAL_NORMAL_PRIOR_SENSITIVITY_REPORT_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/normal_normal_prior_sensitivity_report_v0.schema.json"
+));
+const SCHEMA_NORMAL_NORMAL_DESIGN_REPORT_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/normal_normal_design_report_v0.schema.json"
+));
+const SCHEMA_BAYESIAN_HISTORICAL_CONTROL_BORROWING_POLICY_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/bayesian_historical_control_borrowing_policy_v0.schema.json"
+));
+const SCHEMA_BAYESIAN_HISTORICAL_CONTROL_BORROWING_REVIEW_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/bayesian_historical_control_borrowing_review_v0.schema.json"
+));
+const SCHEMA_BAYESIAN_HISTORICAL_CONTROL_BORROWING_OPERATING_CHARACTERISTICS_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/pharma/bayesian_historical_control_borrowing_operating_characteristics_v0.schema.json"
+    )
+);
+const SCHEMA_BAYESIAN_ROBUST_MIXTURE_PRIOR_POLICY_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/bayesian_robust_mixture_prior_policy_v0.schema.json"
+));
+const SCHEMA_BAYESIAN_ROBUST_MIXTURE_PRIOR_REVIEW_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/pharma/bayesian_robust_mixture_prior_review_v0.schema.json"
+));
+const SCHEMA_BAYESIAN_ROBUST_MIXTURE_PRIOR_OPERATING_CHARACTERISTICS_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/pharma/bayesian_robust_mixture_prior_operating_characteristics_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/hep/simplified_likelihood_v0.schema.json"
+));
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_AUDIT_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/hep/simplified_likelihood_audit_v0.schema.json"
+));
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_DERIVE_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/hep/simplified_likelihood_derive_v0.schema.json"
+));
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORT_REPORT_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/hep/simplified_likelihood_export_report_v0.schema.json"
+));
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_PROMOTION_EVIDENCE_BUNDLE_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/benchmarks/simplified_likelihood_promotion_evidence_bundle_v0.schema.json"
+));
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_PROMOTION_EVIDENCE_CHECK_V0: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../docs/schemas/benchmarks/simplified_likelihood_promotion_evidence_check_v0.schema.json"
+));
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_PROMOTION_BUNDLE_PROMOTION_REPORT_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_promotion_bundle_promotion_report_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORT_BENCHMARK_SNAPSHOT_REPORT_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_export_benchmark_snapshot_report_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORT_PUBLIC_VALIDATION_REPORT_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_export_public_validation_report_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_PROMOTION_EVIDENCE_BUNDLE_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_exporter_promotion_evidence_bundle_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_PROMOTION_EVIDENCE_CHECK_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_exporter_promotion_evidence_check_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_PROMOTION_BUNDLE_PROMOTION_REPORT_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_exporter_promotion_bundle_promotion_report_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_REVIEW_ASSESSMENT_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_exporter_stable_review_assessment_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_SOURCE_SEMANTICS_BOUNDARY_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_exporter_stable_source_semantics_boundary_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_CANDIDATE_BLOCKER_MATRIX_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_CANDIDATE_REVIEW_PACKET_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_exporter_stable_candidate_review_packet_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_EVIDENCE_POLICY_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_exporter_stable_evidence_policy_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_EVIDENCE_FRESHNESS_REPORT_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_exporter_stable_evidence_freshness_report_v0.schema.json"
+    )
+);
+const SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_PROMOTION_DECISION_V0: &str = include_str!(
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../docs/schemas/benchmarks/simplified_likelihood_exporter_stable_promotion_decision_v0.schema.json"
+    )
+);
 
 /// Interpolation defaults for pyhf JSON inputs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -92,6 +324,26 @@ enum UnbinnedToyGenPoint {
 enum SummaryCiMethod {
     Percentile,
     Bca,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum MeasurementCampaignSummaryFormat {
+    Json,
+    Markdown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum M15ArtifactFormat {
+    Json,
+    Markdown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+enum MeasurementCombineSolverCli {
+    Numerical,
+    NumericalPaper,
+    AnalyticPerturbative,
+    Auto,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
@@ -224,7 +476,7 @@ enum Commands {
 
     /// Perform MLE fit
     Fit {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -315,7 +567,7 @@ enum Commands {
 
     /// Perform a hybrid (binned+unbinned) MLE fit with shared parameters (Phase 4)
     HybridFit {
-        /// Input binned workspace (pyhf JSON or HS3 JSON)
+        /// Input binned workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(long)]
         binned: PathBuf,
 
@@ -602,9 +854,9 @@ enum Commands {
         gpu_sample_toys: bool,
     },
 
-    /// Audit a pyhf workspace: list channels, modifiers, unsupported features
+    /// Audit a workspace: list channels, parameters, and compatibility diagnostics
     Audit {
-        /// Input workspace (pyhf JSON)
+        /// Input workspace (pyhf or simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -619,7 +871,7 @@ enum Commands {
 
     /// Asymptotic CLs hypotest (qtilde)
     Hypotest {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -652,7 +904,7 @@ enum Commands {
     /// discovery p-value (p₀) and significance (Z = Φ⁻¹(1−p₀) ≈ √q₀).
     /// Comparable to TRExFitter `GetSignificance`.
     Significance {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -677,7 +929,7 @@ enum Commands {
     /// best-fit expected yields and observed data.  Reports χ², ndof, and
     /// p-value.  Comparable to TRExFitter saturated-model GoF.
     GoodnessOfFit {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -718,9 +970,609 @@ enum Commands {
         prefix_channels: bool,
     },
 
+    /// Stable-first scalar measurement combination with correlated systematics.
+    ///
+    /// This command is the promoted stable subset of the GVM workflow and
+    /// supports both the fixed-variance (`error_on_error = 0`) and numerical
+    /// GVM profile-likelihood paths. Bartlett diagnostics are computed from the
+    /// quadratic-limit Lawley approximation, including the non-trivial
+    /// correlated cases used by the published top-mass fixture.
+    CombineMeasurements {
+        /// Input measurement-combination spec (JSON).
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+
+        /// Confidence interval level (e.g. 0.68, 0.95).
+        #[arg(long, default_value = "0.68")]
+        ci_level: f64,
+
+        /// GVM solver selection for `error_on_error > 0`.
+        #[arg(long, value_enum, default_value = "auto")]
+        solver: MeasurementCombineSolverCli,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
+
+    /// Build a stable-first measurement-combination spec from tabular files.
+    ///
+    /// This helper turns spreadsheet-friendly tables into the canonical JSON
+    /// spec consumed by `combine-measurements`, `...-calibrate`, and
+    /// `...-calibrate-study`. It accepts either direct tables or a YAML/JSON
+    /// manifest that points at the same bundle.
+    CombineMeasurementsBuildSpec {
+        /// Optional YAML/JSON manifest that points at the tabular bundle.
+        ///
+        /// When provided, do not pass `--poi`, `--measurements`,
+        /// `--stat-covariance`, `--systematics`, or `--correlations`.
+        #[arg(long)]
+        manifest: Option<PathBuf>,
+
+        /// Parameter of interest name to embed in the generated spec.
+        #[arg(long)]
+        poi: Option<String>,
+
+        /// Measurement table (`name,value`).
+        #[arg(long)]
+        measurements: Option<PathBuf>,
+
+        /// Statistical covariance matrix with row/column measurement names.
+        #[arg(long)]
+        stat_covariance: Option<PathBuf>,
+
+        /// Optional systematics table (`systematic,measurement,magnitude,error_on_error,aux_mean`).
+        #[arg(long)]
+        systematics: Option<PathBuf>,
+
+        /// Optional long-form correlations table (`systematic,row_measurement,col_measurement,corr`).
+        ///
+        /// If omitted, each systematic defaults to identity correlation.
+        #[arg(long)]
+        correlations: Option<PathBuf>,
+
+        /// Output file for the generated spec (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Stable-first toy calibration for scalar measurement combinations.
+    ///
+    /// Generates toy datasets from the fitted GVM reference model and reports
+    /// whether Bartlett-corrected GOF behavior moves closer to the nominal
+    /// chi-squared mean than the raw proxy.
+    CombineMeasurementsCalibrate {
+        /// Input measurement-combination spec (JSON).
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+
+        /// Confidence interval level (e.g. 0.68, 0.95).
+        #[arg(long, default_value = "0.68")]
+        ci_level: f64,
+
+        /// GVM solver selection for `error_on_error > 0`.
+        #[arg(long, value_enum, default_value = "auto")]
+        solver: MeasurementCombineSolverCli,
+
+        /// Number of toy datasets to generate.
+        #[arg(long, default_value = "128")]
+        n_toys: usize,
+
+        /// RNG seed for deterministic toy generation.
+        #[arg(long, default_value = "42")]
+        seed: u64,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
+
+    /// Stable-first repeated-seed toy calibration study for scalar measurement combinations.
+    ///
+    /// Aggregates multiple deterministic calibration runs into a single
+    /// reproducible artifact with per-seed summaries and stability diagnostics.
+    CombineMeasurementsCalibrateStudy {
+        /// Input measurement-combination spec (JSON).
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+
+        /// Confidence interval level (e.g. 0.68, 0.95).
+        #[arg(long, default_value = "0.68")]
+        ci_level: f64,
+
+        /// GVM solver selection for `error_on_error > 0`.
+        #[arg(long, value_enum, default_value = "auto")]
+        solver: MeasurementCombineSolverCli,
+
+        /// Number of toy datasets to generate per seed.
+        #[arg(long, default_value = "128")]
+        n_toys: usize,
+
+        /// Comma-separated RNG seeds for deterministic repeated calibration.
+        #[arg(long, value_delimiter = ',', num_args = 1.., required = true)]
+        seeds: Vec<u64>,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
+
+    /// Research-grade multi-scenario study for scalar measurement combinations.
+    ///
+    /// Applies multiple `error_on_error` scenario configurations to the same
+    /// base measurement-combination spec and returns baseline-relative
+    /// comparison diagnostics for each scenario.
+    CombineMeasurementsScenarioStudy {
+        /// Input measurement-combination spec (JSON).
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Scenario-study config (JSON).
+        #[arg(long)]
+        scenarios: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+
+        /// Confidence interval level (e.g. 0.68, 0.95).
+        #[arg(long, default_value = "0.68")]
+        ci_level: f64,
+
+        /// GVM solver selection for `error_on_error > 0`.
+        #[arg(long, value_enum, default_value = "auto")]
+        solver: MeasurementCombineSolverCli,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
+
+    /// Research-grade repeated-seed calibration campaign across named scenarios.
+    ///
+    /// For each named scenario, runs a fit-side scenario comparison and a
+    /// repeated-seed toy-calibration study, then aggregates the results into a
+    /// single research artifact.
+    CombineMeasurementsCalibrationCampaign {
+        /// Input measurement-combination spec (JSON).
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Scenario-study config (JSON).
+        #[arg(long)]
+        scenarios: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+
+        /// Confidence interval level (e.g. 0.68, 0.95).
+        #[arg(long, default_value = "0.68")]
+        ci_level: f64,
+
+        /// GVM solver selection for `error_on_error > 0`.
+        #[arg(long, value_enum, default_value = "auto")]
+        solver: MeasurementCombineSolverCli,
+
+        /// Number of toy datasets to generate per seed and scenario.
+        #[arg(long, default_value = "128")]
+        n_toys: usize,
+
+        /// Comma-separated RNG seeds for deterministic repeated calibration.
+        #[arg(long, value_delimiter = ',', num_args = 1.., required = true)]
+        seeds: Vec<u64>,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
+
+    /// Research-grade solver-parity scenario study for scalar measurement combinations.
+    ///
+    /// Runs the same scenario-study twice with two solver modes and emits one
+    /// deterministic parity artifact with per-scenario fit differences.
+    CombineMeasurementsSolverParityScenarioStudy {
+        /// Input measurement-combination spec (JSON).
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Scenario-study config (JSON).
+        #[arg(long)]
+        scenarios: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: MeasurementCampaignSummaryFormat,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+
+        /// Confidence interval level (e.g. 0.68, 0.95).
+        #[arg(long, default_value = "0.68")]
+        ci_level: f64,
+
+        /// Left-hand solver mode.
+        #[arg(long, value_enum, default_value = "numerical-paper")]
+        lhs_solver: MeasurementCombineSolverCli,
+
+        /// Right-hand solver mode.
+        #[arg(long, value_enum, default_value = "analytic-perturbative")]
+        rhs_solver: MeasurementCombineSolverCli,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
+
+    /// Research-grade solver-parity calibration campaign for scalar measurement combinations.
+    ///
+    /// Runs the same calibration campaign twice with two solver modes and
+    /// emits one deterministic parity artifact covering both fit-side and
+    /// calibration-side differences.
+    CombineMeasurementsSolverParityCalibrationCampaign {
+        /// Input measurement-combination spec (JSON).
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Scenario-study config (JSON).
+        #[arg(long)]
+        scenarios: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: MeasurementCampaignSummaryFormat,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+
+        /// Confidence interval level (e.g. 0.68, 0.95).
+        #[arg(long, default_value = "0.68")]
+        ci_level: f64,
+
+        /// Left-hand solver mode.
+        #[arg(long, value_enum, default_value = "numerical-paper")]
+        lhs_solver: MeasurementCombineSolverCli,
+
+        /// Right-hand solver mode.
+        #[arg(long, value_enum, default_value = "analytic-perturbative")]
+        rhs_solver: MeasurementCombineSolverCli,
+
+        /// Number of toy datasets to generate per seed and scenario.
+        #[arg(long, default_value = "128")]
+        n_toys: usize,
+
+        /// Comma-separated RNG seeds for deterministic repeated calibration.
+        #[arg(long, value_delimiter = ',', num_args = 1.., required = true)]
+        seeds: Vec<u64>,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
+    },
+
+    /// Build a scenario-study solver-parity artifact from two precomputed reports.
+    ///
+    /// This is a pure post-processing command over existing scenario-study JSON
+    /// artifacts and does not rerun fits.
+    CombineMeasurementsSolverParityScenarioStudyFromReports {
+        /// Left-hand scenario-study report (JSON).
+        #[arg(long)]
+        lhs: PathBuf,
+
+        /// Right-hand scenario-study report (JSON).
+        #[arg(long)]
+        rhs: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: MeasurementCampaignSummaryFormat,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+
+        /// Left-hand solver label recorded into the parity artifact.
+        #[arg(long, value_enum, default_value = "numerical-paper")]
+        lhs_solver: MeasurementCombineSolverCli,
+
+        /// Right-hand solver label recorded into the parity artifact.
+        #[arg(long, value_enum, default_value = "analytic-perturbative")]
+        rhs_solver: MeasurementCombineSolverCli,
+    },
+
+    /// Build a calibration-campaign solver-parity artifact from two precomputed reports.
+    ///
+    /// This is a pure post-processing command over existing calibration-campaign
+    /// JSON artifacts and does not rerun fits or toys.
+    CombineMeasurementsSolverParityCalibrationCampaignFromReports {
+        /// Left-hand calibration-campaign report (JSON).
+        #[arg(long)]
+        lhs: PathBuf,
+
+        /// Right-hand calibration-campaign report (JSON).
+        #[arg(long)]
+        rhs: PathBuf,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: MeasurementCampaignSummaryFormat,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+
+        /// Left-hand solver label recorded into the parity artifact.
+        #[arg(long, value_enum, default_value = "numerical-paper")]
+        lhs_solver: MeasurementCombineSolverCli,
+
+        /// Right-hand solver label recorded into the parity artifact.
+        #[arg(long, value_enum, default_value = "analytic-perturbative")]
+        rhs_solver: MeasurementCombineSolverCli,
+    },
+
+    /// Summarize a scenario-study solver-parity artifact into a compact digest.
+    ///
+    /// This is a pure post-processing step over an existing parity JSON and
+    /// does not rerun fits.
+    CombineMeasurementsSolverParityScenarioStudySummarize {
+        /// Input scenario-study solver-parity artifact (JSON).
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: MeasurementCampaignSummaryFormat,
+
+        /// Output file for results. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+    },
+
+    /// Summarize a calibration-campaign solver-parity artifact into a compact digest.
+    ///
+    /// This is a pure post-processing step over an existing parity JSON and
+    /// does not rerun fits or toys.
+    CombineMeasurementsSolverParityCalibrationCampaignSummarize {
+        /// Input calibration-campaign solver-parity artifact (JSON).
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: MeasurementCampaignSummaryFormat,
+
+        /// Output file for results. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+    },
+
+    /// Summarize a calibration-campaign artifact into a compact research digest.
+    ///
+    /// This is a pure post-processing step over an existing campaign JSON and
+    /// does not rerun fits or toys.
+    CombineMeasurementsCalibrationCampaignSummarize {
+        /// Input calibration-campaign artifact (JSON).
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: MeasurementCampaignSummaryFormat,
+
+        /// Output file for results (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write a standardized metrics JSON (schema `nextstat_metrics_v0`) for experiment tracking.
+        ///
+        /// Pass `-` to write to stdout.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+    },
+
+    /// Build a comparative brief from multiple calibration-campaign digests.
+    ///
+    /// This is a pure post-processing step over existing digest JSON files.
+    CombineMeasurementsCalibrationCampaignBrief {
+        /// Input calibration-campaign digest JSON files.
+        #[arg(short, long, required = true)]
+        input: Vec<PathBuf>,
+
+        /// Optional labels aligned 1:1 with --input. Defaults to file stems.
+        #[arg(long)]
+        label: Vec<String>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: MeasurementCampaignSummaryFormat,
+
+        /// Output file. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write standardized metrics JSON.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+    },
+
+    /// Build a family-level report from multiple calibration-campaign briefs.
+    ///
+    /// This is a pure post-processing step over existing brief JSON files.
+    CombineMeasurementsCalibrationCampaignFamilyReport {
+        /// Input calibration-campaign brief JSON files.
+        #[arg(short, long, required = true)]
+        input: Vec<PathBuf>,
+
+        /// Optional family labels aligned 1:1 with --input. Defaults to file stems.
+        #[arg(long)]
+        label: Vec<String>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: MeasurementCampaignSummaryFormat,
+
+        /// Output file. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write standardized metrics JSON.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+    },
+
+    /// Build a machine-readable dominance matrix from a family-level report.
+    ///
+    /// This is a pure post-processing step over an existing family-report JSON file.
+    CombineMeasurementsCalibrationCampaignFamilyMatrix {
+        /// Input calibration-campaign family report JSON.
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: MeasurementCampaignSummaryFormat,
+
+        /// Output file. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write standardized metrics JSON.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+    },
+
+    /// Build a portfolio-level report from multiple family-matrix artifacts.
+    ///
+    /// This is a pure post-processing step over existing family-matrix JSON files.
+    CombineMeasurementsCalibrationCampaignPortfolio {
+        /// Input calibration-campaign family matrix JSON files.
+        #[arg(short, long, required = true)]
+        input: Vec<PathBuf>,
+
+        /// Optional portfolio labels aligned 1:1 with --input. Defaults to file stems.
+        #[arg(long)]
+        label: Vec<String>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: MeasurementCampaignSummaryFormat,
+
+        /// Output file. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write standardized metrics JSON.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+    },
+
+    /// Build a stability report from multiple portfolio artifacts.
+    ///
+    /// This is a pure post-processing step over existing portfolio JSON files.
+    CombineMeasurementsCalibrationCampaignPortfolioStability {
+        /// Input calibration-campaign portfolio JSON files.
+        #[arg(short, long, required = true)]
+        input: Vec<PathBuf>,
+
+        /// Optional run labels aligned 1:1 with --input. Defaults to file stems.
+        #[arg(long)]
+        label: Vec<String>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: MeasurementCampaignSummaryFormat,
+
+        /// Output file. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Also write standardized metrics JSON.
+        #[arg(long)]
+        json_metrics: Option<PathBuf>,
+    },
     /// Toy-based CLs hypotest (qtilde)
     HypotestToys {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -755,7 +1607,7 @@ enum Commands {
 
     /// Observed CLs upper limit via bisection (asymptotics, qtilde)
     UpperLimit {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -864,7 +1716,7 @@ enum Commands {
 
     /// Profile likelihood scan over POI values (q_mu)
     Scan {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1047,6 +1899,12 @@ enum Commands {
         command: ExportCommands,
     },
 
+    /// Derive reduced/simplified artifacts from fitted workspaces
+    Simplify {
+        #[command(subcommand)]
+        command: SimplifyCommands,
+    },
+
     /// Time series and state space models (Phase 8)
     Timeseries {
         #[command(subcommand)]
@@ -1136,6 +1994,12 @@ enum Commands {
         command: ConfigCommands,
     },
 
+    /// ICH M15 regulatory reporting artifacts
+    M15 {
+        #[command(subcommand)]
+        command: M15Commands,
+    },
+
     /// Print version information
     Version,
 }
@@ -1144,7 +2008,7 @@ enum Commands {
 enum VizCommands {
     /// Profile likelihood curve artifact (q_mu vs mu)
     Profile {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1171,7 +2035,7 @@ enum VizCommands {
 
     /// CLs curve artifact with Brazil bands (observed + expected)
     Cls {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1200,11 +2064,20 @@ enum VizCommands {
         threads: usize,
     },
 
-    /// Nuisance-parameter ranking artifact (impact on POI)
+    /// Nuisance-parameter ranking artifact (impact on POI).
+    /// For simplified-likelihood input this ranks reduced nuisance coordinates,
+    /// not source-level systematics.
     Ranking {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
+
+        /// Fit result JSON (from `nextstat fit`) providing postfit parameters + uncertainties.
+        /// When provided, the nominal fit is skipped and the pre-computed result is used
+        /// for warm-starting the per-NP refits.  Without this flag the command performs
+        /// a full nominal fit from scratch, which can be very slow for large workspaces.
+        #[arg(long)]
+        fit: Option<PathBuf>,
 
         /// Output file for results (pretty JSON). Defaults to stdout.
         #[arg(short, long)]
@@ -1217,7 +2090,7 @@ enum VizCommands {
 
     /// Pulls + constraints artifact (TREx-style)
     Pulls {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1239,7 +2112,7 @@ enum VizCommands {
     /// Shows postfit values of γ parameters relative to their nominal (1.0),
     /// with prefit and postfit uncertainties.  Comparable to TRExFitter gammas plot.
     Gammas {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1258,7 +2131,7 @@ enum VizCommands {
 
     /// Correlation matrix artifact (TREx-style)
     Corr {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1309,7 +2182,7 @@ enum VizCommands {
     /// Shows signal and background shapes normalised to unit area, plus a
     /// numeric separation metric.  Comparable to TRExFitter separation plot.
     Separation {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1356,7 +2229,7 @@ enum VizCommands {
     /// Shows the fraction of total expected yield contributed by each sample
     /// (process) in every channel.  Comparable to TRExFitter pie chart.
     Pie {
-        /// Input workspace (pyhf/HS3 JSON)
+        /// Input workspace (pyhf/HS3/simplified-likelihood JSON)
         #[arg(short, long)]
         input: PathBuf,
 
@@ -1491,6 +2364,78 @@ enum ImportCommands {
         output: Option<PathBuf>,
     },
 
+    /// Download and materialize curated open HEPData likelihood bundles into pyhf workspaces.
+    Hepdata {
+        /// Optional manifest JSON overriding the built-in curated catalog.
+        #[arg(long)]
+        manifest: Option<PathBuf>,
+
+        /// Print the curated HEPData catalog as JSON and exit without downloading anything.
+        #[arg(long, default_value_t = false)]
+        list: bool,
+
+        /// Direct DOI mode only. Download the archive, inspect the PatchSet, and print a
+        /// discovered patch catalog without materializing workspaces.
+        #[arg(long, default_value_t = false)]
+        list_patches: bool,
+
+        /// Dataset id from the manifest (repeatable). If omitted, imports all curated datasets.
+        #[arg(long)]
+        dataset: Vec<String>,
+
+        /// Direct DOI import mode: download a specific HEPData bundle URL/DOI without using the
+        /// curated manifest catalog.
+        #[arg(long)]
+        doi: Option<String>,
+
+        /// Required in direct DOI mode. Becomes the stable dataset id, cache slug, and output dir.
+        #[arg(long)]
+        dataset_id: Option<String>,
+
+        /// Optional human-readable dataset name for direct DOI mode. Defaults to `--dataset-id`.
+        #[arg(long)]
+        display_name: Option<String>,
+
+        /// Optional background-only workspace filename override for direct DOI mode.
+        #[arg(long)]
+        bkgonly_filename: Option<String>,
+
+        /// Optional patchset filename override for direct DOI mode.
+        #[arg(long)]
+        patchset_filename: Option<String>,
+
+        /// Direct DOI mode only. Repeat to materialize patches.
+        ///
+        /// Use either `<id>` to materialize the first PatchSet entry as `patched__<id>.json`,
+        /// or `<id>=<patch_name>` to map an explicit PatchSet patch name to a stable output id.
+        #[arg(long)]
+        patch: Vec<String>,
+
+        /// Output directory for materialized workspaces.
+        #[arg(long, default_value = "hepdata-workspaces")]
+        out_dir: PathBuf,
+
+        /// Cache directory for downloaded archives and extracted bundles.
+        ///
+        /// Defaults to `<out-dir>/_cache`.
+        #[arg(long)]
+        cache_dir: Option<PathBuf>,
+
+        /// Lockfile path recording provenance and output hashes.
+        ///
+        /// Defaults to `<out-dir>/workspaces.lock.json`.
+        #[arg(long)]
+        lock: Option<PathBuf>,
+
+        /// Delete existing cache/output before importing.
+        #[arg(long, default_value_t = false)]
+        clean: bool,
+
+        /// Refuse network download and require cached archives to already exist.
+        #[arg(long, default_value_t = false)]
+        offline: bool,
+    },
+
     /// Apply a pyhf PatchSet (HEPData) to a base workspace JSON (typically background-only).
     Patchset {
         /// Base workspace JSON (e.g., `BkgOnly.json`).
@@ -1534,6 +2479,52 @@ enum ExportCommands {
         /// Python executable to use (default: python3).
         #[arg(long)]
         python: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
+enum SimplifyCommands {
+    /// Derive a research-grade simplified-likelihood artifact from a fitted pyhf workspace
+    Workspace {
+        /// Input workspace (pyhf JSON)
+        #[arg(short, long)]
+        input: PathBuf,
+
+        /// Fit result JSON providing the nuisance state and covariance
+        #[arg(long)]
+        fit: PathBuf,
+
+        /// Derive/export config (schema `nextstat_simplified_likelihood_derive_v0`)
+        #[arg(long)]
+        derive_config: PathBuf,
+
+        /// Metadata: experiment label written into the derived artifact
+        #[arg(long)]
+        experiment: String,
+
+        /// Metadata: analysis identifier written into the derived artifact
+        #[arg(long)]
+        analysis_id: String,
+
+        /// Metadata: public or internal provenance reference for the derived artifact
+        #[arg(long)]
+        reference: String,
+
+        /// Optional free-form description for the derived artifact
+        #[arg(long)]
+        description: Option<String>,
+
+        /// Output file for the derived simplified likelihood (pretty JSON). Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Optional machine-readable export report for the derive/export run.
+        #[arg(long)]
+        report: Option<PathBuf>,
+
+        /// Threads (0 = auto). Use 1 for deterministic parity.
+        #[arg(long, default_value = "1")]
+        threads: usize,
     },
 }
 
@@ -1617,9 +2608,172 @@ enum ConfigCommands {
     Schema {
         /// Schema name (default: analysis_spec_v0). Known: analysis_spec_v0, baseline_v0,
         /// report_distributions_v0, report_pulls_v0, report_corr_v0, report_yields_v0, report_uncertainty_v0,
-        /// validation_report_v1, unbinned_spec_v0.
+        /// validation_report_v1, m15_config_v1, m15_assessment_table_v1, m15_map_v1, m15_mar_v1, m15_bundle_manifest_v1,
+        /// unbinned_spec_v0, beta_binomial_design_v0, beta_binomial_design_analysis_v0, beta_binomial_operating_characteristics_v0,
+        /// beta_binomial_posterior_predictive_v0, beta_binomial_prior_sensitivity_campaign_v0, beta_binomial_prior_sensitivity_report_v0,
+        /// beta_binomial_design_report_v0, bayesian_design_report_bundle_v0, bayesian_design_regulatory_appendix_v0,
+        /// bayesian_prior_conflict_diagnostic_v0, bayesian_historical_control_borrowing_policy_v0,
+        /// bayesian_historical_control_borrowing_review_v0, bayesian_historical_control_borrowing_operating_characteristics_v0,
+        /// bayesian_robust_mixture_prior_policy_v0, bayesian_robust_mixture_prior_review_v0,
+        /// bayesian_robust_mixture_prior_operating_characteristics_v0, normal_normal_design_v0, normal_normal_design_analysis_v0,
+        /// normal_normal_operating_characteristics_v0, normal_normal_posterior_predictive_v0,
+        /// normal_normal_prior_sensitivity_campaign_v0, normal_normal_prior_sensitivity_report_v0,
+        /// normal_normal_design_report_v0,
+        /// simplified_likelihood_v0, simplified_likelihood_audit_v0, simplified_likelihood_derive_v0,
+        /// simplified_likelihood_export_report_v0,
+        /// simplified_likelihood_promotion_evidence_bundle_v0, simplified_likelihood_promotion_evidence_check_v0,
+        /// simplified_likelihood_promotion_bundle_promotion_report_v0,
+        /// simplified_likelihood_export_benchmark_snapshot_report_v0, simplified_likelihood_export_public_validation_report_v0,
+        /// simplified_likelihood_exporter_promotion_evidence_bundle_v0,
+        /// simplified_likelihood_exporter_promotion_evidence_check_v0,
+        /// simplified_likelihood_exporter_promotion_bundle_promotion_report_v0,
+        /// simplified_likelihood_exporter_stable_review_assessment_v0,
+        /// simplified_likelihood_exporter_stable_source_semantics_boundary_v0,
+        /// simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0,
+        /// simplified_likelihood_exporter_stable_candidate_review_packet_v0,
+        /// simplified_likelihood_exporter_stable_evidence_policy_v0,
+        /// simplified_likelihood_exporter_stable_evidence_freshness_report_v0,
+        /// simplified_likelihood_exporter_stable_promotion_decision_v0.
         #[arg(long)]
         name: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum M15Commands {
+    /// Build an M15 assessment-table artifact from a frozen config and validation evidence
+    AssessmentTable {
+        /// M15 config JSON (`m15_config_v1`).
+        #[arg(long)]
+        config: PathBuf,
+
+        /// Unified validation report JSON (`validation_report_v1`).
+        #[arg(long)]
+        validation_report: PathBuf,
+
+        /// Pharma IQ/OQ/PQ validation JSON (`nextstat.pharma_validation.v1`).
+        #[arg(long)]
+        pharma_validation: PathBuf,
+
+        /// Output file. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: M15ArtifactFormat,
+
+        /// Make output deterministic (stable ordering; `generated_at = null`).
+        #[arg(long, default_value_t = false)]
+        deterministic: bool,
+    },
+
+    /// Build an M15 Model Analysis Plan artifact from frozen config and assessment-table evidence
+    Map {
+        /// M15 config JSON (`m15_config_v1`).
+        #[arg(long)]
+        config: PathBuf,
+
+        /// Assessment-table JSON (`m15_assessment_table_v1`).
+        #[arg(long)]
+        assessment_table: PathBuf,
+
+        /// Output file. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: M15ArtifactFormat,
+
+        /// Make output deterministic (stable ordering; `generated_at = null`).
+        #[arg(long, default_value_t = false)]
+        deterministic: bool,
+    },
+
+    /// Build an M15 Model Analysis Report artifact from MAP and explicit evidence artifacts
+    Mar {
+        /// M15 MAP JSON (`m15_map_v1`).
+        #[arg(long)]
+        map: PathBuf,
+
+        /// Assessment-table JSON (`m15_assessment_table_v1`).
+        #[arg(long)]
+        assessment_table: PathBuf,
+
+        /// Unified validation report JSON (`validation_report_v1`).
+        #[arg(long)]
+        validation_report: PathBuf,
+
+        /// Pharma IQ/OQ/PQ validation JSON (`nextstat.pharma_validation.v1`).
+        #[arg(long)]
+        pharma_validation: PathBuf,
+
+        /// Output file. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: M15ArtifactFormat,
+
+        /// Make output deterministic (stable ordering; `generated_at = null`).
+        #[arg(long, default_value_t = false)]
+        deterministic: bool,
+    },
+
+    /// Compare profile-specific framing and mandatory sections across the supported M15 profiles
+    ProfileDiff {
+        /// M15 config JSON (`m15_config_v1`).
+        #[arg(long)]
+        config: PathBuf,
+
+        /// Output file. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Output format.
+        #[arg(long, value_enum, default_value = "json")]
+        format: M15ArtifactFormat,
+
+        /// Make output deterministic (stable ordering; `generated_at = null`).
+        #[arg(long, default_value_t = false)]
+        deterministic: bool,
+    },
+
+    /// Build an M15 bundle manifest from frozen config and previously generated M15 artifacts
+    Bundle {
+        /// M15 config JSON (`m15_config_v1`).
+        #[arg(long)]
+        config: PathBuf,
+
+        /// Assessment-table JSON (`m15_assessment_table_v1`).
+        #[arg(long)]
+        assessment_table: PathBuf,
+
+        /// M15 MAP JSON (`m15_map_v1`).
+        #[arg(long)]
+        map: PathBuf,
+
+        /// M15 MAR JSON (`m15_mar_v1`).
+        #[arg(long)]
+        mar: PathBuf,
+
+        /// Unified validation report JSON (`validation_report_v1`).
+        #[arg(long)]
+        validation_report: PathBuf,
+
+        /// Pharma IQ/OQ/PQ validation JSON (`nextstat.pharma_validation.v1`).
+        #[arg(long)]
+        pharma_validation: PathBuf,
+
+        /// Output file. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Make output deterministic (stable ordering; `generated_at = null`).
+        #[arg(long, default_value_t = false)]
+        deterministic: bool,
     },
 }
 
@@ -2185,7 +3339,11 @@ enum ChurnCommands {
 fn main() -> Result<()> {
     let Cli { log_level, bundle, interp_defaults, command } = Cli::parse();
 
-    tracing_subscriber::fmt().with_max_level(log_level).with_target(false).init();
+    tracing_subscriber::fmt()
+        .with_max_level(log_level)
+        .with_target(false)
+        .with_writer(std::io::stderr)
+        .init();
 
     match command {
         Commands::Run { config } => cmd_run(&config, bundle.as_ref(), interp_defaults),
@@ -2546,6 +3704,290 @@ fn main() -> Result<()> {
         Commands::Combine { inputs, output, prefix_channels } => {
             cmd_combine(&inputs, output.as_ref(), prefix_channels)
         }
+        Commands::CombineMeasurements {
+            input,
+            output,
+            json_metrics,
+            ci_level,
+            solver,
+            threads,
+        } => cmd_combine_measurements(
+            &input,
+            output.as_ref(),
+            json_metrics.as_ref(),
+            ci_level,
+            solver,
+            threads,
+        ),
+        Commands::CombineMeasurementsBuildSpec {
+            manifest,
+            poi,
+            measurements,
+            stat_covariance,
+            systematics,
+            correlations,
+            output,
+        } => cmd_combine_measurements_build_spec(
+            manifest.as_ref(),
+            poi.as_deref(),
+            measurements.as_ref(),
+            stat_covariance.as_ref(),
+            systematics.as_ref(),
+            correlations.as_ref(),
+            output.as_ref(),
+        ),
+        Commands::CombineMeasurementsCalibrate {
+            input,
+            output,
+            json_metrics,
+            ci_level,
+            solver,
+            n_toys,
+            seed,
+            threads,
+        } => cmd_combine_measurements_calibrate(
+            &input,
+            output.as_ref(),
+            json_metrics.as_ref(),
+            ci_level,
+            solver,
+            n_toys,
+            seed,
+            threads,
+        ),
+        Commands::CombineMeasurementsCalibrateStudy {
+            input,
+            output,
+            json_metrics,
+            ci_level,
+            solver,
+            n_toys,
+            seeds,
+            threads,
+        } => cmd_combine_measurements_calibrate_study(
+            &input,
+            output.as_ref(),
+            json_metrics.as_ref(),
+            ci_level,
+            solver,
+            n_toys,
+            &seeds,
+            threads,
+        ),
+        Commands::CombineMeasurementsScenarioStudy {
+            input,
+            scenarios,
+            output,
+            json_metrics,
+            ci_level,
+            solver,
+            threads,
+        } => cmd_combine_measurements_scenario_study(
+            &input,
+            &scenarios,
+            output.as_ref(),
+            json_metrics.as_ref(),
+            ci_level,
+            solver,
+            threads,
+        ),
+        Commands::CombineMeasurementsCalibrationCampaign {
+            input,
+            scenarios,
+            output,
+            json_metrics,
+            ci_level,
+            solver,
+            n_toys,
+            seeds,
+            threads,
+        } => cmd_combine_measurements_calibration_campaign(
+            &input,
+            &scenarios,
+            output.as_ref(),
+            json_metrics.as_ref(),
+            ci_level,
+            solver,
+            n_toys,
+            &seeds,
+            threads,
+        ),
+        Commands::CombineMeasurementsSolverParityScenarioStudy {
+            input,
+            scenarios,
+            output,
+            format,
+            json_metrics,
+            ci_level,
+            lhs_solver,
+            rhs_solver,
+            threads,
+        } => cmd_combine_measurements_solver_parity_scenario_study(
+            &input,
+            &scenarios,
+            output.as_ref(),
+            format,
+            json_metrics.as_ref(),
+            ci_level,
+            lhs_solver,
+            rhs_solver,
+            threads,
+        ),
+        Commands::CombineMeasurementsSolverParityCalibrationCampaign {
+            input,
+            scenarios,
+            output,
+            format,
+            json_metrics,
+            ci_level,
+            lhs_solver,
+            rhs_solver,
+            n_toys,
+            seeds,
+            threads,
+        } => cmd_combine_measurements_solver_parity_calibration_campaign(
+            &input,
+            &scenarios,
+            output.as_ref(),
+            format,
+            json_metrics.as_ref(),
+            ci_level,
+            lhs_solver,
+            rhs_solver,
+            n_toys,
+            &seeds,
+            threads,
+        ),
+        Commands::CombineMeasurementsSolverParityScenarioStudyFromReports {
+            lhs,
+            rhs,
+            output,
+            format,
+            json_metrics,
+            lhs_solver,
+            rhs_solver,
+        } => cmd_combine_measurements_solver_parity_scenario_study_from_reports(
+            &lhs,
+            &rhs,
+            output.as_ref(),
+            format,
+            json_metrics.as_ref(),
+            lhs_solver,
+            rhs_solver,
+        ),
+        Commands::CombineMeasurementsSolverParityCalibrationCampaignFromReports {
+            lhs,
+            rhs,
+            output,
+            format,
+            json_metrics,
+            lhs_solver,
+            rhs_solver,
+        } => cmd_combine_measurements_solver_parity_calibration_campaign_from_reports(
+            &lhs,
+            &rhs,
+            output.as_ref(),
+            format,
+            json_metrics.as_ref(),
+            lhs_solver,
+            rhs_solver,
+        ),
+        Commands::CombineMeasurementsSolverParityScenarioStudySummarize {
+            input,
+            format,
+            output,
+            json_metrics,
+        } => cmd_combine_measurements_solver_parity_scenario_study_summarize(
+            &input,
+            format,
+            output.as_ref(),
+            json_metrics.as_ref(),
+        ),
+        Commands::CombineMeasurementsSolverParityCalibrationCampaignSummarize {
+            input,
+            format,
+            output,
+            json_metrics,
+        } => cmd_combine_measurements_solver_parity_calibration_campaign_summarize(
+            &input,
+            format,
+            output.as_ref(),
+            json_metrics.as_ref(),
+        ),
+        Commands::CombineMeasurementsCalibrationCampaignSummarize {
+            input,
+            format,
+            output,
+            json_metrics,
+        } => cmd_combine_measurements_calibration_campaign_summarize(
+            &input,
+            format,
+            output.as_ref(),
+            json_metrics.as_ref(),
+        ),
+        Commands::CombineMeasurementsCalibrationCampaignBrief {
+            input,
+            label,
+            format,
+            output,
+            json_metrics,
+        } => cmd_combine_measurements_calibration_campaign_brief(
+            &input,
+            &label,
+            format,
+            output.as_ref(),
+            json_metrics.as_ref(),
+        ),
+        Commands::CombineMeasurementsCalibrationCampaignFamilyReport {
+            input,
+            label,
+            format,
+            output,
+            json_metrics,
+        } => cmd_combine_measurements_calibration_campaign_family_report(
+            &input,
+            &label,
+            format,
+            output.as_ref(),
+            json_metrics.as_ref(),
+        ),
+        Commands::CombineMeasurementsCalibrationCampaignFamilyMatrix {
+            input,
+            format,
+            output,
+            json_metrics,
+        } => cmd_combine_measurements_calibration_campaign_family_matrix(
+            &input,
+            format,
+            output.as_ref(),
+            json_metrics.as_ref(),
+        ),
+        Commands::CombineMeasurementsCalibrationCampaignPortfolio {
+            input,
+            label,
+            format,
+            output,
+            json_metrics,
+        } => cmd_combine_measurements_calibration_campaign_portfolio(
+            &input,
+            &label,
+            format,
+            output.as_ref(),
+            json_metrics.as_ref(),
+        ),
+        Commands::CombineMeasurementsCalibrationCampaignPortfolioStability {
+            input,
+            label,
+            format,
+            output,
+            json_metrics,
+        } => cmd_combine_measurements_calibration_campaign_portfolio_stability(
+            &input,
+            &label,
+            format,
+            output.as_ref(),
+            json_metrics.as_ref(),
+        ),
         Commands::HypotestToys { input, mu, n_toys, seed, expected_set, output, threads, gpu } => {
             if let Some(ref dev) = gpu {
                 match dev.as_str() {
@@ -2767,9 +4209,14 @@ fn main() -> Result<()> {
                 interp_defaults,
                 bundle.as_ref(),
             ),
-            VizCommands::Ranking { input, output, threads } => {
-                cmd_viz_ranking(&input, output.as_ref(), threads, interp_defaults, bundle.as_ref())
-            }
+            VizCommands::Ranking { input, fit, output, threads } => cmd_viz_ranking(
+                &input,
+                fit.as_ref(),
+                output.as_ref(),
+                threads,
+                interp_defaults,
+                bundle.as_ref(),
+            ),
             VizCommands::Pulls { input, fit, output, threads } => cmd_viz_pulls(
                 &input,
                 &fit,
@@ -2888,6 +4335,40 @@ fn main() -> Result<()> {
             ImportCommands::Cabinetry { config, histograms, output } => {
                 cmd_import_cabinetry(&config, &histograms, output.as_ref())
             }
+            ImportCommands::Hepdata {
+                manifest,
+                list,
+                list_patches,
+                dataset,
+                doi,
+                dataset_id,
+                display_name,
+                bkgonly_filename,
+                patchset_filename,
+                patch,
+                out_dir,
+                cache_dir,
+                lock,
+                clean,
+                offline,
+            } => hepdata::cmd_import_hepdata(
+                manifest.as_ref(),
+                list,
+                list_patches,
+                &dataset,
+                doi.as_deref(),
+                dataset_id.as_deref(),
+                display_name.as_deref(),
+                bkgonly_filename.as_deref(),
+                patchset_filename.as_deref(),
+                &patch,
+                &out_dir,
+                cache_dir.as_ref(),
+                lock.as_ref(),
+                clean,
+                offline,
+                bundle.as_ref(),
+            ),
             ImportCommands::Patchset { workspace, patchset, patch_name, output } => {
                 cmd_import_patchset(
                     &workspace,
@@ -2935,6 +4416,32 @@ fn main() -> Result<()> {
                     python.as_ref(),
                 )
             }
+        },
+        Commands::Simplify { command } => match command {
+            SimplifyCommands::Workspace {
+                input,
+                fit,
+                derive_config,
+                experiment,
+                analysis_id,
+                reference,
+                description,
+                output,
+                report,
+                threads,
+            } => cmd_simplify_workspace(
+                &input,
+                &fit,
+                &derive_config,
+                experiment.as_str(),
+                analysis_id.as_str(),
+                reference.as_str(),
+                description.as_deref(),
+                output.as_ref(),
+                report.as_ref(),
+                threads,
+                interp_defaults,
+            ),
         },
         Commands::Timeseries { command } => match command {
             TimeseriesCommands::KalmanFilter { input, output } => {
@@ -3212,6 +4719,65 @@ fn main() -> Result<()> {
         Commands::Config { command } => match command {
             ConfigCommands::Schema { name } => cmd_config_schema(name.as_deref()),
         },
+        Commands::M15 { command } => match command {
+            M15Commands::AssessmentTable {
+                config,
+                validation_report,
+                pharma_validation,
+                output,
+                format,
+                deterministic,
+            } => cmd_m15_assessment_table(
+                &config,
+                &validation_report,
+                &pharma_validation,
+                output.as_ref(),
+                format,
+                deterministic,
+            ),
+            M15Commands::Map { config, assessment_table, output, format, deterministic } => {
+                cmd_m15_map(&config, &assessment_table, output.as_ref(), format, deterministic)
+            }
+            M15Commands::Mar {
+                map,
+                assessment_table,
+                validation_report,
+                pharma_validation,
+                output,
+                format,
+                deterministic,
+            } => cmd_m15_mar(
+                &map,
+                &assessment_table,
+                &validation_report,
+                &pharma_validation,
+                output.as_ref(),
+                format,
+                deterministic,
+            ),
+            M15Commands::ProfileDiff { config, output, format, deterministic } => {
+                cmd_m15_profile_diff(&config, output.as_ref(), format, deterministic)
+            }
+            M15Commands::Bundle {
+                config,
+                assessment_table,
+                map,
+                mar,
+                validation_report,
+                pharma_validation,
+                output,
+                deterministic,
+            } => cmd_m15_bundle(
+                &config,
+                &assessment_table,
+                &map,
+                &mar,
+                &validation_report,
+                &pharma_validation,
+                output.as_ref(),
+                deterministic,
+            ),
+        },
         Commands::Version => {
             println!("nextstat {}", ns_core::VERSION);
             Ok(())
@@ -3329,14 +4895,236 @@ fn cmd_config_schema(name: Option<&str>) -> Result<()> {
         "report_yields_v0" => SCHEMA_REPORT_YIELDS_V0,
         "report_uncertainty_v0" => SCHEMA_REPORT_UNCERTAINTY_V0,
         "validation_report_v1" => SCHEMA_VALIDATION_REPORT_V1,
+        "m15_config_v1" => SCHEMA_M15_CONFIG_V1,
+        "m15_assessment_table_v1" => SCHEMA_M15_ASSESSMENT_TABLE_V1,
+        "m15_map_v1" => SCHEMA_M15_MAP_V1,
+        "m15_mar_v1" => SCHEMA_M15_MAR_V1,
+        "m15_profile_diff_report_v1" => SCHEMA_M15_PROFILE_DIFF_REPORT_V1,
+        "m15_bundle_manifest_v1" => SCHEMA_M15_BUNDLE_MANIFEST_V1,
+        "hepdata_import_v1" => SCHEMA_HEPDATA_IMPORT_V1,
+        "hepdata_lock_v1" => SCHEMA_HEPDATA_LOCK_V1,
         "unbinned_spec_v0" => SCHEMA_UNBINNED_SPEC_V0,
+        "beta_binomial_design_v0" => SCHEMA_BETA_BINOMIAL_DESIGN_V0,
+        "beta_binomial_design_analysis_v0" => SCHEMA_BETA_BINOMIAL_DESIGN_ANALYSIS_V0,
+        "beta_binomial_operating_characteristics_v0" => {
+            SCHEMA_BETA_BINOMIAL_OPERATING_CHARACTERISTICS_V0
+        }
+        "beta_binomial_posterior_predictive_v0" => SCHEMA_BETA_BINOMIAL_POSTERIOR_PREDICTIVE_V0,
+        "beta_binomial_prior_sensitivity_campaign_v0" => {
+            SCHEMA_BETA_BINOMIAL_PRIOR_SENSITIVITY_CAMPAIGN_V0
+        }
+        "beta_binomial_prior_sensitivity_report_v0" => {
+            SCHEMA_BETA_BINOMIAL_PRIOR_SENSITIVITY_REPORT_V0
+        }
+        "beta_binomial_design_report_v0" => SCHEMA_BETA_BINOMIAL_DESIGN_REPORT_V0,
+        "bayesian_design_report_bundle_v0" => SCHEMA_BAYESIAN_DESIGN_REPORT_BUNDLE_V0,
+        "bayesian_design_regulatory_appendix_v0" => SCHEMA_BAYESIAN_DESIGN_REGULATORY_APPENDIX_V0,
+        "bayesian_prior_conflict_diagnostic_v0" => SCHEMA_BAYESIAN_PRIOR_CONFLICT_DIAGNOSTIC_V0,
+        "bayesian_historical_control_borrowing_policy_v0" => {
+            SCHEMA_BAYESIAN_HISTORICAL_CONTROL_BORROWING_POLICY_V0
+        }
+        "bayesian_historical_control_borrowing_review_v0" => {
+            SCHEMA_BAYESIAN_HISTORICAL_CONTROL_BORROWING_REVIEW_V0
+        }
+        "bayesian_historical_control_borrowing_operating_characteristics_v0" => {
+            SCHEMA_BAYESIAN_HISTORICAL_CONTROL_BORROWING_OPERATING_CHARACTERISTICS_V0
+        }
+        "bayesian_robust_mixture_prior_policy_v0" => SCHEMA_BAYESIAN_ROBUST_MIXTURE_PRIOR_POLICY_V0,
+        "bayesian_robust_mixture_prior_review_v0" => SCHEMA_BAYESIAN_ROBUST_MIXTURE_PRIOR_REVIEW_V0,
+        "bayesian_robust_mixture_prior_operating_characteristics_v0" => {
+            SCHEMA_BAYESIAN_ROBUST_MIXTURE_PRIOR_OPERATING_CHARACTERISTICS_V0
+        }
+        "normal_normal_design_v0" => SCHEMA_NORMAL_NORMAL_DESIGN_V0,
+        "normal_normal_design_analysis_v0" => SCHEMA_NORMAL_NORMAL_DESIGN_ANALYSIS_V0,
+        "normal_normal_operating_characteristics_v0" => {
+            SCHEMA_NORMAL_NORMAL_OPERATING_CHARACTERISTICS_V0
+        }
+        "normal_normal_posterior_predictive_v0" => SCHEMA_NORMAL_NORMAL_POSTERIOR_PREDICTIVE_V0,
+        "normal_normal_prior_sensitivity_campaign_v0" => {
+            SCHEMA_NORMAL_NORMAL_PRIOR_SENSITIVITY_CAMPAIGN_V0
+        }
+        "normal_normal_prior_sensitivity_report_v0" => {
+            SCHEMA_NORMAL_NORMAL_PRIOR_SENSITIVITY_REPORT_V0
+        }
+        "normal_normal_design_report_v0" => SCHEMA_NORMAL_NORMAL_DESIGN_REPORT_V0,
+        "simplified_likelihood_v0" => SCHEMA_SIMPLIFIED_LIKELIHOOD_V0,
+        "simplified_likelihood_audit_v0" => SCHEMA_SIMPLIFIED_LIKELIHOOD_AUDIT_V0,
+        "simplified_likelihood_derive_v0" => SCHEMA_SIMPLIFIED_LIKELIHOOD_DERIVE_V0,
+        "simplified_likelihood_export_report_v0" => SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORT_REPORT_V0,
+        "simplified_likelihood_promotion_evidence_bundle_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_PROMOTION_EVIDENCE_BUNDLE_V0
+        }
+        "simplified_likelihood_promotion_evidence_check_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_PROMOTION_EVIDENCE_CHECK_V0
+        }
+        "simplified_likelihood_promotion_bundle_promotion_report_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_PROMOTION_BUNDLE_PROMOTION_REPORT_V0
+        }
+        "simplified_likelihood_export_benchmark_snapshot_report_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORT_BENCHMARK_SNAPSHOT_REPORT_V0
+        }
+        "simplified_likelihood_export_public_validation_report_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORT_PUBLIC_VALIDATION_REPORT_V0
+        }
+        "simplified_likelihood_exporter_promotion_evidence_bundle_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_PROMOTION_EVIDENCE_BUNDLE_V0
+        }
+        "simplified_likelihood_exporter_promotion_evidence_check_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_PROMOTION_EVIDENCE_CHECK_V0
+        }
+        "simplified_likelihood_exporter_promotion_bundle_promotion_report_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_PROMOTION_BUNDLE_PROMOTION_REPORT_V0
+        }
+        "simplified_likelihood_exporter_stable_review_assessment_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_REVIEW_ASSESSMENT_V0
+        }
+        "simplified_likelihood_exporter_stable_source_semantics_boundary_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_SOURCE_SEMANTICS_BOUNDARY_V0
+        }
+        "simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_CANDIDATE_BLOCKER_MATRIX_V0
+        }
+        "simplified_likelihood_exporter_stable_candidate_review_packet_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_CANDIDATE_REVIEW_PACKET_V0
+        }
+        "simplified_likelihood_exporter_stable_evidence_policy_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_EVIDENCE_POLICY_V0
+        }
+        "simplified_likelihood_exporter_stable_evidence_freshness_report_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_EVIDENCE_FRESHNESS_REPORT_V0
+        }
+        "simplified_likelihood_exporter_stable_promotion_decision_v0" => {
+            SCHEMA_SIMPLIFIED_LIKELIHOOD_EXPORTER_STABLE_PROMOTION_DECISION_V0
+        }
         other => anyhow::bail!(
-            "unknown schema name: {other}. Known: analysis_spec_v0, baseline_v0, report_distributions_v0, report_pulls_v0, report_corr_v0, report_yields_v0, report_uncertainty_v0, validation_report_v1, unbinned_spec_v0"
+            "unknown schema name: {other}. Known: analysis_spec_v0, baseline_v0, report_distributions_v0, report_pulls_v0, report_corr_v0, report_yields_v0, report_uncertainty_v0, validation_report_v1, m15_config_v1, m15_assessment_table_v1, m15_map_v1, m15_mar_v1, m15_profile_diff_report_v1, m15_bundle_manifest_v1, hepdata_import_v1, hepdata_lock_v1, unbinned_spec_v0, beta_binomial_design_v0, beta_binomial_design_analysis_v0, beta_binomial_operating_characteristics_v0, beta_binomial_posterior_predictive_v0, beta_binomial_prior_sensitivity_campaign_v0, beta_binomial_prior_sensitivity_report_v0, beta_binomial_design_report_v0, bayesian_design_report_bundle_v0, bayesian_design_regulatory_appendix_v0, bayesian_prior_conflict_diagnostic_v0, bayesian_historical_control_borrowing_policy_v0, bayesian_historical_control_borrowing_review_v0, bayesian_historical_control_borrowing_operating_characteristics_v0, bayesian_robust_mixture_prior_policy_v0, bayesian_robust_mixture_prior_review_v0, bayesian_robust_mixture_prior_operating_characteristics_v0, normal_normal_design_v0, normal_normal_design_analysis_v0, normal_normal_operating_characteristics_v0, normal_normal_posterior_predictive_v0, normal_normal_prior_sensitivity_campaign_v0, normal_normal_prior_sensitivity_report_v0, normal_normal_design_report_v0, simplified_likelihood_v0, simplified_likelihood_audit_v0, simplified_likelihood_derive_v0, simplified_likelihood_export_report_v0, simplified_likelihood_promotion_evidence_bundle_v0, simplified_likelihood_promotion_evidence_check_v0, simplified_likelihood_promotion_bundle_promotion_report_v0, simplified_likelihood_export_benchmark_snapshot_report_v0, simplified_likelihood_export_public_validation_report_v0, simplified_likelihood_exporter_promotion_evidence_bundle_v0, simplified_likelihood_exporter_promotion_evidence_check_v0, simplified_likelihood_exporter_promotion_bundle_promotion_report_v0, simplified_likelihood_exporter_stable_review_assessment_v0, simplified_likelihood_exporter_stable_source_semantics_boundary_v0, simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0, simplified_likelihood_exporter_stable_candidate_review_packet_v0, simplified_likelihood_exporter_stable_evidence_policy_v0, simplified_likelihood_exporter_stable_evidence_freshness_report_v0, simplified_likelihood_exporter_stable_promotion_decision_v0"
         ),
     };
 
     print!("{schema}");
     Ok(())
+}
+
+fn cmd_m15_assessment_table(
+    config: &PathBuf,
+    validation_report: &PathBuf,
+    pharma_validation: &PathBuf,
+    output: Option<&PathBuf>,
+    format: M15ArtifactFormat,
+    deterministic: bool,
+) -> Result<()> {
+    let doc =
+        m15::build_assessment_table(config, validation_report, pharma_validation, deterministic)?;
+    match format {
+        M15ArtifactFormat::Json => {
+            let mut value = serde_json::to_value(&doc)?;
+            if doc.deterministic {
+                value = normalize_json_for_determinism(value);
+            }
+            write_json(output, &value)
+        }
+        M15ArtifactFormat::Markdown => {
+            let markdown = m15::render_assessment_table_markdown(&doc);
+            write_text(output, &markdown)
+        }
+    }
+}
+
+fn cmd_m15_map(
+    config: &PathBuf,
+    assessment_table: &PathBuf,
+    output: Option<&PathBuf>,
+    format: M15ArtifactFormat,
+    deterministic: bool,
+) -> Result<()> {
+    let doc = m15::build_map(config, assessment_table, deterministic)?;
+    match format {
+        M15ArtifactFormat::Json => {
+            let mut value = serde_json::to_value(&doc)?;
+            if deterministic {
+                value = normalize_json_for_determinism(value);
+            }
+            write_json(output, &value)
+        }
+        M15ArtifactFormat::Markdown => {
+            let markdown = m15::render_map_markdown(&doc);
+            write_text(output, &markdown)
+        }
+    }
+}
+
+fn cmd_m15_mar(
+    map: &PathBuf,
+    assessment_table: &PathBuf,
+    validation_report: &PathBuf,
+    pharma_validation: &PathBuf,
+    output: Option<&PathBuf>,
+    format: M15ArtifactFormat,
+    deterministic: bool,
+) -> Result<()> {
+    let doc =
+        m15::build_mar(map, assessment_table, validation_report, pharma_validation, deterministic)?;
+    match format {
+        M15ArtifactFormat::Json => {
+            let mut value = serde_json::to_value(&doc)?;
+            if deterministic {
+                value = normalize_json_for_determinism(value);
+            }
+            write_json(output, &value)
+        }
+        M15ArtifactFormat::Markdown => {
+            let markdown = m15::render_mar_markdown(&doc);
+            write_text(output, &markdown)
+        }
+    }
+}
+
+fn cmd_m15_profile_diff(
+    config: &PathBuf,
+    output: Option<&PathBuf>,
+    format: M15ArtifactFormat,
+    deterministic: bool,
+) -> Result<()> {
+    let doc = m15::build_profile_diff_report(config, deterministic)?;
+    match format {
+        M15ArtifactFormat::Json => {
+            let mut value = serde_json::to_value(&doc)?;
+            if doc.deterministic {
+                value = normalize_json_for_determinism(value);
+            }
+            write_json(output, &value)
+        }
+        M15ArtifactFormat::Markdown => {
+            let markdown = m15::render_profile_diff_markdown(&doc);
+            write_text(output, &markdown)
+        }
+    }
+}
+
+fn cmd_m15_bundle(
+    config: &PathBuf,
+    assessment_table: &PathBuf,
+    map: &PathBuf,
+    mar: &PathBuf,
+    validation_report: &PathBuf,
+    pharma_validation: &PathBuf,
+    output: Option<&PathBuf>,
+    deterministic: bool,
+) -> Result<()> {
+    let doc = m15::build_bundle(
+        config,
+        assessment_table,
+        map,
+        mar,
+        validation_report,
+        pharma_validation,
+        deterministic,
+    )?;
+    let mut value = serde_json::to_value(&doc)?;
+    if doc.deterministic {
+        value = normalize_json_for_determinism(value);
+    }
+    write_json(output, &value)
 }
 
 fn default_python_executable() -> PathBuf {
@@ -4080,13 +5868,10 @@ fn cmd_export_histfactory(
         anyhow::bail!("input workspace not found: {}", input.display());
     }
     let input_json = std::fs::read_to_string(&input)?;
-    if ns_translate::hs3::detect::detect_format(&input_json)
-        == ns_translate::hs3::detect::WorkspaceFormat::Hs3
-    {
-        anyhow::bail!(
-            "`export histfactory` requires pyhf JSON input; HS3 is not supported for this command"
-        );
-    }
+    reject_non_pyhf_json_input(
+        "export histfactory",
+        ns_translate::detect::detect_format(&input_json),
+    )?;
 
     if out_dir.exists() {
         if !out_dir.is_dir() {
@@ -4149,6 +5934,332 @@ Path("combination.xml").write_bytes(combo)
     Ok(())
 }
 
+fn cmd_simplify_workspace(
+    input: &PathBuf,
+    fit: &PathBuf,
+    derive_config: &PathBuf,
+    experiment: &str,
+    analysis_id: &str,
+    reference: &str,
+    description: Option<&str>,
+    output: Option<&PathBuf>,
+    report: Option<&PathBuf>,
+    threads: usize,
+    interp_defaults: InterpDefaults,
+) -> Result<()> {
+    let config_text = std::fs::read_to_string(derive_config)?;
+    let derive_config: ns_translate::simplified::export::SimplifiedLikelihoodDeriveConfig =
+        if derive_config.extension().and_then(|ext| ext.to_str()) == Some("json") {
+            serde_json::from_str(&config_text)?
+        } else {
+            serde_yaml_ng::from_str(&config_text)?
+        };
+    ns_translate::simplified::export::validate_simplified_likelihood_derive_config(&derive_config)?;
+
+    if derive_config.source_workspace.format
+        != ns_translate::simplified::schema::SIMPLIFIED_LIKELIHOOD_SOURCE_WORKSPACE_FORMAT_PYHF
+    {
+        anyhow::bail!(
+            "simplify workspace currently supports source_workspace.format = 'pyhf' only"
+        );
+    }
+
+    let (workspace, model) = load_workspace_and_model(input, threads, interp_defaults)?;
+    let fit_json: FitResultJson = serde_json::from_slice(&std::fs::read(fit)?)?;
+    let aligned_fit = aligned_fit_result_from_fit_json(&model, &fit_json)?;
+    let metadata = ns_translate::simplified::export::SimplifiedLikelihoodDeriveMetadata {
+        experiment: experiment.to_string(),
+        analysis_id: analysis_id.to_string(),
+        reference: reference.to_string(),
+        description: description.map(str::to_string),
+    };
+
+    let mut derived = ns_translate::simplified::export::derive_simplified_likelihood_core(
+        &workspace,
+        &model,
+        &aligned_fit,
+        &derive_config,
+        &metadata,
+    )?;
+
+    let fidelity =
+        build_simplified_likelihood_fidelity(&model, &aligned_fit, &derive_config, &derived)?;
+    derived.workspace.diagnostics.get_or_insert_with(Default::default).fidelity = Some(fidelity);
+
+    ns_translate::simplified::validate::validate_simplified_likelihood(&derived.workspace)?;
+    let export_report =
+        ns_translate::simplified::export::build_simplified_likelihood_export_report(
+            &derive_config,
+            &metadata,
+            &derived,
+        )?;
+    if let Some(report_path) = report {
+        write_json(Some(report_path), &serde_json::to_value(&export_report)?)?;
+    }
+    write_json(output, &serde_json::to_value(&derived.workspace)?)?;
+    Ok(())
+}
+
+fn build_simplified_likelihood_fidelity(
+    model: &ns_translate::pyhf::HistFactoryModel,
+    aligned_fit: &ns_translate::simplified::export::SimplifiedLikelihoodAlignedFitResult,
+    derive_config: &ns_translate::simplified::export::SimplifiedLikelihoodDeriveConfig,
+    derived: &ns_translate::simplified::export::SimplifiedLikelihoodDerivedCore,
+) -> Result<ns_translate::simplified::schema::SimplifiedFidelityDiagnostics> {
+    let selected_model =
+        model.with_fit_channel_selection(Some(&derive_config.selection.channels), None)?;
+    let nuisance_count_reduced = match &derived.workspace.uncertainty_model {
+        ns_translate::simplified::schema::SimplifiedUncertaintyModel::Basis { components } => {
+            components.len()
+        }
+        ns_translate::simplified::schema::SimplifiedUncertaintyModel::Covariance {
+            total_covariance,
+            ..
+        } => total_covariance.len(),
+    };
+    let mut workspace_for_conversion = derived.workspace.clone();
+    workspace_for_conversion.diagnostics.get_or_insert_with(Default::default).fidelity =
+        Some(ns_translate::simplified::schema::SimplifiedFidelityDiagnostics {
+            nuisance_count_full: Some(derived.full_nuisance_count),
+            nuisance_count_reduced: Some(nuisance_count_reduced),
+            bins_count: Some(derived.workspace.bins.len()),
+            relative_background_cov_residual: Some(0.0),
+            max_abs_expected_delta_at_nominal: Some(0.0),
+            max_abs_expected_delta_random_draws: Some(0.0),
+            qmu_delta_smoke: Some(0.0),
+            upper_limit_ratio_smoke: Some(1.0),
+            max_abs_yield_delta: Some(0.0),
+            max_rel_yield_delta: Some(0.0),
+        });
+    let simplified_model =
+        ns_translate::simplified::convert::simplified_to_model(&workspace_for_conversion)?;
+    let selected_flat_indices = flat_indices_from_simplified_bins(model, &derived.workspace.bins)?;
+    let poi_idx =
+        model.poi_index().ok_or_else(|| anyhow::anyhow!("source workspace must define a POI"))?;
+
+    let mut full_params = aligned_fit.parameters.clone();
+    full_params[poi_idx] = derive_config.fidelity_smoke.qmu_test_mu;
+    let full_expected_all = model.expected_data(&full_params)?;
+    let full_expected = select_expected_entries(&full_expected_all, &selected_flat_indices)?;
+
+    let simplified_expected = {
+        let mut params: Vec<f64> =
+            simplified_model.parameters().iter().map(|parameter| parameter.init).collect();
+        for (idx, parameter) in simplified_model.parameters().iter().enumerate() {
+            params[idx] = if parameter.name == derived.workspace.poi.name {
+                derive_config.fidelity_smoke.qmu_test_mu
+            } else {
+                0.0
+            };
+        }
+        simplified_model.expected_data(&params)?
+    };
+
+    let max_abs_expected_delta_at_nominal = full_expected
+        .iter()
+        .zip(simplified_expected.iter())
+        .map(|(full, simplified)| (full - simplified).abs())
+        .fold(0.0_f64, f64::max);
+
+    let expected_scale = full_expected.iter().copied().fold(0.0_f64, f64::max).max(1e-12);
+    let relative_background_cov_residual = relative_covariance_residual(
+        &derived.total_background_covariance,
+        &derived.retained_background_covariance,
+    )?;
+    let max_abs_expected_delta_random_draws = max_abs_random_draw_delta(
+        &derived.total_background_covariance,
+        &derived.retained_background_covariance,
+        derive_config.fidelity_smoke.random_draws,
+    )?;
+    let max_abs_yield_delta =
+        max_abs_expected_delta_at_nominal.max(max_abs_expected_delta_random_draws);
+    let max_rel_yield_delta = max_abs_yield_delta / expected_scale;
+
+    let mle = ns_inference::MaximumLikelihoodEstimator::new();
+    let qmu_full = ns_inference::profile_likelihood::qmu_like(
+        &mle,
+        &selected_model,
+        derive_config.fidelity_smoke.qmu_test_mu,
+    )?;
+    let qmu_simplified = ns_inference::profile_likelihood::qmu_like(
+        &mle,
+        &simplified_model,
+        derive_config.fidelity_smoke.qmu_test_mu,
+    )?;
+
+    let alpha = 1.0 - derive_config.fidelity_smoke.upper_limit_cl;
+    let poi_bounds = derived.workspace.poi.bounds;
+    let upper_limit_lo = poi_bounds[0].max(0.0);
+    let upper_limit_hi =
+        if poi_bounds[1] > upper_limit_lo { poi_bounds[1] } else { upper_limit_lo + 10.0 };
+    let full_ctx = ns_inference::AsymptoticCLsContext::new(&mle, &selected_model)?;
+    let simplified_ctx = ns_inference::AsymptoticCLsContext::new(&mle, &simplified_model)?;
+    let upper_limit_full =
+        full_ctx.upper_limit_qtilde(&mle, alpha, upper_limit_lo, upper_limit_hi, 1e-3, 80)?;
+    let upper_limit_simplified =
+        simplified_ctx.upper_limit_qtilde(&mle, alpha, upper_limit_lo, upper_limit_hi, 1e-3, 80)?;
+
+    Ok(ns_translate::simplified::schema::SimplifiedFidelityDiagnostics {
+        nuisance_count_full: Some(derived.full_nuisance_count),
+        nuisance_count_reduced: Some(nuisance_count_reduced),
+        bins_count: Some(derived.workspace.bins.len()),
+        relative_background_cov_residual: Some(relative_background_cov_residual),
+        max_abs_expected_delta_at_nominal: Some(max_abs_expected_delta_at_nominal),
+        max_abs_expected_delta_random_draws: Some(max_abs_expected_delta_random_draws),
+        qmu_delta_smoke: Some((qmu_full - qmu_simplified).abs()),
+        upper_limit_ratio_smoke: Some(upper_limit_simplified / upper_limit_full.max(1e-12)),
+        max_abs_yield_delta: Some(max_abs_yield_delta),
+        max_rel_yield_delta: Some(max_rel_yield_delta),
+    })
+}
+
+fn flat_indices_from_simplified_bins(
+    model: &ns_translate::pyhf::HistFactoryModel,
+    bins: &[ns_translate::simplified::schema::SimplifiedLikelihoodBin],
+) -> Result<Vec<usize>> {
+    let mut flat_indices = Vec::with_capacity(bins.len());
+    for bin in bins {
+        let channel_idx = model.channel_index(&bin.channel).ok_or_else(|| {
+            anyhow::anyhow!("derived bins reference unknown source channel '{}'", bin.channel)
+        })?;
+        let channel_offset = model.channel_bin_offset(channel_idx)?;
+        let Some(bin_suffix) = bin.name.strip_prefix("bin") else {
+            anyhow::bail!("derived bin name '{}' must use 'bin<index>' notation", bin.name);
+        };
+        let bin_idx = bin_suffix.parse::<usize>().map_err(|_| {
+            anyhow::anyhow!(
+                "derived bin name '{}' must use numeric 'bin<index>' notation",
+                bin.name
+            )
+        })?;
+        if bin_idx >= model.channel_bin_count(channel_idx)? {
+            anyhow::bail!(
+                "derived bin '{}' is out of range for channel '{}'",
+                bin.name,
+                bin.channel
+            );
+        }
+        flat_indices.push(channel_offset + bin_idx);
+    }
+    Ok(flat_indices)
+}
+
+fn select_expected_entries(values: &[f64], flat_indices: &[usize]) -> Result<Vec<f64>> {
+    let mut selected = Vec::with_capacity(flat_indices.len());
+    for &idx in flat_indices {
+        selected.push(
+            values
+                .get(idx)
+                .copied()
+                .ok_or_else(|| anyhow::anyhow!("flat bin index {idx} is out of range"))?,
+        );
+    }
+    Ok(selected)
+}
+
+fn relative_covariance_residual(total: &[Vec<f64>], retained: &[Vec<f64>]) -> Result<f64> {
+    let total = nested_matrix_to_dmatrix(total)?;
+    let retained = nested_matrix_to_dmatrix(retained)?;
+    let residual = (&total - &retained).norm();
+    let scale = total.norm().max(1e-12);
+    Ok(residual / scale)
+}
+
+fn max_abs_random_draw_delta(
+    total: &[Vec<f64>],
+    retained: &[Vec<f64>],
+    draws: usize,
+) -> Result<f64> {
+    if draws == 0 {
+        anyhow::bail!("fidelity_smoke.random_draws must be >= 1");
+    }
+    let total_factor = covariance_draw_factor(total)?;
+    let retained_factor = covariance_draw_factor(retained)?;
+    let max_rank = total_factor.ncols().max(retained_factor.ncols());
+    if max_rank == 0 {
+        return Ok(0.0);
+    }
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(0x51E7_2026);
+    let mut max_abs_delta = 0.0_f64;
+    for _ in 0..draws {
+        let z = standard_normal_vector(max_rank, &mut rng);
+        let total_shift = if total_factor.ncols() == 0 {
+            DVector::zeros(total_factor.nrows())
+        } else {
+            &total_factor * z.rows(0, total_factor.ncols())
+        };
+        let retained_shift = if retained_factor.ncols() == 0 {
+            DVector::zeros(retained_factor.nrows())
+        } else {
+            &retained_factor * z.rows(0, retained_factor.ncols())
+        };
+        for idx in 0..total_shift.len() {
+            max_abs_delta = max_abs_delta.max((total_shift[idx] - retained_shift[idx]).abs());
+        }
+    }
+    Ok(max_abs_delta)
+}
+
+fn covariance_draw_factor(covariance: &[Vec<f64>]) -> Result<DMatrix<f64>> {
+    let covariance = nested_matrix_to_dmatrix(covariance)?;
+    if covariance.nrows() == 0 {
+        return Ok(DMatrix::zeros(0, 0));
+    }
+    let nrows = covariance.nrows();
+    let eigen = covariance.clone().symmetric_eigen();
+    let mut eigenpairs = eigen
+        .eigenvalues
+        .iter()
+        .copied()
+        .enumerate()
+        .filter_map(|(idx, value)| (value > 1e-12).then_some((idx, value)))
+        .collect::<Vec<_>>();
+    eigenpairs.sort_by(|(idx_a, value_a), (idx_b, value_b)| {
+        value_b.partial_cmp(value_a).unwrap_or(std::cmp::Ordering::Equal).then(idx_a.cmp(idx_b))
+    });
+    if eigenpairs.is_empty() {
+        return Ok(DMatrix::zeros(nrows, 0));
+    }
+
+    let mut factor = DMatrix::zeros(nrows, eigenpairs.len());
+    for (col_idx, (eigen_idx, eigenvalue)) in eigenpairs.into_iter().enumerate() {
+        let scale = eigenvalue.sqrt();
+        for row_idx in 0..nrows {
+            factor[(row_idx, col_idx)] = eigen.eigenvectors[(row_idx, eigen_idx)] * scale;
+        }
+    }
+    Ok(factor)
+}
+
+fn nested_matrix_to_dmatrix(matrix: &[Vec<f64>]) -> Result<DMatrix<f64>> {
+    let nrows = matrix.len();
+    let ncols = matrix.first().map_or(0, |row| row.len());
+    if matrix.iter().any(|row| row.len() != ncols) {
+        anyhow::bail!("matrix rows must have equal length");
+    }
+    let mut flat = Vec::with_capacity(nrows * ncols);
+    for row in matrix {
+        flat.extend_from_slice(row);
+    }
+    Ok(DMatrix::from_row_slice(nrows, ncols, &flat))
+}
+
+fn standard_normal_vector(len: usize, rng: &mut rand::rngs::StdRng) -> DVector<f64> {
+    let mut out = Vec::with_capacity(len);
+    while out.len() < len {
+        let u1 = (1.0 - rng.random::<f64>()).max(f64::MIN_POSITIVE);
+        let u2 = rng.random::<f64>();
+        let radius = (-2.0 * u1.ln()).sqrt();
+        let angle = std::f64::consts::TAU * u2;
+        out.push(radius * angle.cos());
+        if out.len() < len {
+            out.push(radius * angle.sin());
+        }
+    }
+    DVector::from_vec(out)
+}
+
 fn cmd_fit(
     input: &PathBuf,
     output: Option<&PathBuf>,
@@ -4173,6 +6284,18 @@ fn cmd_fit(
             (!fit_regions.is_empty()).then_some(fit_regions),
             (!validation_regions.is_empty()).then_some(validation_regions),
         )?;
+        if selected.poi_index().is_some() && !selected.poi_is_referenced() {
+            let poi_name = selected
+                .poi_index()
+                .and_then(|i| selected.parameters().get(i))
+                .map(|p| p.name.as_str())
+                .unwrap_or("?");
+            tracing::warn!(
+                "POI '{poi_name}' is not referenced by any modifier — the likelihood is flat \
+                 in POI and fit uncertainties will be meaningless. Check that the workspace \
+                 contains a normfactor/shapefactor for the POI."
+            );
+        }
         if asimov {
             tracing::info!("Asimov (blind) fit: replacing observed data with expected at nominal");
             let init_params: Vec<f64> = selected.parameters().iter().map(|p| p.init).collect();
@@ -10447,51 +12570,23 @@ fn cmd_unbinned_merge_toys(inputs: &[PathBuf], output: Option<&PathBuf>) -> Resu
 
 fn cmd_audit(input: &PathBuf, format: &str, output: Option<&PathBuf>) -> Result<()> {
     let json_str = std::fs::read_to_string(input)?;
-    if ns_translate::hs3::detect::detect_format(&json_str)
-        == ns_translate::hs3::detect::WorkspaceFormat::Hs3
-    {
-        anyhow::bail!("`audit` currently supports pyhf JSON only; HS3 support is not implemented");
-    }
-    let json: serde_json::Value = serde_json::from_str(&json_str)?;
-    let audit = ns_translate::pyhf::audit::workspace_audit(&json);
+    let audit = ns_translate::audit::audit_workspace_json(&json_str).map_err(|err| match err {
+        ns_core::Error::NotImplemented(message) if message.contains("HS3") => {
+            anyhow::anyhow!("`audit` requires pyhf or simplified-likelihood JSON input; HS3 is not supported for this command")
+        }
+        other => anyhow::anyhow!(other.to_string()),
+    })?;
 
     let text = match format {
         "json" => serde_json::to_string_pretty(&audit)?,
-        _ => {
-            let mut s = String::new();
-            s.push_str(&format!("Workspace: {}\n", input.display()));
-            s.push_str(&format!(
-                "  Channels: {}, Bins: {}, Samples: {}, Modifiers: {}\n",
-                audit.channel_count, audit.total_bins, audit.total_samples, audit.total_modifiers
-            ));
-            s.push_str(&format!("  Parameters (est): {}\n", audit.parameter_count_estimate));
-            s.push_str("\nMeasurements:\n");
-            for m in &audit.measurements {
-                s.push_str(&format!(
-                    "  - {} (POI: {}, {} fixed params)\n",
-                    m.name, m.poi, m.n_fixed_params
-                ));
+        _ => match &audit {
+            ns_translate::audit::WorkspaceAuditArtifact::Pyhf(audit) => {
+                format_pyhf_audit_text(input, audit)
             }
-            s.push_str("\nModifier types:\n");
-            let mut types: Vec<_> = audit.modifier_types_used.iter().collect();
-            types.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
-            for (typ, count) in &types {
-                let marker =
-                    if ns_translate::pyhf::audit::KNOWN_MODIFIER_TYPES.contains(&typ.as_str()) {
-                        "+"
-                    } else {
-                        "!"
-                    };
-                s.push_str(&format!("  {} {} (x{})\n", marker, typ, count));
+            ns_translate::audit::WorkspaceAuditArtifact::Simplified(audit) => {
+                format_simplified_audit_text(input, audit)
             }
-            if !audit.unsupported_features.is_empty() {
-                s.push_str("\nWarnings:\n");
-                for w in &audit.unsupported_features {
-                    s.push_str(&format!("  - {}\n", w));
-                }
-            }
-            s
-        }
+        },
     };
 
     if let Some(path) = output {
@@ -10500,6 +12595,150 @@ fn cmd_audit(input: &PathBuf, format: &str, output: Option<&PathBuf>) -> Result<
         print!("{}", text);
     }
     Ok(())
+}
+
+fn format_pyhf_audit_text(
+    input: &Path,
+    audit: &ns_translate::pyhf::audit::WorkspaceAudit,
+) -> String {
+    let mut s = String::new();
+    s.push_str(&format!("Workspace: {}\n", input.display()));
+    s.push_str(&format!(
+        "  Channels: {}, Bins: {}, Samples: {}, Modifiers: {}\n",
+        audit.channel_count, audit.total_bins, audit.total_samples, audit.total_modifiers
+    ));
+    s.push_str(&format!("  Parameters (est): {}\n", audit.parameter_count_estimate));
+    s.push_str("\nMeasurements:\n");
+    for m in &audit.measurements {
+        s.push_str(&format!(
+            "  - {} (POI: {}, {} fixed params)\n",
+            m.name, m.poi, m.n_fixed_params
+        ));
+    }
+    s.push_str("\nModifier types:\n");
+    let mut types: Vec<_> = audit.modifier_types_used.iter().collect();
+    types.sort_by_key(|(_, count)| std::cmp::Reverse(**count));
+    for (typ, count) in &types {
+        let marker = if ns_translate::pyhf::audit::KNOWN_MODIFIER_TYPES.contains(&typ.as_str()) {
+            "+"
+        } else {
+            "!"
+        };
+        s.push_str(&format!("  {} {} (x{})\n", marker, typ, count));
+    }
+    if !audit.unsupported_features.is_empty() {
+        s.push_str("\nWarnings:\n");
+        for w in &audit.unsupported_features {
+            s.push_str(&format!("  - {}\n", w));
+        }
+    }
+    s
+}
+
+fn format_simplified_audit_text(
+    input: &Path,
+    audit: &ns_translate::simplified::audit::SimplifiedLikelihoodAudit,
+) -> String {
+    let mut s = String::new();
+    s.push_str(&format!("Simplified likelihood: {}\n", input.display()));
+    s.push_str(&format!("  Experiment: {}\n", audit.experiment));
+    s.push_str(&format!("  Analysis: {}\n", audit.analysis_id));
+    s.push_str(&format!("  Source format: {}\n", audit.source_format));
+    s.push_str(&format!("  POI: {}\n", audit.poi_name));
+    s.push_str(&format!(
+        "  Channels: {}, Bins: {}, Reduced nuisances: {}, Parameters (est): {}\n",
+        audit.channel_count,
+        audit.total_bins,
+        audit.reduced_nuisance_count,
+        audit.parameter_count_estimate
+    ));
+    s.push_str(&format!("  Channel names: {}\n", audit.channel_names.join(", ")));
+    s.push_str(&format!("  Uncertainty model: {}\n", audit.uncertainty_model_kind));
+    s.push_str(&format!("  Signal: {}\n", if audit.has_signal { "yes" } else { "no" }));
+    s.push_str(&format!(
+        "  Yields: observed={:.6}, background={:.6}, signal={}\n",
+        audit.total_observed_yield,
+        audit.total_background_yield,
+        audit
+            .total_signal_yield
+            .map(|value| format!("{value:.6}"))
+            .unwrap_or_else(|| "n/a".to_string())
+    ));
+    s.push_str(&format!(
+        "  Input diagnostics: factorization={}, fidelity={}\n",
+        if audit.input_has_factorization_diagnostics { "yes" } else { "no" },
+        if audit.input_has_fidelity_diagnostics { "yes" } else { "no" }
+    ));
+
+    if let Some(factorization) = &audit.diagnostics.factorization {
+        s.push_str("\nFactorization:\n");
+        s.push_str(&format!("  Method: {}\n", factorization.method));
+        s.push_str(&format!(
+            "  Rank: {} -> {}\n",
+            factorization.original_rank, factorization.retained_rank
+        ));
+        s.push_str(&format!(
+            "  Explained variance: {:.12}\n",
+            factorization.explained_variance_fraction
+        ));
+        s.push_str(&format!("  Residual (Frobenius): {:.12}\n", factorization.frobenius_residual));
+        s.push_str(&format!(
+            "  Clipped negative eigenvalues: {}\n",
+            factorization.clipped_negative_eigenvalues
+        ));
+        s.push_str(&format!(
+            "  Max clipped eigenvalue magnitude: {:.12}\n",
+            factorization.max_clipped_negative_eigenvalue_magnitude
+        ));
+    }
+
+    if let Some(fidelity) = &audit.diagnostics.fidelity {
+        s.push_str("\nFidelity:\n");
+        if let Some(nuisance_count_full) = fidelity.nuisance_count_full {
+            s.push_str(&format!("  Full nuisances: {}\n", nuisance_count_full));
+        }
+        if let Some(nuisance_count_reduced) = fidelity.nuisance_count_reduced {
+            s.push_str(&format!("  Reduced nuisances: {}\n", nuisance_count_reduced));
+        }
+        if let Some(bins_count) = fidelity.bins_count {
+            s.push_str(&format!("  Fidelity bins: {}\n", bins_count));
+        }
+        if let Some(relative_background_cov_residual) = fidelity.relative_background_cov_residual {
+            s.push_str(&format!(
+                "  Relative background covariance residual: {:.12}\n",
+                relative_background_cov_residual
+            ));
+        }
+        if let Some(max_abs_expected_delta_at_nominal) = fidelity.max_abs_expected_delta_at_nominal
+        {
+            s.push_str(&format!(
+                "  Max abs expected delta at nominal: {:.12}\n",
+                max_abs_expected_delta_at_nominal
+            ));
+        }
+        if let Some(max_abs_expected_delta_random_draws) =
+            fidelity.max_abs_expected_delta_random_draws
+        {
+            s.push_str(&format!(
+                "  Max abs expected delta random draws: {:.12}\n",
+                max_abs_expected_delta_random_draws
+            ));
+        }
+        if let Some(qmu_delta_smoke) = fidelity.qmu_delta_smoke {
+            s.push_str(&format!("  qmu delta smoke: {:.12}\n", qmu_delta_smoke));
+        }
+        if let Some(upper_limit_ratio_smoke) = fidelity.upper_limit_ratio_smoke {
+            s.push_str(&format!("  Upper-limit ratio smoke: {:.12}\n", upper_limit_ratio_smoke));
+        }
+        if let Some(max_abs_yield_delta) = fidelity.max_abs_yield_delta {
+            s.push_str(&format!("  Max abs yield delta: {:.12}\n", max_abs_yield_delta));
+        }
+        if let Some(max_rel_yield_delta) = fidelity.max_rel_yield_delta {
+            s.push_str(&format!("  Max rel yield delta: {:.12}\n", max_rel_yield_delta));
+        }
+    }
+
+    s
 }
 
 /// Configure Rayon thread pool and deterministic/parity mode.
@@ -11005,6 +13244,22 @@ fn metrics_v0_with_timing(
     }))
 }
 
+fn reject_non_pyhf_json_input(
+    command_label: &str,
+    format: ns_translate::detect::WorkspaceFormat,
+) -> Result<()> {
+    match format {
+        ns_translate::detect::WorkspaceFormat::Hs3 => anyhow::bail!(
+            "`{command_label}` requires pyhf JSON input; HS3 is not supported for this command"
+        ),
+        ns_translate::detect::WorkspaceFormat::SimplifiedLikelihood => anyhow::bail!(
+            "`{command_label}` requires pyhf JSON input; simplified-likelihood JSON is not supported for this command"
+        ),
+        ns_translate::detect::WorkspaceFormat::Pyhf
+        | ns_translate::detect::WorkspaceFormat::Unknown => Ok(()),
+    }
+}
+
 fn load_model(
     input: &PathBuf,
     threads: usize,
@@ -11016,15 +13271,21 @@ fn load_model(
     tracing::info!(path = %input.display(), "loading workspace");
     let json = std::fs::read_to_string(input)?;
 
-    let format = ns_translate::hs3::detect::detect_format(&json);
+    let format = ns_translate::detect::detect_format(&json);
     let model = match format {
-        ns_translate::hs3::detect::WorkspaceFormat::Hs3 => {
+        ns_translate::detect::WorkspaceFormat::Hs3 => {
             tracing::info!("detected HS3 format");
             ns_translate::hs3::convert::from_hs3_default(&json)
                 .map_err(|e| anyhow::anyhow!("HS3 loading failed: {e}"))?
         }
-        ns_translate::hs3::detect::WorkspaceFormat::Pyhf
-        | ns_translate::hs3::detect::WorkspaceFormat::Unknown => {
+        ns_translate::detect::WorkspaceFormat::SimplifiedLikelihood => {
+            tracing::info!("detected simplified-likelihood format");
+            let spec: ns_translate::simplified::schema::SimplifiedLikelihoodWorkspace =
+                serde_json::from_str(&json)?;
+            ns_translate::simplified::convert::simplified_to_model(&spec)?
+        }
+        ns_translate::detect::WorkspaceFormat::Pyhf
+        | ns_translate::detect::WorkspaceFormat::Unknown => {
             let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(&json)?;
             match interp_defaults {
                 InterpDefaults::Pyhf => {
@@ -11054,13 +13315,7 @@ fn load_workspace_and_model(
 
     tracing::info!(path = %input.display(), "loading workspace");
     let json = std::fs::read_to_string(input)?;
-    if ns_translate::hs3::detect::detect_format(&json)
-        == ns_translate::hs3::detect::WorkspaceFormat::Hs3
-    {
-        anyhow::bail!(
-            "this command currently requires pyhf JSON input; HS3 is not supported here yet"
-        );
-    }
+    reject_non_pyhf_json_input("this command", ns_translate::detect::detect_format(&json))?;
     let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(&json)?;
     let model = match interp_defaults {
         InterpDefaults::Pyhf => ns_translate::pyhf::HistFactoryModel::from_workspace_with_settings(
@@ -11302,9 +13557,29 @@ fn canonicalize_json(value: &serde_json::Value) -> serde_json::Value {
 fn write_json(output: Option<&PathBuf>, value: &serde_json::Value) -> Result<()> {
     let value = canonicalize_json(value);
     if let Some(path) = output {
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            let ext_lower = ext.to_ascii_lowercase();
+            if matches!(ext_lower.as_str(), "png" | "pdf" | "svg" | "jpeg" | "jpg") {
+                tracing::warn!(
+                    "output path has image extension .{ext_lower} but this command writes JSON; \
+                     use `nextstat viz render --kind ... --input <artifact.json> --output {p}` \
+                     to produce an image",
+                    p = path.display(),
+                );
+            }
+        }
         std::fs::write(path, serde_json::to_string_pretty(&value)?)?;
     } else {
         println!("{}", serde_json::to_string_pretty(&value)?);
+    }
+    Ok(())
+}
+
+fn write_text(output: Option<&PathBuf>, text: &str) -> Result<()> {
+    if let Some(path) = output {
+        std::fs::write(path, text)?;
+    } else {
+        print!("{text}");
     }
     Ok(())
 }
@@ -11468,6 +13743,19 @@ struct KalmanLocalLevelSeasonalJson {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+struct KalmanLocalLevelWeeklyJson {
+    q_level: f64,
+    q_weekly: f64,
+    r: f64,
+    #[serde(default = "default_level0")]
+    level0: f64,
+    #[serde(default = "default_p0")]
+    p0_level: f64,
+    #[serde(default = "default_p0")]
+    p0_weekly: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct KalmanLocalLinearTrendSeasonalJson {
     period: usize,
     q_level: f64,
@@ -11484,6 +13772,24 @@ struct KalmanLocalLinearTrendSeasonalJson {
     p0_slope: f64,
     #[serde(default = "default_p0")]
     p0_season: f64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct KalmanLocalLinearTrendWeeklyJson {
+    q_level: f64,
+    q_slope: f64,
+    q_weekly: f64,
+    r: f64,
+    #[serde(default = "default_level0")]
+    level0: f64,
+    #[serde(default = "default_slope0")]
+    slope0: f64,
+    #[serde(default = "default_p0")]
+    p0_level: f64,
+    #[serde(default = "default_p0")]
+    p0_slope: f64,
+    #[serde(default = "default_p0")]
+    p0_weekly: f64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -11519,6 +13825,10 @@ struct KalmanInputJson {
     local_level_seasonal: Option<KalmanLocalLevelSeasonalJson>,
     #[serde(default)]
     local_linear_trend_seasonal: Option<KalmanLocalLinearTrendSeasonalJson>,
+    #[serde(default)]
+    local_level_weekly: Option<KalmanLocalLevelWeeklyJson>,
+    #[serde(default)]
+    local_linear_trend_weekly: Option<KalmanLocalLinearTrendWeeklyJson>,
     ys: Vec<Vec<Option<f64>>>,
 }
 
@@ -11536,6 +13846,8 @@ enum KalmanSpecKind {
     Arma11,
     LocalLevelSeasonal { period: usize },
     LocalLinearTrendSeasonal { period: usize },
+    LocalLevelWeekly,
+    LocalLinearTrendWeekly,
 }
 
 fn default_m0() -> f64 {
@@ -11656,9 +13968,11 @@ fn load_kalman_input(
     model_count += input.arma11.is_some() as usize;
     model_count += input.local_level_seasonal.is_some() as usize;
     model_count += input.local_linear_trend_seasonal.is_some() as usize;
+    model_count += input.local_level_weekly.is_some() as usize;
+    model_count += input.local_linear_trend_weekly.is_some() as usize;
     if model_count != 1 {
         anyhow::bail!(
-            "expected exactly one of: model, local_level, local_linear_trend, ar1, arma11, local_level_seasonal, local_linear_trend_seasonal"
+            "expected exactly one of: model, local_level, local_linear_trend, ar1, arma11, local_level_seasonal, local_linear_trend_seasonal, local_level_weekly, local_linear_trend_weekly"
         );
     }
 
@@ -11747,6 +14061,29 @@ fn load_kalman_input(
             seas.p0_season,
         )
         .map_err(|e| anyhow::anyhow!("invalid local_linear_trend_seasonal model: {e}"))?
+    } else if let Some(weekly) = input.local_level_weekly {
+        ns_inference::timeseries::kalman::KalmanModel::local_level_weekly(
+            weekly.q_level,
+            weekly.q_weekly,
+            weekly.r,
+            weekly.level0,
+            weekly.p0_level,
+            weekly.p0_weekly,
+        )
+        .map_err(|e| anyhow::anyhow!("invalid local_level_weekly model: {e}"))?
+    } else if let Some(weekly) = input.local_linear_trend_weekly {
+        ns_inference::timeseries::kalman::KalmanModel::local_linear_trend_weekly(
+            weekly.q_level,
+            weekly.q_slope,
+            weekly.q_weekly,
+            weekly.r,
+            weekly.level0,
+            weekly.slope0,
+            weekly.p0_level,
+            weekly.p0_slope,
+            weekly.p0_weekly,
+        )
+        .map_err(|e| anyhow::anyhow!("invalid local_linear_trend_weekly model: {e}"))?
     } else {
         anyhow::bail!("unreachable: model spec missing");
     };
@@ -11780,9 +14117,11 @@ fn load_kalman_input_with_raw(
     model_count += input.arma11.is_some() as usize;
     model_count += input.local_level_seasonal.is_some() as usize;
     model_count += input.local_linear_trend_seasonal.is_some() as usize;
+    model_count += input.local_level_weekly.is_some() as usize;
+    model_count += input.local_linear_trend_weekly.is_some() as usize;
     if model_count != 1 {
         anyhow::bail!(
-            "expected exactly one of: model, local_level, local_linear_trend, ar1, arma11, local_level_seasonal, local_linear_trend_seasonal"
+            "expected exactly one of: model, local_level, local_linear_trend, ar1, arma11, local_level_seasonal, local_linear_trend_seasonal, local_level_weekly, local_linear_trend_weekly"
         );
     }
 
@@ -11882,6 +14221,31 @@ fn load_kalman_input_with_raw(
         )
         .map_err(|e| anyhow::anyhow!("invalid local_linear_trend_seasonal model: {e}"))?;
         (model, KalmanSpecKind::LocalLinearTrendSeasonal { period })
+    } else if let Some(weekly) = input.local_level_weekly {
+        let model = ns_inference::timeseries::kalman::KalmanModel::local_level_weekly(
+            weekly.q_level,
+            weekly.q_weekly,
+            weekly.r,
+            weekly.level0,
+            weekly.p0_level,
+            weekly.p0_weekly,
+        )
+        .map_err(|e| anyhow::anyhow!("invalid local_level_weekly model: {e}"))?;
+        (model, KalmanSpecKind::LocalLevelWeekly)
+    } else if let Some(weekly) = input.local_linear_trend_weekly {
+        let model = ns_inference::timeseries::kalman::KalmanModel::local_linear_trend_weekly(
+            weekly.q_level,
+            weekly.q_slope,
+            weekly.q_weekly,
+            weekly.r,
+            weekly.level0,
+            weekly.slope0,
+            weekly.p0_level,
+            weekly.p0_slope,
+            weekly.p0_weekly,
+        )
+        .map_err(|e| anyhow::anyhow!("invalid local_linear_trend_weekly model: {e}"))?;
+        (model, KalmanSpecKind::LocalLinearTrendWeekly)
     } else {
         anyhow::bail!("unreachable: model spec missing");
     };
@@ -12314,6 +14678,20 @@ fn cmd_ts_kalman_viz(
             let mut out = vec!["level".to_string(), "slope".to_string()];
             for k in 1..period {
                 out.push(format!("season{k}"));
+            }
+            out
+        }
+        KalmanSpecKind::LocalLevelWeekly => {
+            let mut out = vec!["level".to_string()];
+            for k in 1..7 {
+                out.push(format!("weekly{k}"));
+            }
+            out
+        }
+        KalmanSpecKind::LocalLinearTrendWeekly => {
+            let mut out = vec!["level".to_string(), "slope".to_string()];
+            for k in 1..7 {
+                out.push(format!("weekly{k}"));
             }
             out
         }
@@ -12937,6 +15315,1065 @@ fn cmd_combine(inputs: &[PathBuf], output: Option<&PathBuf>, prefix_channels: bo
     Ok(())
 }
 
+fn cmd_combine_measurements(
+    input: &PathBuf,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+    ci_level: f64,
+    solver: MeasurementCombineSolverCli,
+    threads: usize,
+) -> Result<()> {
+    setup_runtime(threads, false);
+    let started = std::time::Instant::now();
+    let raw = std::fs::read_to_string(input)?;
+    let spec: ns_inference::MeasurementCombinationSpec = serde_json::from_str(&raw)?;
+    let solver_mode = measurement_combine_solver_mode(solver);
+    let result = ns_inference::measurement_combine::combine_measurements_with_solver(
+        &spec,
+        ci_level,
+        solver_mode,
+    )?;
+    let value = serde_json::to_value(&result)?;
+    write_json(output, &value)?;
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements",
+            "cpu",
+            threads,
+            threads == 1,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version": spec.schema_version,
+                "poi": spec.poi,
+                "mu_hat": result.mu_hat,
+                "ci_level": ci_level,
+                "solver": measurement_combine_solver_label(solver),
+                "n_measurements": spec.measurements.len(),
+                "n_systematics": spec.systematics.len(),
+                "requested_error_on_error": result.diagnostics.requested_error_on_error,
+                "supports_error_on_error": result.diagnostics.supports_error_on_error,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_build_spec(
+    manifest: Option<&PathBuf>,
+    poi: Option<&str>,
+    measurements: Option<&PathBuf>,
+    stat_covariance: Option<&PathBuf>,
+    systematics: Option<&PathBuf>,
+    correlations: Option<&PathBuf>,
+    output: Option<&PathBuf>,
+) -> Result<()> {
+    let spec = if let Some(manifest_path) = manifest {
+        if poi.is_some()
+            || measurements.is_some()
+            || stat_covariance.is_some()
+            || systematics.is_some()
+            || correlations.is_some()
+        {
+            anyhow::bail!(
+                "--manifest cannot be combined with --poi, --measurements, --stat-covariance, --systematics, or --correlations"
+            );
+        }
+        ns_inference::measurement_combine::build_measurement_combination_spec_from_manifest_path(
+            manifest_path,
+        )?
+    } else {
+        let poi = poi.unwrap_or("mu");
+        let measurements = measurements.ok_or_else(|| {
+            anyhow::anyhow!("--measurements is required unless --manifest is provided")
+        })?;
+        let stat_covariance = stat_covariance.ok_or_else(|| {
+            anyhow::anyhow!("--stat-covariance is required unless --manifest is provided")
+        })?;
+        let measurements_text = std::fs::read_to_string(measurements)?;
+        let stat_covariance_text = std::fs::read_to_string(stat_covariance)?;
+        let systematics_text = systematics.map(std::fs::read_to_string).transpose()?;
+        let correlations_text = correlations.map(std::fs::read_to_string).transpose()?;
+        ns_inference::measurement_combine::build_measurement_combination_spec_from_tables(
+            poi,
+            &measurements_text,
+            &stat_covariance_text,
+            systematics_text.as_deref(),
+            correlations_text.as_deref(),
+        )?
+    };
+    let value = serde_json::to_value(&spec)?;
+    write_json(output, &value)?;
+    Ok(())
+}
+
+fn measurement_combine_solver_mode(
+    solver: MeasurementCombineSolverCli,
+) -> ns_inference::measurement_combine::MeasurementCombinationSolver {
+    match solver {
+        MeasurementCombineSolverCli::Numerical => {
+            ns_inference::measurement_combine::MeasurementCombinationSolver::Numerical
+        }
+        MeasurementCombineSolverCli::NumericalPaper => {
+            ns_inference::measurement_combine::MeasurementCombinationSolver::NumericalPaper
+        }
+        MeasurementCombineSolverCli::AnalyticPerturbative => {
+            ns_inference::measurement_combine::MeasurementCombinationSolver::AnalyticPerturbative
+        }
+        MeasurementCombineSolverCli::Auto => {
+            ns_inference::measurement_combine::MeasurementCombinationSolver::Auto
+        }
+    }
+}
+
+fn measurement_combine_solver_label(solver: MeasurementCombineSolverCli) -> &'static str {
+    match solver {
+        MeasurementCombineSolverCli::Numerical => "numerical",
+        MeasurementCombineSolverCli::NumericalPaper => "numerical-paper",
+        MeasurementCombineSolverCli::AnalyticPerturbative => "analytic-perturbative",
+        MeasurementCombineSolverCli::Auto => "auto",
+    }
+}
+
+fn cmd_combine_measurements_calibrate(
+    input: &PathBuf,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+    ci_level: f64,
+    solver: MeasurementCombineSolverCli,
+    n_toys: usize,
+    seed: u64,
+    threads: usize,
+) -> Result<()> {
+    setup_runtime(threads, false);
+    let started = std::time::Instant::now();
+    let raw = std::fs::read_to_string(input)?;
+    let spec: ns_inference::MeasurementCombinationSpec = serde_json::from_str(&raw)?;
+    let report = ns_inference::measurement_combine::calibrate_measurements_toys_with_solver(
+        &spec,
+        ci_level,
+        measurement_combine_solver_mode(solver),
+        n_toys,
+        seed,
+    )?;
+    let value = serde_json::to_value(&report)?;
+    write_json(output, &value)?;
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-calibrate",
+            "cpu",
+            threads,
+            threads == 1,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version": spec.schema_version,
+                "poi": spec.poi,
+                "ci_level": ci_level,
+                "solver": measurement_combine_solver_label(solver),
+                "n_measurements": spec.measurements.len(),
+                "n_systematics": spec.systematics.len(),
+                "n_toys": n_toys,
+                "seed": seed,
+                "mean_q": report.summary.mean_q,
+                "mean_q_star": report.summary.mean_q_star,
+                "bartlett_improves_mean_q": report.summary.bartlett_improves_mean_q,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_calibrate_study(
+    input: &PathBuf,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+    ci_level: f64,
+    solver: MeasurementCombineSolverCli,
+    n_toys: usize,
+    seeds: &[u64],
+    threads: usize,
+) -> Result<()> {
+    setup_runtime(threads, false);
+    let started = std::time::Instant::now();
+    let raw = std::fs::read_to_string(input)?;
+    let spec: ns_inference::MeasurementCombinationSpec = serde_json::from_str(&raw)?;
+    let report = ns_inference::measurement_combine::calibrate_measurements_toys_study_with_solver(
+        &spec,
+        ci_level,
+        measurement_combine_solver_mode(solver),
+        n_toys,
+        seeds,
+    )?;
+    let value = serde_json::to_value(&report)?;
+    write_json(output, &value)?;
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-calibrate-study",
+            "cpu",
+            threads,
+            threads == 1,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version": spec.schema_version,
+                "poi": spec.poi,
+                "ci_level": ci_level,
+                "solver": measurement_combine_solver_label(solver),
+                "n_measurements": spec.measurements.len(),
+                "n_systematics": spec.systematics.len(),
+                "n_toys": n_toys,
+                "n_seeds": seeds.len(),
+                "min_mean_sigma_star_to_sigma_ratio": report.aggregate.min_mean_sigma_star_to_sigma_ratio,
+                "max_mean_sigma_star_to_sigma_ratio": report.aggregate.max_mean_sigma_star_to_sigma_ratio,
+                "max_abs_mean_sigma_star_to_sigma_ratio_delta_from_reference":
+                    report.aggregate.max_abs_mean_sigma_star_to_sigma_ratio_delta_from_reference,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_scenario_study(
+    input: &PathBuf,
+    scenarios: &PathBuf,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+    ci_level: f64,
+    solver: MeasurementCombineSolverCli,
+    threads: usize,
+) -> Result<()> {
+    setup_runtime(threads, false);
+    let started = std::time::Instant::now();
+    let raw = std::fs::read_to_string(input)?;
+    let spec: ns_inference::MeasurementCombinationSpec = serde_json::from_str(&raw)?;
+    let scenario_raw = std::fs::read_to_string(scenarios)?;
+    let scenario_study: ns_inference::measurement_combine::MeasurementCombinationScenarioStudySpec =
+        serde_json::from_str(&scenario_raw)?;
+    let report =
+        ns_inference::measurement_combine::study_measurement_combination_scenarios_with_solver(
+            &spec,
+            &scenario_study,
+            ci_level,
+            measurement_combine_solver_mode(solver),
+        )?;
+    let value = serde_json::to_value(&report)?;
+    write_json(output, &value)?;
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-scenario-study",
+            "cpu",
+            threads,
+            threads == 1,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version": spec.schema_version,
+                "scenario_schema_version": scenario_study.schema_version,
+                "poi": spec.poi,
+                "ci_level": ci_level,
+                "solver": measurement_combine_solver_label(solver),
+                "n_measurements": spec.measurements.len(),
+                "n_systematics": spec.systematics.len(),
+                "n_scenarios": report.aggregate.n_scenarios,
+                "max_sigma_ratio_to_baseline": report.aggregate.max_sigma_ratio_to_baseline,
+                "widest_interval_scenario": report.aggregate.widest_interval_scenario,
+                "largest_abs_mu_shift_scenario": report.aggregate.largest_abs_mu_shift_scenario,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_calibration_campaign(
+    input: &PathBuf,
+    scenarios: &PathBuf,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+    ci_level: f64,
+    solver: MeasurementCombineSolverCli,
+    n_toys: usize,
+    seeds: &[u64],
+    threads: usize,
+) -> Result<()> {
+    setup_runtime(threads, false);
+    let started = std::time::Instant::now();
+    let raw = std::fs::read_to_string(input)?;
+    let spec: ns_inference::MeasurementCombinationSpec = serde_json::from_str(&raw)?;
+    let scenario_raw = std::fs::read_to_string(scenarios)?;
+    let scenario_study: ns_inference::measurement_combine::MeasurementCombinationScenarioStudySpec =
+        serde_json::from_str(&scenario_raw)?;
+    let report = ns_inference::measurement_combine::run_measurement_combination_calibration_campaign_with_solver(
+        &spec,
+        &scenario_study,
+        ci_level,
+        measurement_combine_solver_mode(solver),
+        n_toys,
+        seeds,
+    )?;
+    let value = serde_json::to_value(&report)?;
+    write_json(output, &value)?;
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-calibration-campaign",
+            "cpu",
+            threads,
+            threads == 1,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version": spec.schema_version,
+                "scenario_schema_version": scenario_study.schema_version,
+                "poi": spec.poi,
+                "ci_level": ci_level,
+                "solver": measurement_combine_solver_label(solver),
+                "n_measurements": spec.measurements.len(),
+                "n_systematics": spec.systematics.len(),
+                "n_scenarios": report.aggregate.n_scenarios,
+                "n_toys": n_toys,
+                "n_seeds": seeds.len(),
+                "min_fit_sigma_ratio_to_baseline": report.aggregate.min_fit_sigma_ratio_to_baseline,
+                "max_fit_sigma_ratio_to_baseline": report.aggregate.max_fit_sigma_ratio_to_baseline,
+                "min_calibration_mean_sigma_star_to_sigma_ratio":
+                    report.aggregate.min_calibration_mean_sigma_star_to_sigma_ratio,
+                "max_calibration_mean_sigma_star_to_sigma_ratio":
+                    report.aggregate.max_calibration_mean_sigma_star_to_sigma_ratio,
+                "widest_fit_interval_scenario": report.aggregate.widest_fit_interval_scenario,
+                "highest_calibration_sigma_ratio_scenario":
+                    report.aggregate.highest_calibration_sigma_ratio_scenario,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_solver_parity_scenario_study(
+    input: &PathBuf,
+    scenarios: &PathBuf,
+    output: Option<&PathBuf>,
+    format: MeasurementCampaignSummaryFormat,
+    json_metrics: Option<&PathBuf>,
+    ci_level: f64,
+    lhs_solver: MeasurementCombineSolverCli,
+    rhs_solver: MeasurementCombineSolverCli,
+    threads: usize,
+) -> Result<()> {
+    setup_runtime(threads, false);
+    let started = std::time::Instant::now();
+    let raw = std::fs::read_to_string(input)?;
+    let spec: ns_inference::MeasurementCombinationSpec = serde_json::from_str(&raw)?;
+    let scenario_raw = std::fs::read_to_string(scenarios)?;
+    let scenario_study: ns_inference::measurement_combine::MeasurementCombinationScenarioStudySpec =
+        serde_json::from_str(&scenario_raw)?;
+    let report =
+        ns_inference::measurement_combine::compare_measurement_combination_scenario_study_solvers(
+            &spec,
+            &scenario_study,
+            ci_level,
+            measurement_combine_solver_mode(lhs_solver),
+            measurement_combine_solver_mode(rhs_solver),
+        )?;
+    match format {
+        MeasurementCampaignSummaryFormat::Json => {
+            let value = serde_json::to_value(&report)?;
+            write_json(output, &value)?;
+        }
+        MeasurementCampaignSummaryFormat::Markdown => {
+            let markdown = ns_inference::measurement_combine::render_measurement_combination_scenario_study_solver_parity_markdown(&report)?;
+            write_text(output, &markdown)?;
+        }
+    }
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-solver-parity-scenario-study",
+            "cpu",
+            threads,
+            threads == 1,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version": spec.schema_version,
+                "scenario_schema_version": scenario_study.schema_version,
+                "poi": spec.poi,
+                "ci_level": ci_level,
+                "lhs_solver": measurement_combine_solver_label(lhs_solver),
+                "rhs_solver": measurement_combine_solver_label(rhs_solver),
+                "n_scenarios": report.aggregate.n_scenarios,
+                "max_mu_abs_diff": report.aggregate.max_mu_abs_diff,
+                "max_sigma_rel_diff": report.aggregate.max_sigma_rel_diff,
+                "max_q_star_abs_diff": report.aggregate.max_q_star_abs_diff,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_solver_parity_calibration_campaign(
+    input: &PathBuf,
+    scenarios: &PathBuf,
+    output: Option<&PathBuf>,
+    format: MeasurementCampaignSummaryFormat,
+    json_metrics: Option<&PathBuf>,
+    ci_level: f64,
+    lhs_solver: MeasurementCombineSolverCli,
+    rhs_solver: MeasurementCombineSolverCli,
+    n_toys: usize,
+    seeds: &[u64],
+    threads: usize,
+) -> Result<()> {
+    setup_runtime(threads, false);
+    let started = std::time::Instant::now();
+    let raw = std::fs::read_to_string(input)?;
+    let spec: ns_inference::MeasurementCombinationSpec = serde_json::from_str(&raw)?;
+    let scenario_raw = std::fs::read_to_string(scenarios)?;
+    let scenario_study: ns_inference::measurement_combine::MeasurementCombinationScenarioStudySpec =
+        serde_json::from_str(&scenario_raw)?;
+    let report = ns_inference::measurement_combine::compare_measurement_combination_calibration_campaign_solvers(
+        &spec,
+        &scenario_study,
+        ci_level,
+        measurement_combine_solver_mode(lhs_solver),
+        measurement_combine_solver_mode(rhs_solver),
+        n_toys,
+        seeds,
+    )?;
+    match format {
+        MeasurementCampaignSummaryFormat::Json => {
+            let value = serde_json::to_value(&report)?;
+            write_json(output, &value)?;
+        }
+        MeasurementCampaignSummaryFormat::Markdown => {
+            let markdown = ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_solver_parity_markdown(&report)?;
+            write_text(output, &markdown)?;
+        }
+    }
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-solver-parity-calibration-campaign",
+            "cpu",
+            threads,
+            threads == 1,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version": spec.schema_version,
+                "scenario_schema_version": scenario_study.schema_version,
+                "poi": spec.poi,
+                "ci_level": ci_level,
+                "lhs_solver": measurement_combine_solver_label(lhs_solver),
+                "rhs_solver": measurement_combine_solver_label(rhs_solver),
+                "n_scenarios": report.aggregate.n_scenarios,
+                "n_toys": n_toys,
+                "n_seeds": seeds.len(),
+                "max_fit_mu_abs_diff": report.aggregate.max_fit_mu_abs_diff,
+                "max_fit_sigma_rel_diff": report.aggregate.max_fit_sigma_rel_diff,
+                "max_fit_q_star_abs_diff": report.aggregate.max_fit_q_star_abs_diff,
+                "max_calibration_ratio_center_abs_diff":
+                    report.aggregate.max_calibration_ratio_center_abs_diff,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_solver_parity_scenario_study_from_reports(
+    lhs: &PathBuf,
+    rhs: &PathBuf,
+    output: Option<&PathBuf>,
+    format: MeasurementCampaignSummaryFormat,
+    json_metrics: Option<&PathBuf>,
+    lhs_solver: MeasurementCombineSolverCli,
+    rhs_solver: MeasurementCombineSolverCli,
+) -> Result<()> {
+    let started = std::time::Instant::now();
+    let lhs_raw = std::fs::read_to_string(lhs)?;
+    let rhs_raw = std::fs::read_to_string(rhs)?;
+    let lhs_report: ns_inference::measurement_combine::MeasurementCombinationScenarioStudyReport =
+        serde_json::from_str(&lhs_raw)?;
+    let rhs_report: ns_inference::measurement_combine::MeasurementCombinationScenarioStudyReport =
+        serde_json::from_str(&rhs_raw)?;
+    let report =
+        ns_inference::measurement_combine::compare_measurement_combination_scenario_study_reports(
+            &lhs_report,
+            &rhs_report,
+            measurement_combine_solver_label(lhs_solver),
+            measurement_combine_solver_label(rhs_solver),
+        )?;
+    match format {
+        MeasurementCampaignSummaryFormat::Json => {
+            let value = serde_json::to_value(&report)?;
+            write_json(output, &value)?;
+        }
+        MeasurementCampaignSummaryFormat::Markdown => {
+            let markdown = ns_inference::measurement_combine::render_measurement_combination_scenario_study_solver_parity_markdown(&report)?;
+            write_text(output, &markdown)?;
+        }
+    }
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-solver-parity-scenario-study-from-reports",
+            "cpu",
+            1,
+            true,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "lhs_input_schema_version": lhs_report.schema_version,
+                "rhs_input_schema_version": rhs_report.schema_version,
+                "output_schema_version": report.schema_version,
+                "poi": report.poi,
+                "lhs_solver": measurement_combine_solver_label(lhs_solver),
+                "rhs_solver": measurement_combine_solver_label(rhs_solver),
+                "n_scenarios": report.aggregate.n_scenarios,
+                "max_mu_abs_diff": report.aggregate.max_mu_abs_diff,
+                "max_sigma_rel_diff": report.aggregate.max_sigma_rel_diff,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_solver_parity_calibration_campaign_from_reports(
+    lhs: &PathBuf,
+    rhs: &PathBuf,
+    output: Option<&PathBuf>,
+    format: MeasurementCampaignSummaryFormat,
+    json_metrics: Option<&PathBuf>,
+    lhs_solver: MeasurementCombineSolverCli,
+    rhs_solver: MeasurementCombineSolverCli,
+) -> Result<()> {
+    let started = std::time::Instant::now();
+    let lhs_raw = std::fs::read_to_string(lhs)?;
+    let rhs_raw = std::fs::read_to_string(rhs)?;
+    let lhs_report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignReport =
+        serde_json::from_str(&lhs_raw)?;
+    let rhs_report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignReport =
+        serde_json::from_str(&rhs_raw)?;
+    let report = ns_inference::measurement_combine::compare_measurement_combination_calibration_campaign_reports(
+        &lhs_report,
+        &rhs_report,
+        measurement_combine_solver_label(lhs_solver),
+        measurement_combine_solver_label(rhs_solver),
+    )?;
+    match format {
+        MeasurementCampaignSummaryFormat::Json => {
+            let value = serde_json::to_value(&report)?;
+            write_json(output, &value)?;
+        }
+        MeasurementCampaignSummaryFormat::Markdown => {
+            let markdown = ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_solver_parity_markdown(&report)?;
+            write_text(output, &markdown)?;
+        }
+    }
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-solver-parity-calibration-campaign-from-reports",
+            "cpu",
+            1,
+            true,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "lhs_input_schema_version": lhs_report.schema_version,
+                "rhs_input_schema_version": rhs_report.schema_version,
+                "output_schema_version": report.schema_version,
+                "poi": report.poi,
+                "lhs_solver": measurement_combine_solver_label(lhs_solver),
+                "rhs_solver": measurement_combine_solver_label(rhs_solver),
+                "n_scenarios": report.aggregate.n_scenarios,
+                "n_toys": report.n_toys,
+                "n_seeds": report.seeds.len(),
+                "max_fit_mu_abs_diff": report.aggregate.max_fit_mu_abs_diff,
+                "max_fit_sigma_rel_diff": report.aggregate.max_fit_sigma_rel_diff,
+                "max_calibration_ratio_center_abs_diff": report.aggregate.max_calibration_ratio_center_abs_diff,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_solver_parity_scenario_study_summarize(
+    input: &PathBuf,
+    format: MeasurementCampaignSummaryFormat,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+) -> Result<()> {
+    let started = std::time::Instant::now();
+    let raw = std::fs::read_to_string(input)?;
+    let report: ns_inference::measurement_combine::MeasurementCombinationScenarioStudySolverParityReport =
+        serde_json::from_str(&raw)?;
+    let digest = ns_inference::measurement_combine::summarize_measurement_combination_scenario_study_solver_parity(&report)?;
+    match format {
+        MeasurementCampaignSummaryFormat::Json => {
+            let value = serde_json::to_value(&digest)?;
+            write_json(output, &value)?;
+        }
+        MeasurementCampaignSummaryFormat::Markdown => {
+            let markdown = ns_inference::measurement_combine::render_measurement_combination_scenario_study_solver_parity_digest_markdown(&digest)?;
+            write_text(output, &markdown)?;
+        }
+    }
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-solver-parity-scenario-study-summarize",
+            "cpu",
+            1,
+            true,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version": report.schema_version,
+                "output_schema_version": digest.schema_version,
+                "poi": digest.poi,
+                "lhs_solver": digest.lhs_solver,
+                "rhs_solver": digest.rhs_solver,
+                "n_scenarios": digest.aggregate.n_scenarios,
+                "dominant_mu_gap_scenario": digest.dominant_mu_gap_scenario,
+                "dominant_sigma_gap_scenario": digest.dominant_sigma_gap_scenario,
+                "dominant_q_star_gap_scenario": digest.dominant_q_star_gap_scenario,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_solver_parity_calibration_campaign_summarize(
+    input: &PathBuf,
+    format: MeasurementCampaignSummaryFormat,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+) -> Result<()> {
+    let started = std::time::Instant::now();
+    let raw = std::fs::read_to_string(input)?;
+    let report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignSolverParityReport =
+        serde_json::from_str(&raw)?;
+    let digest = ns_inference::measurement_combine::summarize_measurement_combination_calibration_campaign_solver_parity(&report)?;
+    match format {
+        MeasurementCampaignSummaryFormat::Json => {
+            let value = serde_json::to_value(&digest)?;
+            write_json(output, &value)?;
+        }
+        MeasurementCampaignSummaryFormat::Markdown => {
+            let markdown = ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_solver_parity_digest_markdown(&digest)?;
+            write_text(output, &markdown)?;
+        }
+    }
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-solver-parity-calibration-campaign-summarize",
+            "cpu",
+            1,
+            true,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version": report.schema_version,
+                "output_schema_version": digest.schema_version,
+                "poi": digest.poi,
+                "lhs_solver": digest.lhs_solver,
+                "rhs_solver": digest.rhs_solver,
+                "n_scenarios": digest.aggregate.n_scenarios,
+                "dominant_fit_gap_scenario": digest.dominant_fit_gap_scenario,
+                "dominant_calibration_gap_scenario": digest.dominant_calibration_gap_scenario,
+                "n_toys": digest.n_toys,
+                "n_seeds": digest.seeds.len(),
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_calibration_campaign_summarize(
+    input: &PathBuf,
+    format: MeasurementCampaignSummaryFormat,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+) -> Result<()> {
+    let started = std::time::Instant::now();
+    let raw = std::fs::read_to_string(input)?;
+    let report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignReport =
+        serde_json::from_str(&raw)?;
+    let digest =
+        ns_inference::measurement_combine::summarize_measurement_combination_calibration_campaign(
+            &report,
+        )?;
+    match format {
+        MeasurementCampaignSummaryFormat::Json => {
+            let value = serde_json::to_value(&digest)?;
+            write_json(output, &value)?;
+        }
+        MeasurementCampaignSummaryFormat::Markdown => {
+            let markdown = ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_digest_markdown(&digest)?;
+            write_text(output, &markdown)?;
+        }
+    }
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-calibration-campaign-summarize",
+            "cpu",
+            1,
+            true,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version": report.schema_version,
+                "output_schema_version": digest.schema_version,
+                "poi": digest.poi,
+                "n_scenarios": digest.aggregate.n_scenarios,
+                "dominant_fit_scenario": digest.dominant_fit_scenario,
+                "dominant_calibration_scenario": digest.dominant_calibration_scenario,
+                "n_calibration_neutral_scenarios": digest.aggregate.n_calibration_neutral_scenarios,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_calibration_campaign_brief(
+    inputs: &[PathBuf],
+    labels: &[String],
+    format: MeasurementCampaignSummaryFormat,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+) -> Result<()> {
+    if !labels.is_empty() && labels.len() != inputs.len() {
+        anyhow::bail!(
+            "--label must be omitted or provided exactly once per --input (got {} labels for {} inputs)",
+            labels.len(),
+            inputs.len()
+        );
+    }
+
+    let started = std::time::Instant::now();
+    let mut named = Vec::with_capacity(inputs.len());
+    for (idx, input) in inputs.iter().enumerate() {
+        let raw = std::fs::read_to_string(input)?;
+        let digest: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignDigest =
+            serde_json::from_str(&raw)?;
+        let label = if labels.is_empty() {
+            input.file_stem().and_then(|s| s.to_str()).unwrap_or("artifact").to_string()
+        } else {
+            labels[idx].clone()
+        };
+        named.push((label, digest));
+    }
+    let brief =
+        ns_inference::measurement_combine::build_measurement_combination_calibration_campaign_brief(
+            &named,
+        )?;
+
+    match format {
+        MeasurementCampaignSummaryFormat::Json => {
+            let value = serde_json::to_value(&brief)?;
+            write_json(output, &value)?;
+        }
+        MeasurementCampaignSummaryFormat::Markdown => {
+            let markdown = ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_brief_markdown(&brief)?;
+            write_text(output, &markdown)?;
+        }
+    }
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-calibration-campaign-brief",
+            "cpu",
+            1,
+            true,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version":
+                    ns_inference::measurement_combine::MEASUREMENT_COMBINATION_CALIBRATION_CAMPAIGN_SUMMARY_SCHEMA_V0,
+                "output_schema_version": brief.schema_version,
+                "shared_poi": brief.shared_poi,
+                "pois": brief.pois,
+                "n_artifacts": brief.aggregate.n_artifacts,
+                "highest_fit_inflation_label": brief.aggregate.highest_fit_inflation_label,
+                "highest_calibration_inflation_label":
+                    brief.aggregate.highest_calibration_inflation_label,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_calibration_campaign_family_report(
+    inputs: &[PathBuf],
+    labels: &[String],
+    format: MeasurementCampaignSummaryFormat,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+) -> Result<()> {
+    if !labels.is_empty() && labels.len() != inputs.len() {
+        anyhow::bail!(
+            "--label must be omitted or provided exactly once per --input (got {} labels for {} inputs)",
+            labels.len(),
+            inputs.len()
+        );
+    }
+
+    let started = std::time::Instant::now();
+    let mut named = Vec::with_capacity(inputs.len());
+    for (idx, input) in inputs.iter().enumerate() {
+        let raw = std::fs::read_to_string(input)?;
+        let brief: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignBrief =
+            serde_json::from_str(&raw)?;
+        let label = if labels.is_empty() {
+            input.file_stem().and_then(|s| s.to_str()).unwrap_or("artifact").to_string()
+        } else {
+            labels[idx].clone()
+        };
+        named.push((label, brief));
+    }
+    let report = ns_inference::measurement_combine::build_measurement_combination_calibration_campaign_family_report(&named)?;
+
+    match format {
+        MeasurementCampaignSummaryFormat::Json => {
+            let value = serde_json::to_value(&report)?;
+            write_json(output, &value)?;
+        }
+        MeasurementCampaignSummaryFormat::Markdown => {
+            let markdown = ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_family_report_markdown(&report)?;
+            write_text(output, &markdown)?;
+        }
+    }
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-calibration-campaign-family-report",
+            "cpu",
+            1,
+            true,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version":
+                    ns_inference::measurement_combine::MEASUREMENT_COMBINATION_CALIBRATION_CAMPAIGN_BRIEF_SCHEMA_V0,
+                "output_schema_version": report.schema_version,
+                "shared_poi": report.shared_poi,
+                "pois": report.pois,
+                "n_families": report.aggregate.n_families,
+                "family_with_highest_fit_inflation":
+                    report.aggregate.family_with_highest_fit_inflation,
+                "family_with_highest_calibration_inflation":
+                    report.aggregate.family_with_highest_calibration_inflation,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_calibration_campaign_family_matrix(
+    input: &PathBuf,
+    format: MeasurementCampaignSummaryFormat,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+) -> Result<()> {
+    let started = std::time::Instant::now();
+    let raw = std::fs::read_to_string(input)?;
+    let report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignFamilyReport =
+        serde_json::from_str(&raw)?;
+    let matrix =
+        ns_inference::measurement_combine::build_measurement_combination_calibration_campaign_family_matrix(&report)?;
+
+    match format {
+        MeasurementCampaignSummaryFormat::Json => {
+            let value = serde_json::to_value(&matrix)?;
+            write_json(output, &value)?;
+        }
+        MeasurementCampaignSummaryFormat::Markdown => {
+            let markdown = ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_family_matrix_markdown(&matrix)?;
+            write_text(output, &markdown)?;
+        }
+    }
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-calibration-campaign-family-matrix",
+            "cpu",
+            1,
+            true,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version":
+                    ns_inference::measurement_combine::MEASUREMENT_COMBINATION_CALIBRATION_CAMPAIGN_FAMILY_REPORT_SCHEMA_V0,
+                "output_schema_version": matrix.schema_version,
+                "shared_poi": matrix.shared_poi,
+                "pois": matrix.pois,
+                "n_families": matrix.aggregate.n_families,
+                "fit_order": matrix.aggregate.fit_order,
+                "calibration_order": matrix.aggregate.calibration_order,
+                "joint_order": matrix.aggregate.joint_order,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_calibration_campaign_portfolio(
+    inputs: &[PathBuf],
+    labels: &[String],
+    format: MeasurementCampaignSummaryFormat,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+) -> Result<()> {
+    if !labels.is_empty() && labels.len() != inputs.len() {
+        anyhow::bail!(
+            "--label must be omitted or provided exactly once per --input (got {} labels for {} inputs)",
+            labels.len(),
+            inputs.len()
+        );
+    }
+
+    let started = std::time::Instant::now();
+    let mut named = Vec::with_capacity(inputs.len());
+    for (idx, input) in inputs.iter().enumerate() {
+        let raw = std::fs::read_to_string(input)?;
+        let matrix: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignFamilyMatrix =
+            serde_json::from_str(&raw)?;
+        let label = if labels.is_empty() {
+            input.file_stem().and_then(|s| s.to_str()).unwrap_or("artifact").to_string()
+        } else {
+            labels[idx].clone()
+        };
+        named.push((label, matrix));
+    }
+    let report = ns_inference::measurement_combine::build_measurement_combination_calibration_campaign_portfolio_report(&named)?;
+
+    match format {
+        MeasurementCampaignSummaryFormat::Json => {
+            let value = serde_json::to_value(&report)?;
+            write_json(output, &value)?;
+        }
+        MeasurementCampaignSummaryFormat::Markdown => {
+            let markdown = ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_portfolio_markdown(&report)?;
+            write_text(output, &markdown)?;
+        }
+    }
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-calibration-campaign-portfolio",
+            "cpu",
+            1,
+            true,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version":
+                    ns_inference::measurement_combine::MEASUREMENT_COMBINATION_CALIBRATION_CAMPAIGN_FAMILY_MATRIX_SCHEMA_V0,
+                "output_schema_version": report.schema_version,
+                "shared_poi": report.shared_poi,
+                "pois": report.pois,
+                "n_portfolios": report.aggregate.n_portfolios,
+                "portfolio_with_highest_fit_inflation":
+                    report.aggregate.portfolio_with_highest_fit_inflation,
+                "portfolio_with_highest_calibration_inflation":
+                    report.aggregate.portfolio_with_highest_calibration_inflation,
+                "portfolio_with_highest_joint_severity":
+                    report.aggregate.portfolio_with_highest_joint_severity,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
+fn cmd_combine_measurements_calibration_campaign_portfolio_stability(
+    inputs: &[PathBuf],
+    labels: &[String],
+    format: MeasurementCampaignSummaryFormat,
+    output: Option<&PathBuf>,
+    json_metrics: Option<&PathBuf>,
+) -> Result<()> {
+    if !labels.is_empty() && labels.len() != inputs.len() {
+        anyhow::bail!(
+            "--label must be omitted or provided exactly once per --input (got {} labels for {} inputs)",
+            labels.len(),
+            inputs.len()
+        );
+    }
+
+    let started = std::time::Instant::now();
+    let mut named = Vec::with_capacity(inputs.len());
+    for (idx, input) in inputs.iter().enumerate() {
+        let raw = std::fs::read_to_string(input)?;
+        let report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignPortfolioReport =
+            serde_json::from_str(&raw)?;
+        let label = if labels.is_empty() {
+            input.file_stem().and_then(|s| s.to_str()).unwrap_or("artifact").to_string()
+        } else {
+            labels[idx].clone()
+        };
+        named.push((label, report));
+    }
+    let report =
+        ns_inference::measurement_combine::build_measurement_combination_calibration_campaign_portfolio_stability_report(&named)?;
+
+    match format {
+        MeasurementCampaignSummaryFormat::Json => {
+            let value = serde_json::to_value(&report)?;
+            write_json(output, &value)?;
+        }
+        MeasurementCampaignSummaryFormat::Markdown => {
+            let markdown = ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_portfolio_stability_markdown(&report)?;
+            write_text(output, &markdown)?;
+        }
+    }
+
+    if let Some(path) = json_metrics {
+        let metrics = metrics_v0(
+            "combine-measurements-calibration-campaign-portfolio-stability",
+            "cpu",
+            1,
+            true,
+            started.elapsed().as_secs_f64(),
+            serde_json::json!({
+                "input_schema_version":
+                    ns_inference::measurement_combine::MEASUREMENT_COMBINATION_CALIBRATION_CAMPAIGN_PORTFOLIO_SCHEMA_V0,
+                "output_schema_version": report.schema_version,
+                "shared_poi": report.shared_poi,
+                "pois": report.pois,
+                "n_runs": report.aggregate.n_runs,
+                "stable_fit_leader": report.aggregate.stable_fit_leader,
+                "stable_calibration_leader": report.aggregate.stable_calibration_leader,
+                "stable_joint_order": report.aggregate.stable_joint_order,
+            }),
+        )?;
+        write_json(Some(path), &metrics)?;
+    }
+
+    Ok(())
+}
+
 fn cmd_preprocess_smooth(
     input: &PathBuf,
     output: Option<&PathBuf>,
@@ -12945,13 +16382,7 @@ fn cmd_preprocess_smooth(
     use ns_translate::pyhf::schema::{Modifier, Workspace};
 
     let data = std::fs::read_to_string(input)?;
-    if ns_translate::hs3::detect::detect_format(&data)
-        == ns_translate::hs3::detect::WorkspaceFormat::Hs3
-    {
-        anyhow::bail!(
-            "`preprocess smooth` requires pyhf JSON input; HS3 is not supported for this command"
-        );
-    }
+    reject_non_pyhf_json_input("preprocess smooth", ns_translate::detect::detect_format(&data))?;
     let mut ws: Workspace = serde_json::from_str(&data)?;
 
     let mut n_smoothed = 0usize;
@@ -13056,13 +16487,7 @@ fn cmd_preprocess_prune(input: &PathBuf, output: Option<&PathBuf>, threshold: f6
     use ns_translate::pyhf::schema::{Modifier, Workspace};
 
     let data = std::fs::read_to_string(input)?;
-    if ns_translate::hs3::detect::detect_format(&data)
-        == ns_translate::hs3::detect::WorkspaceFormat::Hs3
-    {
-        anyhow::bail!(
-            "`preprocess prune` requires pyhf JSON input; HS3 is not supported for this command"
-        );
-    }
+    reject_non_pyhf_json_input("preprocess prune", ns_translate::detect::detect_format(&data))?;
     let mut ws: Workspace = serde_json::from_str(&data)?;
 
     let mut n_pruned = 0usize;
@@ -13509,6 +16934,18 @@ fn cmd_scan(
         anyhow::bail!("points must be >= 2");
     }
     let model = load_model(input, threads, false, interp_defaults)?;
+    if model.poi_index().is_some() && !model.poi_is_referenced() {
+        let poi_name = model
+            .poi_index()
+            .and_then(|i| model.parameters().get(i))
+            .map(|p| p.name.as_str())
+            .unwrap_or("?");
+        tracing::warn!(
+            "POI '{poi_name}' is not referenced by any modifier — the likelihood is flat \
+             in POI and scan will produce q_mu ≈ 0 everywhere. Check that the workspace \
+             contains a normfactor/shapefactor for the POI."
+        );
+    }
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
     let t0 = std::time::Instant::now();
@@ -13672,15 +17109,76 @@ fn cmd_viz_cls(
 
 fn cmd_viz_ranking(
     input: &PathBuf,
+    fit: Option<&PathBuf>,
     output: Option<&PathBuf>,
     threads: usize,
     interp_defaults: InterpDefaults,
     bundle: Option<&PathBuf>,
 ) -> Result<()> {
+    warn_if_simplified_ranking_semantics_are_reduced(input)?;
     let model = load_model(input, threads, false, interp_defaults)?;
+    if model.poi_index().is_some() && !model.poi_is_referenced() {
+        let poi_name = model
+            .poi_index()
+            .and_then(|i| model.parameters().get(i))
+            .map(|p| p.name.as_str())
+            .unwrap_or("?");
+        tracing::warn!(
+            "POI '{poi_name}' is not referenced by any modifier — the likelihood is flat \
+             in POI and ranking impacts will be meaningless. Check that the workspace \
+             contains a normfactor/shapefactor for the POI."
+        );
+    }
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
 
-    let entries = mle.ranking(&model)?;
+    let entries = if let Some(fit_path) = fit {
+        let bytes = std::fs::read(fit_path)?;
+        let fit_json: FitResultJson = serde_json::from_slice(&bytes)?;
+        if fit_json.uncertainties.is_empty() {
+            anyhow::bail!("fit result missing `uncertainties` (required for ranking)");
+        }
+        let params_postfit = params_from_fit_result(&model, &fit_json)?;
+        let uncs_postfit = {
+            if fit_json.parameter_names.len() != fit_json.uncertainties.len() {
+                anyhow::bail!(
+                    "fit result length mismatch: parameter_names={} uncertainties={}",
+                    fit_json.parameter_names.len(),
+                    fit_json.uncertainties.len()
+                );
+            }
+            let mut map: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
+            for (n, v) in fit_json.parameter_names.iter().zip(fit_json.uncertainties.iter()) {
+                map.insert(n.as_str(), *v);
+            }
+            let mut out = Vec::with_capacity(model.parameters().len());
+            for p in model.parameters() {
+                let v = map.get(p.name.as_str()).copied().ok_or_else(|| {
+                    ns_core::Error::Validation(format!("fit result missing parameter: {}", p.name))
+                })?;
+                out.push(v);
+            }
+            out
+        };
+        let fit_result = {
+            let mut fr = ns_core::FitResult::new(
+                params_postfit,
+                uncs_postfit,
+                fit_json.nll,
+                fit_json.converged,
+                fit_json.n_iter,
+                fit_json.n_fev,
+                fit_json.n_gev,
+            );
+            fr.covariance = fit_json.covariance;
+            fr
+        };
+        tracing::info!("using pre-computed fit result from {:?}", fit_path);
+        mle.ranking_with_fit(&model, &fit_result)?
+    } else {
+        tracing::info!("no --fit provided, performing full nominal fit (this may be slow)");
+        mle.ranking(&model)?
+    };
+
     let artifact: ns_viz::RankingArtifact = entries.into();
 
     let output_json = serde_json::to_value(artifact)?;
@@ -13698,8 +17196,41 @@ fn cmd_viz_ranking(
     Ok(())
 }
 
+fn warn_if_simplified_ranking_semantics_are_reduced(input: &PathBuf) -> Result<()> {
+    let json = std::fs::read_to_string(input)?;
+    if ns_translate::detect::detect_format(&json)
+        != ns_translate::detect::WorkspaceFormat::SimplifiedLikelihood
+    {
+        return Ok(());
+    }
+
+    let spec: ns_translate::simplified::schema::SimplifiedLikelihoodWorkspace =
+        serde_json::from_str(&json)?;
+    tracing::warn!(
+        "simplified-likelihood ranking operates on reduced nuisance coordinates from the compiled model; names/impacts are not source-level systematics"
+    );
+    if matches!(
+        spec.uncertainty_model,
+        ns_translate::simplified::schema::SimplifiedUncertaintyModel::Covariance { .. }
+    ) {
+        tracing::warn!(
+            "covariance-form simplified-likelihood has no source-level nuisance identity; ranking names are synthetic eigendirections (for example sl_np_000)"
+        );
+    }
+    if spec.metadata.source_format
+        == ns_translate::simplified::schema::SIMPLIFIED_LIKELIHOOD_SOURCE_FORMAT_DERIVED_FROM_WORKSPACE
+    {
+        tracing::warn!(
+            "derived_from_workspace simplified-likelihood v0 does not preserve original nuisance identities through reduction; ranking is not a source-level breakdown"
+        );
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct FitResultJson {
+    #[serde(default)]
+    schema_version: Option<String>,
     parameter_names: Vec<String>,
     bestfit: Vec<f64>,
     #[serde(default)]
@@ -13718,10 +17249,10 @@ struct FitResultJson {
     n_gev: usize,
 }
 
-fn params_from_fit_result(
+fn fit_parameter_order(
     model: &ns_translate::pyhf::HistFactoryModel,
     fit: &FitResultJson,
-) -> Result<Vec<f64>> {
+) -> Result<Vec<usize>> {
     if fit.parameter_names.len() != fit.bestfit.len() {
         anyhow::bail!(
             "fit result length mismatch: parameter_names={} bestfit={}",
@@ -13730,19 +17261,87 @@ fn params_from_fit_result(
         );
     }
 
-    let mut map: std::collections::HashMap<&str, f64> = std::collections::HashMap::new();
-    for (n, v) in fit.parameter_names.iter().zip(fit.bestfit.iter()) {
-        map.insert(n.as_str(), *v);
+    let mut fit_indices_by_name: std::collections::HashMap<&str, usize> =
+        std::collections::HashMap::new();
+    for (idx, name) in fit.parameter_names.iter().enumerate() {
+        fit_indices_by_name.insert(name.as_str(), idx);
     }
 
-    let mut out = Vec::with_capacity(model.parameters().len());
-    for p in model.parameters() {
-        let v = map.get(p.name.as_str()).copied().ok_or_else(|| {
-            ns_core::Error::Validation(format!("fit result missing parameter: {}", p.name))
+    let mut order = Vec::with_capacity(model.parameters().len());
+    for parameter in model.parameters() {
+        let idx = fit_indices_by_name.get(parameter.name.as_str()).copied().ok_or_else(|| {
+            ns_core::Error::Validation(format!("fit result missing parameter: {}", parameter.name))
         })?;
-        out.push(v);
+        order.push(idx);
     }
-    Ok(out)
+    Ok(order)
+}
+
+fn params_from_fit_result(
+    model: &ns_translate::pyhf::HistFactoryModel,
+    fit: &FitResultJson,
+) -> Result<Vec<f64>> {
+    let order = fit_parameter_order(model, fit)?;
+    Ok(order.into_iter().map(|idx| fit.bestfit[idx]).collect())
+}
+
+fn uncertainties_from_fit_result(
+    model: &ns_translate::pyhf::HistFactoryModel,
+    fit: &FitResultJson,
+    required_for: &str,
+) -> Result<Vec<f64>> {
+    if fit.uncertainties.is_empty() {
+        anyhow::bail!("fit result missing `uncertainties` (required for {required_for})");
+    }
+    if fit.parameter_names.len() != fit.uncertainties.len() {
+        anyhow::bail!(
+            "fit result length mismatch: parameter_names={} uncertainties={}",
+            fit.parameter_names.len(),
+            fit.uncertainties.len()
+        );
+    }
+    let order = fit_parameter_order(model, fit)?;
+    Ok(order.into_iter().map(|idx| fit.uncertainties[idx]).collect())
+}
+
+fn covariance_from_fit_result(
+    model: &ns_translate::pyhf::HistFactoryModel,
+    fit: &FitResultJson,
+    required_for: &str,
+) -> Result<Vec<f64>> {
+    let covariance = fit.covariance.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("fit result missing `covariance` (required for {required_for})")
+    })?;
+    let fit_dim = fit.parameter_names.len();
+    if covariance.len() != fit_dim * fit_dim {
+        anyhow::bail!(
+            "fit result covariance length mismatch: got {} expected {}",
+            covariance.len(),
+            fit_dim * fit_dim
+        );
+    }
+    let order = fit_parameter_order(model, fit)?;
+    let mut reordered = Vec::with_capacity(order.len() * order.len());
+    for &row_idx in &order {
+        for &col_idx in &order {
+            reordered.push(covariance[row_idx * fit_dim + col_idx]);
+        }
+    }
+    Ok(reordered)
+}
+
+fn aligned_fit_result_from_fit_json(
+    model: &ns_translate::pyhf::HistFactoryModel,
+    fit: &FitResultJson,
+) -> Result<ns_translate::simplified::export::SimplifiedLikelihoodAlignedFitResult> {
+    Ok(ns_translate::simplified::export::SimplifiedLikelihoodAlignedFitResult {
+        schema_version: fit
+            .schema_version
+            .clone()
+            .or_else(|| Some("nextstat_fit_result_v0".to_string())),
+        parameters: params_from_fit_result(model, fit)?,
+        covariance: covariance_from_fit_result(model, fit, "simplified-likelihood derive/export")?,
+    })
 }
 
 fn cmd_report(
@@ -14254,13 +17853,17 @@ fn cmd_viz_separation(
             // The first sample in each channel that contains a normfactor with the POI name
             // is the signal. We use the workspace schema to detect this.
             let ws_json = std::fs::read_to_string(input)?;
-            if ns_translate::hs3::detect::detect_format(&ws_json)
-                == ns_translate::hs3::detect::WorkspaceFormat::Hs3
-            {
-                anyhow::bail!(
+            match ns_translate::detect::detect_format(&ws_json) {
+                ns_translate::detect::WorkspaceFormat::Hs3 => anyhow::bail!(
                     "auto signal-sample detection for `viz separation` requires pyhf JSON; \
                      for HS3 input pass --signal-samples explicitly"
-                );
+                ),
+                ns_translate::detect::WorkspaceFormat::SimplifiedLikelihood => anyhow::bail!(
+                    "auto signal-sample detection for `viz separation` requires pyhf JSON; \
+                     for simplified-likelihood input pass --signal-samples explicitly"
+                ),
+                ns_translate::detect::WorkspaceFormat::Pyhf
+                | ns_translate::detect::WorkspaceFormat::Unknown => {}
             }
             let ws: ns_translate::pyhf::Workspace = serde_json::from_str(&ws_json)?;
             let mut names = std::collections::HashSet::new();

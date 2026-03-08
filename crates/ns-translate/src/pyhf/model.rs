@@ -193,6 +193,15 @@ pub(crate) enum ModelModifier {
     },
     /// Luminosity - normalization with constraint
     Lumi { param_idx: usize },
+    /// Template morphing — per-bin polynomial that replaces the sample nominal.
+    /// Used by TRExFitter ghost samples to make signal yield depend on a POI.
+    TemplateMorphing {
+        /// POI parameter index.
+        param_idx: usize,
+        /// Per-bin polynomial coefficients: `coefficients[bin][power]`.
+        /// `morphed_nominal[b] = Σ_k coefficients[b][k] * poi^k`
+        coefficients: Vec<Vec<f64>>,
+    },
 }
 
 impl HistFactoryModel {
@@ -315,7 +324,8 @@ impl HistFactoryModel {
                         ModelModifier::NormFactor { param_idx }
                         | ModelModifier::NormSys { param_idx, .. }
                         | ModelModifier::HistoSys { param_idx, .. }
-                        | ModelModifier::Lumi { param_idx } => {
+                        | ModelModifier::Lumi { param_idx }
+                        | ModelModifier::TemplateMorphing { param_idx, .. } => {
                             if *param_idx >= n {
                                 return Err(ns_core::Error::Validation(format!(
                                     "Modifier param index out of range: idx={} len={}",
@@ -599,7 +609,8 @@ impl HistFactoryModel {
                 ModelModifier::NormFactor { .. }
                 | ModelModifier::NormSys { .. }
                 | ModelModifier::Lumi { .. }
-                | ModelModifier::ShapeFactor { .. } => {}
+                | ModelModifier::ShapeFactor { .. }
+                | ModelModifier::TemplateMorphing { .. } => {}
                 _ => {
                     return Err(ns_core::Error::Validation(format!(
                         "Nominal override is not supported for samples with shape/aux modifiers (channel_idx={}, sample_idx={})",
@@ -697,6 +708,10 @@ impl HistFactoryModel {
                             out[bin_idx] *= gamma_val;
                         }
                     }
+                }
+                ModelModifier::TemplateMorphing { .. } => {
+                    // TemplateMorphing replaces the nominal, not a multiplicative factor.
+                    // In the context of fill_sample_factors, it's a no-op.
                 }
                 _ => unreachable!("validate_sample_nominal_override_linear_safe enforced"),
             }
@@ -897,6 +912,21 @@ impl HistFactoryModel {
                                         constraint_term: None,
                                     });
                                 }
+                            }
+                        }
+                        Modifier::TemplateMorphing { name, .. } => {
+                            // POI-like unconstrained parameter for template morphing.
+                            if !param_map.contains_key(name) {
+                                param_map.insert(name.clone(), parameters.len());
+                                parameters.push(Parameter {
+                                    name: name.clone(),
+                                    init: 1.0,
+                                    bounds: (0.0, POS_HI),
+                                    constrained: false,
+                                    constraint_center: None,
+                                    constraint_width: None,
+                                    constraint_term: None,
+                                });
                             }
                         }
                         Modifier::Unknown(val) => {
@@ -1253,6 +1283,14 @@ impl HistFactoryModel {
                                 modifiers.push(ModelModifier::Lumi { param_idx: idx });
                             }
                         }
+                        Modifier::TemplateMorphing { name, data } => {
+                            if let Some(&idx) = param_map.get(name) {
+                                modifiers.push(ModelModifier::TemplateMorphing {
+                                    param_idx: idx,
+                                    coefficients: data.coefficients.clone(),
+                                });
+                            }
+                        }
                         Modifier::Unknown(_) => {
                             // Already warned in first pass — skip silently here.
                         }
@@ -1394,6 +1432,35 @@ impl HistFactoryModel {
         self.poi_index
     }
 
+    /// Returns `true` if the POI parameter is referenced by at least one
+    /// modifier in any channel/sample. When `false`, the likelihood is flat
+    /// in the POI and any fit/scan result is meaningless.
+    pub fn poi_is_referenced(&self) -> bool {
+        let Some(poi) = self.poi_index else { return false };
+        for ch in &self.channels {
+            for sample in &ch.samples {
+                for m in &sample.modifiers {
+                    let used = match m {
+                        ModelModifier::NormFactor { param_idx }
+                        | ModelModifier::NormSys { param_idx, .. }
+                        | ModelModifier::HistoSys { param_idx, .. }
+                        | ModelModifier::Lumi { param_idx }
+                        | ModelModifier::TemplateMorphing { param_idx, .. } => *param_idx == poi,
+                        ModelModifier::ShapeSys { param_indices, .. }
+                        | ModelModifier::ShapeFactor { param_indices }
+                        | ModelModifier::StatError { param_indices, .. } => {
+                            param_indices.contains(&poi)
+                        }
+                    };
+                    if used {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
     /// Get parameters
     pub fn parameters(&self) -> &[Parameter] {
         &self.parameters
@@ -1526,14 +1593,44 @@ impl HistFactoryModel {
             let mut channel_expected: Vec<f64> = vec![0.0; n_bins];
 
             for sample in &channel.samples {
-                let sample_nominal = sample.nominal.as_slice();
-                let sample_len = sample_nominal.len();
+                let raw_nominal = sample.nominal.as_slice();
+                let sample_len = raw_nominal.len();
+
+                // If this sample has a TemplateMorphing modifier, compute the morphed
+                // nominal (per-bin polynomial in POI) and use it instead of the stored nominal.
+                let morphed_buf: Option<Vec<f64>> = {
+                    let mut buf = None;
+                    for m in &sample.modifiers {
+                        if let ModelModifier::TemplateMorphing { param_idx, coefficients } = m {
+                            let poi = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "TemplateMorphing param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            let mut v = vec![0.0; sample_len];
+                            for (b, coeffs) in coefficients.iter().enumerate() {
+                                if b < sample_len {
+                                    v[b] = eval_polynomial(poi, coeffs);
+                                }
+                            }
+                            buf = Some(v);
+                            break; // at most one TemplateMorphing per sample
+                        }
+                    }
+                    buf
+                };
+                let sample_nominal = morphed_buf.as_deref().unwrap_or(raw_nominal);
 
                 let mut sample_deltas: Vec<f64> = vec![0.0; sample_len];
                 let mut sample_factors: Vec<f64> = vec![1.0; sample_len];
 
                 for modifier in &sample.modifiers {
                     match modifier {
+                        ModelModifier::TemplateMorphing { .. } => {
+                            // Already handled above (nominal replacement).
+                        }
                         ModelModifier::NormFactor { param_idx } => {
                             let norm = *params.get(*param_idx).ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
@@ -1720,8 +1817,34 @@ impl HistFactoryModel {
             scratch.channel_expected[..n_bins].fill(0.0);
 
             for sample in &channel.samples {
-                let sample_nominal = sample.nominal.as_slice();
-                let sample_len = sample_nominal.len();
+                let raw_nominal = sample.nominal.as_slice();
+                let sample_len = raw_nominal.len();
+
+                // TemplateMorphing: compute morphed nominal if present (rare path).
+                let morphed_buf: Option<Vec<f64>> = {
+                    let mut buf = None;
+                    for m in &sample.modifiers {
+                        if let ModelModifier::TemplateMorphing { param_idx, coefficients } = m {
+                            let poi = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "TemplateMorphing param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            let mut v = vec![0.0; sample_len];
+                            for (b, coeffs) in coefficients.iter().enumerate() {
+                                if b < sample_len {
+                                    v[b] = eval_polynomial(poi, coeffs);
+                                }
+                            }
+                            buf = Some(v);
+                            break;
+                        }
+                    }
+                    buf
+                };
+                let sample_nominal = morphed_buf.as_deref().unwrap_or(raw_nominal);
 
                 // Reset per-sample scratch (reuse buffers, no alloc)
                 scratch.sample_deltas[..sample_len].fill(0.0);
@@ -1732,6 +1855,9 @@ impl HistFactoryModel {
 
                 for modifier in &sample.modifiers {
                     match modifier {
+                        ModelModifier::TemplateMorphing { .. } => {
+                            // Already handled above (nominal replacement).
+                        }
                         ModelModifier::NormFactor { param_idx } => {
                             let norm = *params.get(*param_idx).ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
@@ -1925,13 +2051,40 @@ impl HistFactoryModel {
 
             for sample in &channel.samples {
                 // Same semantics as expected_data_generic, but we keep the per-sample vector.
-                let sample_nominal: &[f64] = sample.nominal.as_slice();
-                let sample_len = sample_nominal.len();
+                let raw_nominal: &[f64] = sample.nominal.as_slice();
+                let sample_len = raw_nominal.len();
+
+                let morphed_buf: Option<Vec<f64>> = {
+                    let mut buf = None;
+                    for m in &sample.modifiers {
+                        if let ModelModifier::TemplateMorphing { param_idx, coefficients } = m {
+                            let poi = *params.get(*param_idx).ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "TemplateMorphing param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            let mut v = vec![0.0; sample_len];
+                            for (b, coeffs) in coefficients.iter().enumerate() {
+                                if b < sample_len {
+                                    v[b] = eval_polynomial(poi, coeffs);
+                                }
+                            }
+                            buf = Some(v);
+                            break;
+                        }
+                    }
+                    buf
+                };
+                let sample_nominal = morphed_buf.as_deref().unwrap_or(raw_nominal);
+
                 let mut sample_deltas: Vec<f64> = vec![0.0; sample_len];
                 let mut sample_factors: Vec<f64> = vec![1.0; sample_len];
 
                 for modifier in &sample.modifiers {
                     match modifier {
+                        ModelModifier::TemplateMorphing { .. } => {}
                         ModelModifier::NormFactor { param_idx } => {
                             let norm = *params.get(*param_idx).ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
@@ -2471,13 +2624,36 @@ impl HistFactoryModel {
                 // - "addition" modifiers (e.g. histosys) produce deltas in nominal space
                 // - "multiplication" modifiers produce factors (scalar or per-bin)
                 // - expected = (nominal + sum(deltas)) * product(factors)
-                let sample_nominal: Vec<T> =
-                    sample.nominal.iter().map(|&v| T::from_f64(v)).collect();
+
+                // If TemplateMorphing is present, compute morphed nominal.
+                let sample_nominal: Vec<T> = {
+                    let mut morphed: Option<Vec<T>> = None;
+                    for m in &sample.modifiers {
+                        if let ModelModifier::TemplateMorphing { param_idx, coefficients } = m {
+                            let poi = params.get(*param_idx).copied().ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "TemplateMorphing param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            let v: Vec<T> = coefficients
+                                .iter()
+                                .map(|coeffs| eval_polynomial_generic(poi, coeffs))
+                                .collect();
+                            morphed = Some(v);
+                            break;
+                        }
+                    }
+                    morphed
+                        .unwrap_or_else(|| sample.nominal.iter().map(|&v| T::from_f64(v)).collect())
+                };
                 let mut sample_deltas: Vec<T> = vec![T::from_f64(0.0); sample_nominal.len()];
                 let mut sample_factors: Vec<T> = vec![T::from_f64(1.0); sample_nominal.len()];
 
                 for modifier in &sample.modifiers {
                     match modifier {
+                        ModelModifier::TemplateMorphing { .. } => {}
                         ModelModifier::NormFactor { param_idx } => {
                             let norm = params.get(*param_idx).copied().ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
@@ -3005,8 +3181,37 @@ impl HistFactoryModel {
 
             for sample in &channel.samples {
                 // Match pyhf: (nominal + sum(deltas)) * product(factors).
-                let sample_nominal: Vec<Var> =
-                    sample.nominal.iter().map(|&v| tape.constant(v)).collect();
+                // TemplateMorphing: compute morphed nominal if present.
+                let sample_nominal: Vec<Var> = {
+                    let mut morphed: Option<Vec<Var>> = None;
+                    for m in &sample.modifiers {
+                        if let ModelModifier::TemplateMorphing { param_idx, coefficients } = m {
+                            let poi = params.get(*param_idx).copied().ok_or_else(|| {
+                                ns_core::Error::Validation(format!(
+                                    "TemplateMorphing param index out of range: idx={} len={}",
+                                    param_idx,
+                                    params.len()
+                                ))
+                            })?;
+                            let mut v: Vec<Var> = Vec::with_capacity(coefficients.len());
+                            for coeffs in coefficients {
+                                // Horner evaluation on tape
+                                let mut acc = tape.constant(0.0);
+                                for &c in coeffs.iter().rev() {
+                                    let prod = tape.mul(acc, poi);
+                                    let c_var = tape.constant(c);
+                                    acc = tape.add(prod, c_var);
+                                }
+                                v.push(acc);
+                            }
+                            morphed = Some(v);
+                            break;
+                        }
+                    }
+                    morphed.unwrap_or_else(|| {
+                        sample.nominal.iter().map(|&v| tape.constant(v)).collect()
+                    })
+                };
                 let mut sample_deltas: Vec<Var> =
                     (0..sample_nominal.len()).map(|_| tape.constant(0.0)).collect();
                 let mut sample_factors: Vec<Var> =
@@ -3014,6 +3219,7 @@ impl HistFactoryModel {
 
                 for modifier in &sample.modifiers {
                     match modifier {
+                        ModelModifier::TemplateMorphing { .. } => {}
                         ModelModifier::NormFactor { param_idx } => {
                             let norm = params.get(*param_idx).copied().ok_or_else(|| {
                                 ns_core::Error::Validation(format!(
@@ -3498,6 +3704,13 @@ impl HistFactoryModel {
                                 data_offset: data_off,
                                 n_bins: param_indices.len() as u32,
                             });
+                        }
+                        ModelModifier::TemplateMorphing { .. } => {
+                            return Err(ns_core::Error::Validation(
+                                "TemplateMorphing is not supported in GPU batch evaluation. \
+                                 Use CPU path for workspaces with template morphing (ghost samples)."
+                                    .to_string(),
+                            ));
                         }
                     }
                 }
@@ -4245,6 +4458,27 @@ fn normsys_code4_coeffs(hi: f64, lo: f64) -> [f64; 6] {
         a[r] = s;
     }
     a
+}
+
+/// Evaluate polynomial at `x` using Horner's method.
+/// `coeffs = [c_0, c_1, ..., c_{n-1}]` → `c_0 + c_1*x + c_2*x^2 + ...`
+#[inline]
+fn eval_polynomial(x: f64, coeffs: &[f64]) -> f64 {
+    let mut result = 0.0;
+    for &c in coeffs.iter().rev() {
+        result = result * x + c;
+    }
+    result
+}
+
+/// Generic polynomial evaluation for AD types.
+#[inline]
+fn eval_polynomial_generic<T: Scalar>(x: T, coeffs: &[f64]) -> T {
+    let mut result = T::from_f64(0.0);
+    for &c in coeffs.iter().rev() {
+        result = result * x + T::from_f64(c);
+    }
+    result
 }
 
 /// pyhf interpolators: normsys `code1` (exponential). pyhf default for normsys.

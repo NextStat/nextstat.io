@@ -1,0 +1,68 @@
+{
+  "case_name": "bayesian_sample_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_bayesian_sample": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_bayesian_sample"
+      },
+      "ok": true,
+      "result": {
+        "diagnostics": {
+          "divergence_rate": 0.0,
+          "ebfmi": [
+            0.5729345035040554,
+            0.1560914799897042
+          ],
+          "ess_bulk": {
+            "beta1": 8.761516560754302,
+            "intercept": 9.047705538882154
+          },
+          "ess_tail": {
+            "beta1": 9.757986447241045,
+            "intercept": 11.07084019769357
+          },
+          "max_treedepth_rate": 0.0,
+          "quality": {
+            "enabled": false,
+            "failures": [],
+            "max_r_hat": 1.191925219169225,
+            "min_ebfmi": 0.1560914799897042,
+            "min_ess_bulk": 8.761516560754302,
+            "min_ess_tail": 9.757986447241045,
+            "status": "warn",
+            "total_draws": 40,
+            "warnings": [
+              "gates_disabled_short_run"
+            ]
+          },
+          "r_hat": {
+            "beta1": 1.1560604895469704,
+            "intercept": 1.191925219169225
+          }
+        },
+        "model_type": "linear_regression",
+        "n_chains": 2,
+        "n_samples": 20,
+        "n_warmup": 20,
+        "param_names": [
+          "intercept",
+          "beta1"
+        ],
+        "posterior_summary": {
+          "beta1": {
+            "mean": 0.9640786953941664
+          },
+          "intercept": {
+            "mean": 1.0784482022333663
+          }
+        }
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

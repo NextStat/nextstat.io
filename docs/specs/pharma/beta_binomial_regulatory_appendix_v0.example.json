@@ -1,0 +1,170 @@
+{
+  "schema_version": "nextstat_bayesian_design_regulatory_appendix_v0",
+  "stability": "research-grade",
+  "appendix_id": "binary_superiority_demo_regulatory_appendix_v0",
+  "design_family": "beta_binomial",
+  "design_id": "binary_superiority_demo",
+  "source_report_schema_version": "nextstat_beta_binomial_design_report_v0",
+  "generated_from_frozen_report": true,
+  "required_sections": [
+    "design_summary",
+    "prior_specification",
+    "decision_rules",
+    "current_analysis",
+    "operating_characteristics",
+    "posterior_predictive",
+    "prior_sensitivity",
+    "provenance"
+  ],
+  "section_order": [
+    "design_summary",
+    "prior_specification",
+    "decision_rules",
+    "current_analysis",
+    "operating_characteristics",
+    "posterior_predictive",
+    "prior_sensitivity",
+    "provenance"
+  ],
+  "sections": {
+    "design_summary": {
+      "design_id": "binary_superiority_demo",
+      "design_family": "beta_binomial",
+      "endpoint_summary": "binary endpoint with exact beta-binomial conjugate updating",
+      "planned_looks": [
+        {
+          "id": "interim",
+          "n_control": 20,
+          "n_treatment": 20
+        },
+        {
+          "id": "final",
+          "n_control": 40,
+          "n_treatment": 40
+        }
+      ],
+      "total_planned_sample_size": 80,
+      "current_look_id": "interim"
+    },
+    "prior_specification": {
+      "control_prior": {
+        "alpha": 1.0,
+        "beta": 1.0
+      },
+      "treatment_prior": {
+        "alpha": 1.0,
+        "beta": 1.0
+      },
+      "likelihood": null
+    },
+    "decision_rules": {
+      "success": {
+        "posterior_probability_threshold": 0.95,
+        "treatment_effect_margin": 0.0
+      },
+      "futility": {
+        "posterior_probability_threshold": 0.2,
+        "treatment_effect_margin": 0.0
+      }
+    },
+    "current_analysis": {
+      "look_id": "interim",
+      "recommended_action": "continue",
+      "posterior_probability_gt_margin": 0.6221311262168687,
+      "treatment_effect_margin": 0.0,
+      "posterior_effect_summary": {
+        "margin": 0.0,
+        "posterior_mean": 0.045454545454545414,
+        "posterior_probability_gt_margin": 0.6221311262168687
+      }
+    },
+    "operating_characteristics": {
+      "n_replicates": 32,
+      "seed": 123,
+      "scenario_summaries": [
+        {
+          "scenario_id": "null",
+          "success_rate": 0.0625,
+          "futility_rate": 0.28125,
+          "no_decision_rate": 0.65625,
+          "expected_total_sample_size": 71.25
+        },
+        {
+          "scenario_id": "alt",
+          "success_rate": 0.65625,
+          "futility_rate": 0.0,
+          "no_decision_rate": 0.34375,
+          "expected_total_sample_size": 66.25
+        }
+      ]
+    },
+    "posterior_predictive": {
+      "n_replicates": 32,
+      "seed": 123,
+      "eventual_success_probability": 0.125,
+      "eventual_futility_probability": 0.0625,
+      "eventual_no_decision_probability": 0.8125,
+      "expected_total_sample_size": 80.0,
+      "future_look_summaries": [
+        {
+          "look_id": "final",
+          "conditional_stop_probability": 0.1875,
+          "conditional_success_probability": 0.125,
+          "conditional_futility_probability": 0.0625
+        }
+      ]
+    },
+    "prior_sensitivity": {
+      "n_replicates": 32,
+      "seed": 123,
+      "baseline_variant_id": "baseline",
+      "variant_summaries": [
+        {
+          "variant_id": "baseline",
+          "recommended_action": "continue",
+          "posterior_probability_gt_margin": 0.6221311262168687,
+          "eventual_success_probability": 0.125,
+          "eventual_futility_probability": 0.0625,
+          "eventual_no_decision_probability": 0.8125,
+          "expected_total_sample_size": 80.0,
+          "posterior_probability_delta_vs_baseline": 0.0,
+          "eventual_success_probability_delta_vs_baseline": 0.0
+        },
+        {
+          "variant_id": "skeptical",
+          "recommended_action": "continue",
+          "posterior_probability_gt_margin": 0.3182681698390807,
+          "eventual_success_probability": 0.0,
+          "eventual_futility_probability": 0.28125,
+          "eventual_no_decision_probability": 0.71875,
+          "expected_total_sample_size": 80.0,
+          "posterior_probability_delta_vs_baseline": -0.30386295637778804,
+          "eventual_success_probability_delta_vs_baseline": -0.125
+        },
+        {
+          "variant_id": "enthusiastic",
+          "recommended_action": "continue",
+          "posterior_probability_gt_margin": 0.8996714591473067,
+          "eventual_success_probability": 0.53125,
+          "eventual_futility_probability": 0.0,
+          "eventual_no_decision_probability": 0.46875,
+          "expected_total_sample_size": 80.0,
+          "posterior_probability_delta_vs_baseline": 0.277540332930438,
+          "eventual_success_probability_delta_vs_baseline": 0.40625
+        }
+      ]
+    },
+    "provenance": {
+      "software_name": "nextstat",
+      "software_version": "0.9.9",
+      "design_schema_version": "nextstat_beta_binomial_design_v0",
+      "analysis_schema_version": "nextstat_beta_binomial_design_analysis_v0",
+      "operating_characteristics_schema_version": "nextstat_beta_binomial_operating_characteristics_v0",
+      "posterior_predictive_schema_version": "nextstat_beta_binomial_posterior_predictive_v0",
+      "prior_sensitivity_campaign_schema_version": "nextstat_beta_binomial_prior_sensitivity_campaign_v0",
+      "prior_sensitivity_report_schema_version": "nextstat_beta_binomial_prior_sensitivity_report_v0",
+      "simulation_seed": 123,
+      "n_replicates": 32
+    }
+  }
+}

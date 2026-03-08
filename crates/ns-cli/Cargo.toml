@@ -39,6 +39,10 @@ statrs.workspace = true
 rand.workspace = true
 sha2 = "0.10"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+flate2 = "1.1"
+tar = "0.4"
+ureq = { version = "2.12", default-features = true }
+zip = { version = "2.4", default-features = false, features = ["deflate"] }
 
 [features]
 default = ["native-render"]
@@ -51,3 +55,4 @@ neural-cuda = ["neural", "ns-unbinned/neural-cuda"]
 neural-tensorrt = ["neural-cuda", "ns-unbinned/neural-tensorrt"]
 
 [dev-dependencies]
+regex = "1"

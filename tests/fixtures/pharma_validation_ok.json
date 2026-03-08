@@ -1,0 +1,44 @@
+{
+  "schema_version": "nextstat.pharma_validation.v1",
+  "meta": {
+    "timestamp": null,
+    "python": "3.13.1",
+    "platform": "linux-x86_64",
+    "wall_s": null
+  },
+  "status": "ok",
+  "summary": {
+    "n_total": 2,
+    "n_ok": 2,
+    "n_fail": 0,
+    "n_skip": 0,
+    "categories": {
+      "IQ": {
+        "n_total": 1,
+        "n_ok": 1,
+        "n_fail": 0,
+        "n_skip": 0
+      },
+      "OQ": {
+        "n_total": 1,
+        "n_ok": 1,
+        "n_fail": 0,
+        "n_skip": 0
+      }
+    }
+  },
+  "cases": [
+    {
+      "category": "IQ",
+      "test_id": "IQ-001",
+      "title": "Fixture smoke",
+      "ok": true
+    },
+    {
+      "category": "OQ",
+      "test_id": "OQ-001",
+      "title": "Fixture smoke",
+      "ok": true
+    }
+  ]
+}

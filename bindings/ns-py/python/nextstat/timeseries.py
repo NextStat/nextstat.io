@@ -1088,6 +1088,62 @@ def local_linear_trend_seasonal_model(
     return _core.KalmanModel(f, q, h, rr, m0, p0)
 
 
+def local_level_weekly_model(
+    *,
+    q_level: float,
+    q_weekly: float,
+    r: float,
+    level0: float = 0.0,
+    p0_level: float = 1.0,
+    p0_weekly: float = 1.0,
+):
+    """Construct a local level + weekly Kalman model.
+
+    This is a first-class 7-step alias for regularly sampled daily data.
+    """
+
+    return local_level_seasonal_model(
+        period=7,
+        q_level=q_level,
+        q_season=q_weekly,
+        r=r,
+        level0=level0,
+        p0_level=p0_level,
+        p0_season=p0_weekly,
+    )
+
+
+def local_linear_trend_weekly_model(
+    *,
+    q_level: float,
+    q_slope: float,
+    q_weekly: float,
+    r: float,
+    level0: float = 0.0,
+    slope0: float = 0.0,
+    p0_level: float = 1.0,
+    p0_slope: float = 1.0,
+    p0_weekly: float = 1.0,
+):
+    """Construct a local linear trend + weekly Kalman model.
+
+    This is a first-class 7-step alias for regularly sampled daily data.
+    """
+
+    return local_linear_trend_seasonal_model(
+        period=7,
+        q_level=q_level,
+        q_slope=q_slope,
+        q_season=q_weekly,
+        r=r,
+        level0=level0,
+        slope0=slope0,
+        p0_level=p0_level,
+        p0_slope=p0_slope,
+        p0_season=p0_weekly,
+    )
+
+
 __all__ = [
     "kalman_filter",
     "kalman_smooth",
@@ -1105,4 +1161,6 @@ __all__ = [
     "arma11_model",
     "local_level_seasonal_model",
     "local_linear_trend_seasonal_model",
+    "local_level_weekly_model",
+    "local_linear_trend_weekly_model",
 ]

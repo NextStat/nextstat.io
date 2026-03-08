@@ -1,135 +1,207 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests._tool_contract_helpers import (
+    assert_json_close,
+    assert_pharma_saem_acceptance_envelope,
+    normalize_tool_envelope,
+)
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _is_number(x: Any) -> bool:
-    return isinstance(x, (int, float)) and not isinstance(x, bool)
+def _activate_repo_python_package() -> None:
+    import nextstat
+
+    repo_pkg = _repo_root() / "bindings" / "ns-py" / "python" / "nextstat"
+    pkg_path = str(repo_pkg)
+    package_paths = getattr(nextstat, "__path__", None)
+    if package_paths is None:
+        raise RuntimeError("nextstat package has no __path__; cannot overlay repo Python modules")
+    if pkg_path in package_paths:
+        package_paths.remove(pkg_path)
+    package_paths.insert(0, pkg_path)
+    sys.modules.pop("nextstat.tools", None)
+    sys.modules.pop("nextstat._tool_manifest", None)
 
 
-def _assert_json_close(a: Any, b: Any, *, rtol: float, atol: float, path: str = "$") -> None:
-    if _is_number(a) and _is_number(b):
-        af = float(a)
-        bf = float(b)
-        diff = abs(af - bf)
-        if diff <= atol:
-            return
-        denom = max(abs(af), abs(bf), 1.0)
-        if diff / denom <= rtol:
-            return
-        raise AssertionError(f"{path}: {af} != {bf} (diff={diff}, rtol={rtol}, atol={atol})")
-
-    if type(a) is not type(b):
-        raise AssertionError(f"{path}: type mismatch {type(a)} != {type(b)}")
-
-    if isinstance(a, dict):
-        if set(a.keys()) != set(b.keys()):
-            raise AssertionError(f"{path}: keys mismatch {set(a.keys())} != {set(b.keys())}")
-        for k in a.keys():
-            _assert_json_close(a[k], b[k], rtol=rtol, atol=atol, path=f"{path}.{k}")
+def _assert_no_unstable_perf_fields(value: Any, *, path: str = "$") -> None:
+    if isinstance(value, dict):
+        assert "wall_time_s" not in value, f"{path} must not persist wall_time_s in golden files"
+        assert "elapsed_s" not in value, f"{path} must not persist elapsed_s in golden files"
+        assert "scenarios_per_sec" not in value, (
+            f"{path} must not persist scenarios_per_sec in golden files"
+        )
+        for key, nested in value.items():
+            _assert_no_unstable_perf_fields(nested, path=f"{path}.{key}")
         return
-
-    if isinstance(a, list):
-        if len(a) != len(b):
-            raise AssertionError(f"{path}: length mismatch {len(a)} != {len(b)}")
-        for i, (ai, bi) in enumerate(zip(a, b)):
-            _assert_json_close(ai, bi, rtol=rtol, atol=atol, path=f"{path}[{i}]")
-        return
-
-    if a != b:
-        raise AssertionError(f"{path}: {a!r} != {b!r}")
+    if isinstance(value, list):
+        for idx, nested in enumerate(value):
+            _assert_no_unstable_perf_fields(nested, path=f"{path}[{idx}]")
 
 
-def _normalize_envelope(x: dict[str, Any]) -> dict[str, Any]:
-    # Golden comparisons should focus on semantics, not build metadata.
-    x = json.loads(json.dumps(x))
-    meta = x.get("meta", {})
-    if isinstance(meta, dict):
-        meta.pop("nextstat_version", None)
-        # May differ depending on whether Rayon was already initialized in-process.
-        meta.pop("threads_applied", None)
-    # Optimizer iteration counts are not a stable contract and can change with
-    # benign improvements to stopping rules or line-search behavior.
-    def _drop_n_iter(v: Any) -> Any:
-        if isinstance(v, dict):
-            if "n_iter" in v:
-                v = dict(v)
-                v.pop("n_iter", None)
-            return {k: _drop_n_iter(vv) for k, vv in v.items()}
-        if isinstance(v, list):
-            return [_drop_n_iter(vv) for vv in v]
-        return v
-
-    x = _drop_n_iter(x)
-    return x
-
-
-def test_tool_goldens_simple_workspace_deterministic():
+def test_tool_goldens_manifest_cases():
     pytest.importorskip("nextstat")
+    _activate_repo_python_package()
     from nextstat.tools import execute_tool
+    from nextstat._tool_manifest import get_tool_records, resolve_golden_case_arguments
 
-    golden_path = (
-        _repo_root()
-        / "tests"
-        / "fixtures"
-        / "tool_goldens"
-        / "simple_workspace_deterministic.v1.json"
+    golden_dir = _repo_root() / "tests" / "fixtures" / "tool_goldens"
+    records = get_tool_records()
+    case_names = sorted(
+        {
+            case_name
+            for record in records
+            for case_name in (record.get("golden_cases", {}) or {}).keys()
+            if isinstance(case_name, str)
+        }
     )
-    assert golden_path.exists(), f"missing golden file: {golden_path} (run scripts/generate_tool_goldens.py)"
+    assert case_names, "manifest must define at least one golden case"
+    expected_files = {f"{case_name}.v1.json" for case_name in case_names}
+    actual_files = {path.name for path in golden_dir.glob("*.v1.json")}
+    assert actual_files == expected_files, "golden directory must exactly match manifest case names"
 
-    golden = json.loads(golden_path.read_text(encoding="utf-8"))
-    assert golden.get("schema_version") == "nextstat.tool_goldens.v1"
-
-    tools: dict[str, Any] = golden.get("tools", {})
-    assert isinstance(tools, dict) and tools, "golden tools map must be non-empty"
-
-    ws = (_repo_root() / "tests" / "fixtures" / "simple_workspace.json").read_text(encoding="utf-8")
-
-    # Keep tolerances reasonably permissive across platforms; parity mode should be stable.
+    # Keep strict defaults here; the helper owns narrowly scoped cross-platform
+    # relaxations for known optimizer-sensitive fields.
     rtol = 1e-6
     atol = 1e-8
 
-    for name, golden_env in tools.items():
-        # Reconstruct args used by generator.
-        args: dict[str, Any] = {"execution": {"deterministic": True}}
-        if name == "nextstat_read_root_histogram":
-            args.update(
-                {
-                    "root_path": str(_repo_root() / "tests" / "fixtures" / "simple_histos.root"),
-                    "hist_path": "hist1",
-                }
+    for case_name in case_names:
+        golden_path = golden_dir / f"{case_name}.v1.json"
+        assert golden_path.exists(), f"missing golden file: {golden_path} (run scripts/generate_tool_goldens.py)"
+
+        golden = json.loads(golden_path.read_text(encoding="utf-8"))
+        assert golden.get("schema_version") == "nextstat.tool_goldens.v1"
+        assert golden.get("case_name") == case_name
+
+        tools: dict[str, Any] = golden.get("tools", {})
+        assert isinstance(tools, dict) and tools, "golden tools map must be non-empty"
+        _assert_no_unstable_perf_fields(golden)
+
+        manifest_names = []
+        for record in records:
+            name = record.get("name")
+            if not isinstance(name, str):
+                continue
+            cases = record.get("golden_cases")
+            if not isinstance(cases, dict) or case_name not in cases:
+                continue
+            manifest_names.append(name)
+            golden_env = tools[name]
+            args = resolve_golden_case_arguments(name, case_name, _repo_root())
+            got = execute_tool(name, args)
+            assert got.get("ok") is True, got
+
+            assert_json_close(
+                normalize_tool_envelope(got),
+                normalize_tool_envelope(golden_env),
+                rtol=rtol,
+                atol=atol,
+                path=f"case:{case_name}.tool:{name}",
             )
-        else:
-            args["workspace_json"] = ws
 
-        if name == "nextstat_hypotest":
-            args["mu"] = 1.0
-        elif name == "nextstat_hypotest_toys":
-            args.update({"mu": 1.0, "n_toys": 200, "seed": 42})
-        elif name == "nextstat_upper_limit":
-            args.update({"expected": True})
-        elif name == "nextstat_ranking":
-            args.update({"top_n": 5})
-        elif name == "nextstat_scan":
-            args.update({"start": 0.0, "stop": 2.0, "points": 5})
-        elif name in ("nextstat_workspace_audit", "nextstat_fit", "nextstat_discovery_asymptotic", "nextstat_read_root_histogram"):
-            pass
-        else:
-            raise AssertionError(f"unknown golden tool name: {name}")
+        assert set(manifest_names) == set(tools.keys())
 
-        got = execute_tool(name, args)
-        assert got.get("ok") is True, got
 
-        _assert_json_close(
-            _normalize_envelope(got),
-            _normalize_envelope(golden_env),
-            rtol=rtol,
-            atol=atol,
-            path=f"tool:{name}",
+def test_tool_goldens_generator_check_mode():
+    pytest.importorskip("nextstat")
+    check = subprocess.run(
+        [sys.executable, "scripts/generate_tool_goldens.py", "--check"],
+        cwd=_repo_root(),
+        capture_output=True,
+        text=True,
+    )
+    assert check.returncode == 0, check.stderr or check.stdout
+
+
+def test_tool_contract_tolerance_scope_for_pharma_fit_eta():
+    assert_json_close(
+        0.012952322987712603,
+        0.009768206806171575,
+        rtol=1e-6,
+        atol=1e-8,
+        path="tool:nextstat_pharma_fit.result.eta[0][0]",
+    )
+
+    with pytest.raises(AssertionError):
+        assert_json_close(
+            0.012952322987712603,
+            0.009768206806171575,
+            rtol=1e-6,
+            atol=1e-8,
+            path="tool:nextstat_pharma_fit.result.theta[0]",
         )
+
+
+def test_tool_contract_tolerance_scope_for_pharma_fit_omega():
+    """omega/omega_matrix/sigma get cross-platform BLAS tolerance (rtol=5e-3)."""
+    # omega SD 0.232 vs 0.233 → diff 0.001, rtol = 0.001/0.233 ≈ 0.004 < 5e-3 → OK
+    assert_json_close(
+        0.23205333134381162,
+        0.23305333134381162,
+        rtol=1e-6,
+        atol=1e-8,
+        path="tool:nextstat_pharma_fit.result.omega[0]",
+    )
+    # omega_matrix diagonal
+    assert_json_close(
+        0.05384874858776082,
+        0.05394874858776082,
+        rtol=1e-6,
+        atol=1e-8,
+        path="tool:nextstat_pharma_fit.result.omega_matrix[0][0]",
+    )
+    # sigma (not sigma_init)
+    assert_json_close(
+        0.4957107292952698,
+        0.4967107292952698,
+        rtol=1e-6,
+        atol=1e-8,
+        path="tool:nextstat_pharma_fit.result.sigma",
+    )
+    # sigma_init must stay tight (it's an input, not computed)
+    with pytest.raises(AssertionError):
+        assert_json_close(
+            0.1,
+            0.101,
+            rtol=1e-6,
+            atol=1e-8,
+            path="tool:nextstat_pharma_fit.result.sigma_init",
+        )
+
+
+def test_saem_acceptance_envelope_passes_on_valid_result():
+    """SAEM acceptance envelope validates scientific criteria, not exact values."""
+    result = {
+        "converged": True,
+        "ofv": 123.456,
+        "theta": [0.13, 8.0, 1.5],
+        "omega": [0.23, 0.17, 0.20],
+        "omega_matrix": [
+            [0.053, 0.0, 0.0],
+            [0.0, 0.029, 0.0],
+            [0.0, 0.0, 0.040],
+        ],
+    }
+    assert_pharma_saem_acceptance_envelope(result)
+
+
+def test_saem_acceptance_envelope_rejects_non_converged():
+    with pytest.raises(AssertionError, match="converge"):
+        assert_pharma_saem_acceptance_envelope({"converged": False, "ofv": 1.0, "theta": [1.0], "omega": [0.1]})
+
+
+def test_saem_acceptance_envelope_rejects_infinite_ofv():
+    with pytest.raises(AssertionError, match="finite"):
+        assert_pharma_saem_acceptance_envelope({"converged": True, "ofv": float("inf"), "theta": [1.0], "omega": [0.1]})
+
+
+def test_saem_acceptance_envelope_rejects_negative_omega():
+    with pytest.raises(AssertionError, match="positive"):
+        assert_pharma_saem_acceptance_envelope({"converged": True, "ofv": 1.0, "theta": [1.0], "omega": [-0.1]})

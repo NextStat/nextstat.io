@@ -1,0 +1,90 @@
+{
+  "case_name": "churn_diagnostics_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_churn_diagnostics": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_churn_diagnostics"
+      },
+      "ok": true,
+      "result": {
+        "censoring_by_segment": [
+          {
+            "frac_censored": 0.5,
+            "group": 0,
+            "n": 4,
+            "n_censored": 2,
+            "n_events": 2
+          },
+          {
+            "frac_censored": 0.5,
+            "group": 1,
+            "n": 4,
+            "n_censored": 2,
+            "n_events": 2
+          }
+        ],
+        "covariate_balance": [
+          {
+            "mean_control": 0.55,
+            "mean_treated": 0.975,
+            "name": "x1",
+            "smd_raw": 1.5738941696133368
+          },
+          {
+            "mean_control": -0.1,
+            "mean_treated": 0.2,
+            "name": "x2",
+            "smd_raw": 1.5000000000000004
+          }
+        ],
+        "n": 8,
+        "n_events": 4,
+        "overall_censoring_frac": 0.5,
+        "propensity_overlap": {
+          "mean": 0.4999999976860565,
+          "n_trimmed_high": 0,
+          "n_trimmed_low": 0,
+          "quantiles": [
+            0.06623683241576055,
+            0.06636436410907598,
+            0.14695430256178424,
+            0.5857753007154131,
+            0.7901897744598407,
+            0.888476113073382,
+            0.941006420122977
+          ],
+          "trim": 0.01
+        },
+        "trust_gate_passed": true,
+        "warnings": [
+          {
+            "category": "sample_size",
+            "message": "Segment 0 has only 2 events (< 5)",
+            "severity": "warning"
+          },
+          {
+            "category": "sample_size",
+            "message": "Segment 1 has only 2 events (< 5)",
+            "severity": "warning"
+          },
+          {
+            "category": "balance",
+            "message": "x1: SMD = 1.574 (> 0.25 threshold)",
+            "severity": "warning"
+          },
+          {
+            "category": "balance",
+            "message": "x2: SMD = 1.500 (> 0.25 threshold)",
+            "severity": "warning"
+          }
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

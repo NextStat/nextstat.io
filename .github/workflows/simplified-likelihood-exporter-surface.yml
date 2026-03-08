@@ -1,0 +1,264 @@
+name: Simplified Likelihood Exporter Surface
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - "crates/ns-translate/src/simplified/**"
+      - "crates/ns-cli/src/main.rs"
+      - "crates/ns-cli/tests/cli_simplified_likelihood.rs"
+      - "crates/ns-cli/tests/cli_config_schema.rs"
+      - "tests/apex2_simplified_likelihood_report.py"
+      - "tests/python/_simplified_likelihood_export_public_case_catalog.py"
+      - "tests/python/test_apex2_simplified_likelihood_report_smoke.py"
+      - "tests/python/test_simplified_likelihood_schema_smoke.py"
+      - "tests/python/test_simplified_likelihood_export_benchmark_snapshot_smoke.py"
+      - "tests/python/test_simplified_likelihood_export_public_validation_report_smoke.py"
+      - "tests/python/test_simplified_likelihood_export_public_case_catalog_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_gate_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_promotion_bundle_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_source_semantics_boundary_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_review_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_candidate_blocker_matrix_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_candidate_review_packet_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_evidence_policy_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_evidence_freshness_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_promotion_decision_smoke.py"
+      - "tests/python/test_release_workflow_simplified_likelihood_exporter_smoke.py"
+      - "benchmarks/artifacts/simplified_likelihood_export_benchmarks/**"
+      - "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/**"
+      - ".gitignore"
+      - ".github/workflows/release.yml"
+      - "docs/references/simplified-likelihood-artifacts.md"
+      - "docs/benchmarks/simplified-likelihood-benchmark-snapshot-2026-03-08.md"
+      - "docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08.md"
+      - "docs/benchmarks/simplified-likelihood-release-notes-2026-03-08.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-runtime-gate.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-evidence-policy-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-evidence-freshness-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-public-validation-surface-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-review-checklist-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-source-semantics-boundary-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-blocker-matrix-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-review-packet-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-promotion-decision-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-release-pr-checklist-2026-03-09.md"
+      - "docs/schemas/apex2/simplified_likelihood_report_v0.schema.json"
+      - "docs/schemas/hep/simplified_likelihood_derive_v0.schema.json"
+      - "docs/schemas/hep/simplified_likelihood_export_report_v0.schema.json"
+      - "docs/schemas/apex2/simplified_likelihood_export_public_case_catalog_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_export_benchmark_snapshot_report_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_export_public_validation_report_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_promotion_evidence_bundle_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_promotion_evidence_check_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_promotion_bundle_promotion_report_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_review_assessment_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_source_semantics_boundary_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_candidate_review_packet_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_evidence_policy_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_evidence_freshness_report_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_promotion_decision_v0.schema.json"
+      - "docs/specs/apex2_simplified_likelihood_report_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_export_benchmark_snapshot_report_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_export_public_validation_report_v0.example.json"
+      - "docs/specs/apex2_simplified_likelihood_export_public_case_catalog_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_promotion_evidence_bundle_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_promotion_evidence_check_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_promotion_bundle_promotion_report_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_review_assessment_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_source_semantics_boundary_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_candidate_review_packet_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_evidence_policy_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_evidence_freshness_report_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_promotion_decision_v0.example.json"
+      - "scripts/benchmarks/_simplified_likelihood_exporter_promotion_bundle.py"
+      - "scripts/benchmarks/_simplified_likelihood_exporter_stable_review.py"
+      - "scripts/benchmarks/_simplified_likelihood_exporter_stable_candidate.py"
+      - "scripts/benchmarks/_simplified_likelihood_exporter_stable_evidence_policy.py"
+      - "scripts/benchmarks/_simplified_likelihood_exporter_stable_evidence_freshness.py"
+      - "scripts/benchmarks/_simplified_likelihood_exporter_stable_promotion.py"
+      - "scripts/benchmarks/apex2_simplified_likelihood_remote.sh"
+      - "scripts/benchmarks/assess_simplified_likelihood_exporter_stable_review.py"
+      - "scripts/benchmarks/build_simplified_likelihood_exporter_stable_source_semantics_boundary.py"
+      - "scripts/benchmarks/assess_simplified_likelihood_exporter_stable_candidate_blockers.py"
+      - "scripts/benchmarks/build_simplified_likelihood_exporter_stable_candidate_review_packet.py"
+      - "scripts/benchmarks/build_simplified_likelihood_exporter_stable_evidence_policy.py"
+      - "scripts/benchmarks/build_simplified_likelihood_exporter_stable_evidence_freshness_report.py"
+      - "scripts/benchmarks/assess_simplified_likelihood_exporter_stable_promotion_decision.py"
+      - "scripts/benchmarks/build_simplified_likelihood_exporter_promotion_evidence_bundle.py"
+      - "scripts/benchmarks/verify_simplified_likelihood_exporter_promotion_evidence_bundle.py"
+      - "scripts/benchmarks/promote_simplified_likelihood_exporter_promotion_bundle.py"
+      - "scripts/benchmarks/persist_simplified_likelihood_export_benchmark.py"
+      - "scripts/benchmarks/_simplified_likelihood_export_public_validation.py"
+      - "scripts/benchmarks/build_simplified_likelihood_export_public_validation_report.py"
+      - "scripts/benchmarks/simplified_likelihood_exporter_surface_gate.sh"
+      - "Makefile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - "crates/ns-translate/src/simplified/**"
+      - "crates/ns-cli/src/main.rs"
+      - "crates/ns-cli/tests/cli_simplified_likelihood.rs"
+      - "crates/ns-cli/tests/cli_config_schema.rs"
+      - "tests/apex2_simplified_likelihood_report.py"
+      - "tests/python/_simplified_likelihood_export_public_case_catalog.py"
+      - "tests/python/test_apex2_simplified_likelihood_report_smoke.py"
+      - "tests/python/test_simplified_likelihood_schema_smoke.py"
+      - "tests/python/test_simplified_likelihood_export_benchmark_snapshot_smoke.py"
+      - "tests/python/test_simplified_likelihood_export_public_validation_report_smoke.py"
+      - "tests/python/test_simplified_likelihood_export_public_case_catalog_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_gate_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_promotion_bundle_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_source_semantics_boundary_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_review_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_candidate_blocker_matrix_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_candidate_review_packet_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_evidence_policy_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_evidence_freshness_smoke.py"
+      - "tests/python/test_simplified_likelihood_exporter_stable_promotion_decision_smoke.py"
+      - "tests/python/test_release_workflow_simplified_likelihood_exporter_smoke.py"
+      - "benchmarks/artifacts/simplified_likelihood_export_benchmarks/**"
+      - "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/**"
+      - ".gitignore"
+      - ".github/workflows/release.yml"
+      - "docs/references/simplified-likelihood-artifacts.md"
+      - "docs/benchmarks/simplified-likelihood-benchmark-snapshot-2026-03-08.md"
+      - "docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08.md"
+      - "docs/benchmarks/simplified-likelihood-release-notes-2026-03-08.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-runtime-gate.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-evidence-policy-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-evidence-freshness-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-public-validation-surface-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-review-checklist-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-source-semantics-boundary-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-blocker-matrix-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-review-packet-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-stable-promotion-decision-2026-03-09.md"
+      - "docs/benchmarks/simplified-likelihood-exporter-release-pr-checklist-2026-03-09.md"
+      - "docs/schemas/apex2/simplified_likelihood_report_v0.schema.json"
+      - "docs/schemas/hep/simplified_likelihood_derive_v0.schema.json"
+      - "docs/schemas/hep/simplified_likelihood_export_report_v0.schema.json"
+      - "docs/schemas/apex2/simplified_likelihood_export_public_case_catalog_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_export_benchmark_snapshot_report_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_export_public_validation_report_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_promotion_evidence_bundle_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_promotion_evidence_check_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_promotion_bundle_promotion_report_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_review_assessment_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_source_semantics_boundary_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_candidate_review_packet_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_evidence_policy_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_evidence_freshness_report_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_promotion_decision_v0.schema.json"
+      - "docs/specs/apex2_simplified_likelihood_report_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_export_benchmark_snapshot_report_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_export_public_validation_report_v0.example.json"
+      - "docs/specs/apex2_simplified_likelihood_export_public_case_catalog_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_promotion_evidence_bundle_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_promotion_evidence_check_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_promotion_bundle_promotion_report_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_review_assessment_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_source_semantics_boundary_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_candidate_review_packet_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_evidence_policy_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_evidence_freshness_report_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_exporter_stable_promotion_decision_v0.example.json"
+      - "scripts/benchmarks/_simplified_likelihood_exporter_promotion_bundle.py"
+      - "scripts/benchmarks/_simplified_likelihood_exporter_stable_review.py"
+      - "scripts/benchmarks/_simplified_likelihood_exporter_stable_candidate.py"
+      - "scripts/benchmarks/_simplified_likelihood_exporter_stable_evidence_policy.py"
+      - "scripts/benchmarks/_simplified_likelihood_exporter_stable_evidence_freshness.py"
+      - "scripts/benchmarks/_simplified_likelihood_exporter_stable_promotion.py"
+      - "scripts/benchmarks/apex2_simplified_likelihood_remote.sh"
+      - "scripts/benchmarks/assess_simplified_likelihood_exporter_stable_review.py"
+      - "scripts/benchmarks/build_simplified_likelihood_exporter_stable_source_semantics_boundary.py"
+      - "scripts/benchmarks/assess_simplified_likelihood_exporter_stable_candidate_blockers.py"
+      - "scripts/benchmarks/build_simplified_likelihood_exporter_stable_candidate_review_packet.py"
+      - "scripts/benchmarks/build_simplified_likelihood_exporter_stable_evidence_policy.py"
+      - "scripts/benchmarks/build_simplified_likelihood_exporter_stable_evidence_freshness_report.py"
+      - "scripts/benchmarks/assess_simplified_likelihood_exporter_stable_promotion_decision.py"
+      - "scripts/benchmarks/build_simplified_likelihood_exporter_promotion_evidence_bundle.py"
+      - "scripts/benchmarks/verify_simplified_likelihood_exporter_promotion_evidence_bundle.py"
+      - "scripts/benchmarks/promote_simplified_likelihood_exporter_promotion_bundle.py"
+      - "scripts/benchmarks/persist_simplified_likelihood_export_benchmark.py"
+      - "scripts/benchmarks/_simplified_likelihood_export_public_validation.py"
+      - "scripts/benchmarks/build_simplified_likelihood_export_public_validation_report.py"
+      - "scripts/benchmarks/simplified_likelihood_exporter_surface_gate.sh"
+      - "Makefile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+concurrency:
+  group: simplified-likelihood-exporter-surface-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    name: Exporter Surface Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Create virtualenv
+        run: python -m venv .venv
+
+      - name: Install Python dependencies
+        run: |
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "jsonschema>=4.0"
+
+      - name: Shellcheck (bash -n) exporter gate
+        run: bash -n scripts/benchmarks/simplified_likelihood_exporter_surface_gate.sh
+
+      - name: Run simplified-likelihood exporter gate
+        run: make simplified-likelihood-exporter-surface-gate
+
+      - name: Upload simplified-likelihood exporter artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplified-likelihood-exporter-surface-report
+          path: |
+            benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json
+            benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_benchmark_snapshot_report.json
+            benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_public_validation_report.json
+            benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/snapshot_index.json
+            benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json
+            benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence_check.json
+            benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_bundle_promotion_report.json
+            benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_review_assessment.json
+            benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_evidence_policy.json
+            benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_evidence_freshness_report.json
+            benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_source_semantics_boundary.json
+            benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_candidate_blocker_matrix.json
+            benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_candidate_review_packet.json
+            benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json
+            benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/snapshot_index.json
+          if-no-files-found: error

@@ -32,16 +32,26 @@
 
 /// Adaptation: step-size dual averaging and diagonal mass matrix (Welford variance).
 pub mod adapt;
+/// Ads-native observation and response models.
+pub mod ads;
+/// Shared statistical artifact contract for ads inference surfaces.
+pub mod ads_artifacts;
+/// Typed registry for Ads Systematics V1.
+pub mod ads_systematics;
 /// Standardized NLME artifact schema and export functions.
 pub mod artifacts;
 /// Batch toy fitting with optional Accelerate-optimized NLL.
 pub mod batch;
+/// Bayesian beta-binomial clinical trial design helpers.
+pub mod bayes_design;
 /// Bioequivalence testing: TOST (ABE), RSABE, power/sample size (Phase 9 Pharma).
 pub mod bioequivalence;
 /// Bootstrap confidence interval utilities (percentile + BCa).
 pub mod bootstrap_ci;
 /// Model builder (composition) MVP for general statistics.
 pub mod builder;
+/// A/B test sample-size calculator with sequential, overdispersion, and variance-reduction adjustments.
+pub mod calculator;
 /// MCMC chain storage + I/O.
 pub mod chain;
 /// Chain Ladder and Mack stochastic reserving (Phase 9 Cross-Vertical).
@@ -50,6 +60,12 @@ pub mod chain_ladder;
 pub mod churn;
 /// Competing risks analysis: CIF, Gray's test, Fine-Gray regression (Phase 9 Cross-Vertical).
 pub mod competing_risks;
+/// Internal CUDA-backed HamiltonianPotential prototypes (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub(crate) mod cuda_hmc_potential;
+/// Internal CUDA-backed HMC stepper prototypes (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub(crate) mod cuda_hmc_stepper;
 /// MCMC diagnostics: split R-hat, bulk/tail ESS.
 pub mod diagnostics;
 /// Dosing regimen abstraction for pharmacometric models (Phase 13).
@@ -81,6 +97,8 @@ pub(crate) mod lbfgs;
 pub mod lmm;
 /// Metropolis-Adjusted Microcanonical Sampler (MAMS).
 pub mod mams;
+/// Research-grade scalar measurement combinations with correlated systematics.
+pub mod measurement_combine;
 /// Meta-analysis: fixed-effects and random-effects pooling.
 pub mod meta_analysis;
 /// Maximum-likelihood estimation via L-BFGS-B.
@@ -129,12 +147,18 @@ pub mod timeseries;
 pub mod toybased;
 /// Toy data generation (Asimov + Poisson).
 pub mod toys;
+/// Shared tree-based HMC transition machinery for NUTS/WALNUTS-style samplers.
+pub(crate) mod tree_hmc;
 /// Monte Carlo clinical trial simulation engine.
 pub mod trial_simulation;
 /// Gamma and Tweedie GLM families (Phase 9 Cross-Vertical).
 pub mod tweedie;
+/// Shared CUPED/CURE variance-reduction primitives.
+pub mod variance_reduction;
 /// Visual Predictive Check (VPC) and GOF diagnostics for population PK.
 pub mod vpc;
+/// Window-Adaptive NUTS (WALNUTS) sampler.
+pub mod walnuts;
 /// CDISC .xpt (SAS Transport v5) reader/writer for SDTM/ADaM datasets.
 pub mod xpt;
 
@@ -178,11 +202,75 @@ pub mod unbinned_gpu_batch;
 #[cfg(test)]
 mod universal_tests;
 
+pub use ads::{
+    BetaBinomialModel, DelayCorrectionModel, HierarchicalSegmentLiftSummary,
+    SegmentLiftObservation, SegmentLiftPosterior, adstock_geometric,
+    hierarchical_segment_lift_summary, hill,
+};
+pub use ads_artifacts::{
+    ADS_STATISTICAL_ARTIFACT_SCHEMA_ID, ADS_STATISTICAL_ARTIFACT_TYPE,
+    ADS_STATISTICAL_ARTIFACT_VERSION, ADS_SYSTEMATICS_REGISTRY_VERSION, AdsArtifactAssumption,
+    AdsArtifactContractReference, AdsArtifactDecision, AdsArtifactDiagnostics,
+    AdsArtifactGuardrails, AdsArtifactMetadata, AdsArtifactReferenceSummary, AdsArtifactResult,
+    AdsArtifactRigor, AdsArtifactSemanticContext, AdsArtifactSeverity, AdsArtifactValidationError,
+    AdsCausalUncertainty, AdsCausalUncertaintyStatus, AdsClaimStatus, AdsClaimViolation,
+    AdsClsGuardrail, AdsDecisionLossView, AdsEventCounts, AdsFitQuality, AdsLeakageIndicator,
+    AdsPracticalSignificance, AdsPracticalThresholdStatus, AdsStatisticalArtifact,
+    AdsSystematicsProfile, AdsSystematicsProfileEntry, AdsTotalUncertainty,
+    AdsTotalUncertaintyStatus, AdsUncertaintyInterval, ads_artifact_contract_reference_json_schema,
+    ads_artifact_reference_summary_json_schema, ads_artifact_semantic_context_json_schema,
+    ads_statistical_artifact_json_schema, serialize_validated_ads_statistical_artifact,
+    validate_ads_statistical_artifact, validate_ads_statistical_artifact_value,
+};
+pub use ads_systematics::{
+    AdsCombinationPolicy, AdsSystematic, AdsSystematicKind, AdsSystematicSourceClass,
+    AdsUncertaintyLayer, default_systematic_by_code, default_systematic_by_id, default_systematics,
+    default_systematics_slice,
+};
 pub use artifacts::{
     DatasetProvenance, FixedEffectsSummary, NlmeArtifact, RandomEffectsSummary,
     ReferenceToolVersion, RunBundle, SCHEMA_VERSION, ScmArtifact,
 };
 pub use batch::{fit_toys_batch, is_accelerate_available};
+pub use bayes_design::{
+    BETA_BINOMIAL_DESIGN_ANALYSIS_SCHEMA_V0, BETA_BINOMIAL_DESIGN_REPORT_SCHEMA_V0,
+    BETA_BINOMIAL_DESIGN_SCHEMA_V0, BETA_BINOMIAL_OPERATING_CHARACTERISTICS_SCHEMA_V0,
+    BETA_BINOMIAL_POSTERIOR_PREDICTIVE_SCHEMA_V0,
+    BETA_BINOMIAL_PRIOR_SENSITIVITY_CAMPAIGN_SCHEMA_V0,
+    BETA_BINOMIAL_PRIOR_SENSITIVITY_REPORT_SCHEMA_V0, BayesianDesignReportProvenance,
+    BetaBinomialAnalysisConfig, BetaBinomialDecisionRule, BetaBinomialDecisionRules,
+    BetaBinomialDesignAnalysisResult, BetaBinomialDesignReport, BetaBinomialDesignSpec,
+    BetaBinomialEffectDifferenceSummary, BetaBinomialLook,
+    BetaBinomialLookOperatingCharacteristics, BetaBinomialObservedData,
+    BetaBinomialOperatingCharacteristicsResult, BetaBinomialPosteriorPredictiveLookSummary,
+    BetaBinomialPosteriorPredictiveResult, BetaBinomialPosteriorSummary,
+    BetaBinomialPriorSensitivityCampaign, BetaBinomialPriorSensitivityReport,
+    BetaBinomialPriorSensitivityVariant, BetaBinomialPriorSensitivityVariantResult,
+    BetaBinomialRecommendedAction, BetaBinomialScenario,
+    BetaBinomialScenarioOperatingCharacteristics, BetaBinomialSimulationConfig,
+    BetaPosteriorSummary, BetaPrior, NORMAL_NORMAL_DESIGN_ANALYSIS_SCHEMA_V0,
+    NORMAL_NORMAL_DESIGN_REPORT_SCHEMA_V0, NORMAL_NORMAL_DESIGN_SCHEMA_V0,
+    NORMAL_NORMAL_OPERATING_CHARACTERISTICS_SCHEMA_V0,
+    NORMAL_NORMAL_POSTERIOR_PREDICTIVE_SCHEMA_V0,
+    NORMAL_NORMAL_PRIOR_SENSITIVITY_CAMPAIGN_SCHEMA_V0,
+    NORMAL_NORMAL_PRIOR_SENSITIVITY_REPORT_SCHEMA_V0, NormalNormalAnalysisConfig,
+    NormalNormalDecisionRule, NormalNormalDecisionRules, NormalNormalDesignAnalysisResult,
+    NormalNormalDesignReport, NormalNormalDesignSpec, NormalNormalEffectDifferenceSummary,
+    NormalNormalLikelihood, NormalNormalLook, NormalNormalLookOperatingCharacteristics,
+    NormalNormalObservedData, NormalNormalOperatingCharacteristicsResult,
+    NormalNormalPosteriorPredictiveLookSummary, NormalNormalPosteriorPredictiveResult,
+    NormalNormalPosteriorSummary, NormalNormalPriorSensitivityCampaign,
+    NormalNormalPriorSensitivityReport, NormalNormalPriorSensitivityVariant,
+    NormalNormalPriorSensitivityVariantResult, NormalNormalRecommendedAction, NormalNormalScenario,
+    NormalNormalScenarioOperatingCharacteristics, NormalNormalSimulationConfig,
+    NormalPosteriorSummary, NormalPrior, analyze_beta_binomial_design,
+    analyze_normal_normal_design, beta_binomial_design_report,
+    beta_binomial_operating_characteristics, beta_binomial_posterior_predictive,
+    beta_binomial_prior_sensitivity, normal_normal_design_report,
+    normal_normal_operating_characteristics, normal_normal_posterior_predictive,
+    normal_normal_prior_sensitivity, render_beta_binomial_design_report_markdown,
+    render_normal_normal_design_report_markdown,
+};
 pub use bioequivalence::{
     BeConclusion, BeConfig, BeData, BeDesign, BePowerConfig, BePowerResult, BeResult, RsabeConfig,
     RsabeResult, average_be, be_power, be_sample_size, reference_scaled_be,
@@ -251,6 +339,12 @@ pub use laplace::{LaplaceResult, laplace_log_marginal};
 pub use laps::{LapsConfig, LapsModel, LapsResult, sample_laps};
 pub use lmm::{LmmMarginalModel, RandomEffects as LmmRandomEffects};
 pub use mams::{MamsConfig, sample_mams, sample_mams_multichain};
+pub use measurement_combine::{
+    ConfidenceInterval, GoodnessOfFit, MeasurementCombinationResult, MeasurementCombinationSpec,
+    MeasurementInput, OptimizerDiagnostics as MeasurementCombineOptimizerDiagnostics,
+    ResearchDiagnostics, SystematicSource, build_measurement_combination_spec_from_tables,
+    combine_measurements,
+};
 pub use meta_analysis::{
     ForestRow, Heterogeneity, MetaAnalysisResult, StudyEffect, meta_fixed, meta_random,
 };
@@ -327,8 +421,17 @@ pub use trial_simulation::{
 };
 pub use tweedie::{GammaRegressionModel, TweedieRegressionModel};
 pub use unbinned_batch_cpu::{UnbinnedToyBatchResult, fit_unbinned_toys_batch_cpu};
+pub use variance_reduction::{
+    ArmData as CupedArmData, CovariateProvenance, CovariateTiming, CupedResult, CureResult,
+    MultiCovariateArmData, VarianceReductionMethod, VarianceReductionSolver, cuped_adjust,
+    cure_adjust,
+};
 pub use vpc::{
     GofRecord, PkModelKind, VpcBin, VpcConfig, VpcResult, gof_1cpt_oral, gof_pk, vpc_1cpt_oral,
     vpc_pk,
+};
+pub use walnuts::{
+    AdaptiveWalnutsConfig, WalnutsConfig, WalnutsTransition, WalnutsTuning, sample_walnuts,
+    sample_walnuts_fixed, sample_walnuts_multichain,
 };
 pub use xpt::{XptDataset, XptValue, XptVarType, XptVariable, read_xpt, write_xpt, xpt_to_nonmem};

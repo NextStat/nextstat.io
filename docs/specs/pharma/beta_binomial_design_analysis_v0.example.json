@@ -1,0 +1,45 @@
+{
+  "schema_version": "nextstat_beta_binomial_design_analysis_v0",
+  "stability": "research-grade",
+  "design_id": "binary_superiority_demo",
+  "look": {
+    "id": "interim",
+    "n_control": 20,
+    "n_treatment": 20
+  },
+  "observed": {
+    "look_id": "interim",
+    "control_successes": 8,
+    "treatment_successes": 14
+  },
+  "posterior": {
+    "control": {
+      "alpha": 9.0,
+      "beta": 13.0,
+      "mean": 0.4090909090909091,
+      "ci_lower": 0.21819685688513102,
+      "ci_upper": 0.6156456096213528
+    },
+    "treatment": {
+      "alpha": 15.0,
+      "beta": 7.0,
+      "mean": 0.6818181818181818,
+      "ci_lower": 0.4782488817528818,
+      "ci_upper": 0.8541230576569061
+    },
+    "effect_difference": {
+      "margin": 0.0,
+      "posterior_mean": 0.27272727272727265,
+      "posterior_probability_gt_margin": 0.9692012817309468
+    }
+  },
+  "decision": {
+    "success": true,
+    "futility": false,
+    "recommended_action": "stop_for_success",
+    "posterior_probability_gt_margin": 0.9692012817309468,
+    "success_threshold": 0.95,
+    "futility_threshold": 0.2,
+    "margin": 0.0
+  }
+}

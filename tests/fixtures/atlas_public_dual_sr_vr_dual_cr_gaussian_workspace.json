@@ -1,0 +1,214 @@
+{
+  "channels": [
+    {
+      "name": "SRLow",
+      "samples": [
+        {
+          "name": "signal",
+          "data": [9.0, 7.0],
+          "modifiers": [
+            { "name": "mu", "type": "normfactor", "data": null },
+            { "name": "lumi", "type": "lumi", "data": null }
+          ]
+        },
+        {
+          "name": "top",
+          "data": [70.0, 48.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "top_norm", "type": "normsys", "data": { "hi": 1.08, "lo": 0.92 } },
+            {
+              "name": "top_shape",
+              "type": "histosys",
+              "data": { "hi_data": [77.0, 45.0], "lo_data": [63.0, 52.0] }
+            }
+          ]
+        },
+        {
+          "name": "zjets",
+          "data": [24.0, 20.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "z_norm", "type": "normsys", "data": { "hi": 1.06, "lo": 0.94 } },
+            {
+              "name": "z_shape",
+              "type": "histosys",
+              "data": { "hi_data": [26.0, 22.0], "lo_data": [22.0, 18.0] }
+            }
+          ]
+        },
+        {
+          "name": "rare",
+          "data": [6.0, 5.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "rare_norm", "type": "normsys", "data": { "hi": 1.12, "lo": 0.88 } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SRHigh",
+      "samples": [
+        {
+          "name": "signal",
+          "data": [5.0, 4.0],
+          "modifiers": [
+            { "name": "mu", "type": "normfactor", "data": null },
+            { "name": "lumi", "type": "lumi", "data": null }
+          ]
+        },
+        {
+          "name": "top",
+          "data": [30.0, 22.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "top_norm", "type": "normsys", "data": { "hi": 1.08, "lo": 0.92 } },
+            {
+              "name": "top_shape",
+              "type": "histosys",
+              "data": { "hi_data": [34.0, 20.0], "lo_data": [27.0, 24.0] }
+            }
+          ]
+        },
+        {
+          "name": "zjets",
+          "data": [12.0, 10.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "z_norm", "type": "normsys", "data": { "hi": 1.06, "lo": 0.94 } },
+            {
+              "name": "z_shape",
+              "type": "histosys",
+              "data": { "hi_data": [13.5, 11.5], "lo_data": [10.5, 8.5] }
+            }
+          ]
+        },
+        {
+          "name": "rare",
+          "data": [3.5, 2.5],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "rare_norm", "type": "normsys", "data": { "hi": 1.12, "lo": 0.88 } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "VRMix",
+      "samples": [
+        {
+          "name": "top",
+          "data": [82.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "top_norm", "type": "normsys", "data": { "hi": 1.08, "lo": 0.92 } },
+            {
+              "name": "top_shape",
+              "type": "histosys",
+              "data": { "hi_data": [90.0], "lo_data": [75.0] }
+            }
+          ]
+        },
+        {
+          "name": "zjets",
+          "data": [27.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "z_norm", "type": "normsys", "data": { "hi": 1.06, "lo": 0.94 } },
+            {
+              "name": "z_shape",
+              "type": "histosys",
+              "data": { "hi_data": [29.0], "lo_data": [25.0] }
+            }
+          ]
+        },
+        {
+          "name": "rare",
+          "data": [5.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "rare_norm", "type": "normsys", "data": { "hi": 1.12, "lo": 0.88 } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CRTop",
+      "samples": [
+        {
+          "name": "top",
+          "data": [210.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "top_norm", "type": "normsys", "data": { "hi": 1.08, "lo": 0.92 } },
+            {
+              "name": "top_shape",
+              "type": "histosys",
+              "data": { "hi_data": [222.0], "lo_data": [198.0] }
+            }
+          ]
+        },
+        {
+          "name": "rare",
+          "data": [11.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "rare_norm", "type": "normsys", "data": { "hi": 1.12, "lo": 0.88 } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CRZ",
+      "samples": [
+        {
+          "name": "zjets",
+          "data": [190.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "z_norm", "type": "normsys", "data": { "hi": 1.06, "lo": 0.94 } },
+            {
+              "name": "z_shape",
+              "type": "histosys",
+              "data": { "hi_data": [201.0], "lo_data": [179.0] }
+            }
+          ]
+        },
+        {
+          "name": "rare",
+          "data": [7.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "rare_norm", "type": "normsys", "data": { "hi": 1.12, "lo": 0.88 } }
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [
+    { "name": "SRLow", "data": [110.0, 81.0] },
+    { "name": "SRHigh", "data": [52.0, 39.0] },
+    { "name": "VRMix", "data": [116.0] },
+    { "name": "CRTop", "data": [220.0] },
+    { "name": "CRZ", "data": [198.0] }
+  ],
+  "measurements": [
+    {
+      "name": "measurement",
+      "config": {
+        "poi": "mu",
+        "parameters": [
+          {
+            "name": "lumi",
+            "inits": [1.0],
+            "bounds": [[0.9, 1.1]],
+            "auxdata": [1.0],
+            "sigmas": [0.015]
+          }
+        ]
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": "nextstat_beta_binomial_prior_sensitivity_campaign_v0",
+  "variants": [
+    {
+      "id": "skeptical",
+      "control_prior": {
+        "alpha": 1.0,
+        "beta": 1.0
+      },
+      "treatment_prior": {
+        "alpha": 1.0,
+        "beta": 8.0
+      }
+    },
+    {
+      "id": "enthusiastic",
+      "control_prior": {
+        "alpha": 1.0,
+        "beta": 1.0
+      },
+      "treatment_prior": {
+        "alpha": 8.0,
+        "beta": 1.0
+      }
+    }
+  ]
+}

@@ -339,6 +339,13 @@ pub fn modifiers_to_record_batch(
                         data_lo_b.append_null();
                         data_b.append_null();
                     }
+                    Modifier::TemplateMorphing { name, .. } => {
+                        mod_name_b.append_value(name);
+                        mod_type_b.append_value("template_morphing");
+                        data_hi_b.append_null();
+                        data_lo_b.append_null();
+                        data_b.append_null();
+                    }
                     Modifier::Unknown(val) => {
                         let name = val.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
                         mod_name_b.append_value(name);

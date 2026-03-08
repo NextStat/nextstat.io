@@ -201,8 +201,18 @@ jobs:
           fi
           "${args[@]}"
 
+      - name: Check snapshot registry freshness
+        run: |
+          set -euo pipefail
+          python scripts/write_snapshot_registry.py \
+            --snapshots-root manifests/snapshots \
+            --out manifests/snapshot_registry.json \
+            --check
+
       - name: Upload snapshot artifacts
         uses: actions/upload-artifact@v4
         with:
           name: snapshot-${{ inputs.snapshot_id }}
-          path: manifests/snapshots/${{ inputs.snapshot_id }}/
+          path: |
+            manifests/snapshots/${{ inputs.snapshot_id }}/
+            manifests/snapshot_registry.json

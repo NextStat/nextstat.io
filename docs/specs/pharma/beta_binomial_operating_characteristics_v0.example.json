@@ -1,0 +1,55 @@
+{
+  "schema_version": "nextstat_beta_binomial_operating_characteristics_v0",
+  "stability": "research-grade",
+  "design_id": "binary_superiority_demo",
+  "n_replicates": 32,
+  "seed": 123,
+  "scenarios": [
+    {
+      "scenario_id": "null",
+      "p_control": 0.4,
+      "p_treatment": 0.4,
+      "success_rate": 0.0625,
+      "futility_rate": 0.28125,
+      "no_decision_rate": 0.65625,
+      "expected_total_sample_size": 71.25,
+      "look_summaries": [
+        {
+          "look_id": "interim",
+          "stop_probability": 0.21875,
+          "success_probability": 0.03125,
+          "futility_probability": 0.1875
+        },
+        {
+          "look_id": "final",
+          "stop_probability": 0.125,
+          "success_probability": 0.03125,
+          "futility_probability": 0.09375
+        }
+      ]
+    },
+    {
+      "scenario_id": "alt",
+      "p_control": 0.4,
+      "p_treatment": 0.6,
+      "success_rate": 0.65625,
+      "futility_rate": 0.0,
+      "no_decision_rate": 0.34375,
+      "expected_total_sample_size": 66.25,
+      "look_summaries": [
+        {
+          "look_id": "interim",
+          "stop_probability": 0.34375,
+          "success_probability": 0.34375,
+          "futility_probability": 0.0
+        },
+        {
+          "look_id": "final",
+          "stop_probability": 0.3125,
+          "success_probability": 0.3125,
+          "futility_probability": 0.0
+        }
+      ]
+    }
+  ]
+}

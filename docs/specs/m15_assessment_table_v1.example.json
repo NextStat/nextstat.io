@@ -1,0 +1,84 @@
+{
+  "deterministic": true,
+  "entries": [
+    {
+      "consequence_of_wrong_decision": "high",
+      "context_of_use": "Support model-informed dose selection for the renal impairment section of the clinical pharmacology package.",
+      "evidence_refs": [
+        {
+          "artifact_type": "validation_report",
+          "path": "validation_report.json",
+          "role": "cross-suite deterministic validation",
+          "sha256": "47b43b284ed2a43fcd9c41085c389d80770cb5144224fec43bd3c11a29e0b19a"
+        },
+        {
+          "artifact_type": "pharma_validation",
+          "path": "pharma_validation.json",
+          "role": "pharma IQ/OQ/PQ evidence",
+          "sha256": "4c07a24b39c89d063b8284d231c566c04b5efeafd29b14cccd24d1e9a881b777"
+        }
+      ],
+      "justification": "Context of use: Support model-informed dose selection for the renal impairment section of the clinical pharmacology package. Model influence is high and consequence of wrong decision is high. Validation report overall status is pass and pharma validation status is ok.",
+      "model_impact": "high",
+      "model_influence": "high",
+      "model_risk": "high",
+      "qoi_id": "QOI-001",
+      "question_of_interest": "Can the population PK model support dose adjustment recommendations for adults with moderate renal impairment?",
+      "recommended_reporting_level": "full"
+    },
+    {
+      "consequence_of_wrong_decision": "high",
+      "context_of_use": "Support simulation-backed dosing rationale in regulatory briefing materials.",
+      "evidence_refs": [
+        {
+          "artifact_type": "validation_report",
+          "path": "validation_report.json",
+          "role": "cross-suite deterministic validation",
+          "sha256": "47b43b284ed2a43fcd9c41085c389d80770cb5144224fec43bd3c11a29e0b19a"
+        },
+        {
+          "artifact_type": "pharma_validation",
+          "path": "pharma_validation.json",
+          "role": "pharma IQ/OQ/PQ evidence",
+          "sha256": "4c07a24b39c89d063b8284d231c566c04b5efeafd29b14cccd24d1e9a881b777"
+        }
+      ],
+      "justification": "Context of use: Support simulation-backed dosing rationale in regulatory briefing materials. Model influence is medium and consequence of wrong decision is high. Validation report overall status is pass and pharma validation status is ok.",
+      "model_impact": "high",
+      "model_influence": "medium",
+      "model_risk": "high",
+      "qoi_id": "QOI-002",
+      "question_of_interest": "Can exposure simulations justify that a reduced maintenance dose preserves target exposure in the evaluated subgroup?",
+      "recommended_reporting_level": "full"
+    }
+  ],
+  "generated_at": null,
+  "jurisdiction_profile": "ich_core",
+  "product_context": {
+    "compound_name": "NST-101",
+    "indication": "Dose optimization in moderate renal impairment",
+    "program_name": "NST-101 Renal PK Bridge",
+    "sponsor": "NextStat Biotech"
+  },
+  "profile_requirements": {
+    "canonical_reference": "ICH M15 core cross-jurisdiction framing for model-informed drug development reporting.",
+    "framing_heading": "ICH Core Assessment Framing",
+    "framing_text": "Use cross-jurisdiction ICH wording for the question of interest, context of use, model influence, and consequence framing.",
+    "mandatory_sections": [
+      "Questions of Interest",
+      "Mandatory Sections",
+      "ICH Core Assessment Framing",
+      "Evidence Refs"
+    ],
+    "profile_label": "ICH Core"
+  },
+  "review_status": "reviewed",
+  "schema_version": "m15_assessment_table_v1",
+  "source_config_sha256": "1f7935940139d0629330a45796457a1c729d5f6abf5508fe0bf155f1a564cc0d",
+  "summary": {
+    "highest_model_impact": "high",
+    "highest_model_risk": "high",
+    "n_entries": 2,
+    "unresolved_items": 0
+  }
+}

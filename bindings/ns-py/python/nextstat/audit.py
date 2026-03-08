@@ -32,6 +32,14 @@ def _file_size(path: Path) -> int:
     return int(path.stat().st_size)
 
 
+def _canonicalize_json(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {key: _canonicalize_json(value[key]) for key in sorted(value)}
+    if isinstance(value, list):
+        return [_canonicalize_json(item) for item in value]
+    return value
+
+
 def _ensure_empty_dir(dir_path: Path) -> None:
     if dir_path.exists():
         if not dir_path.is_dir():
@@ -43,8 +51,6 @@ def _ensure_empty_dir(dir_path: Path) -> None:
 
 
 def _json_pretty_bytes(obj: Any) -> bytes:
-    # Stable within Python by deterministic dict construction + sorted lists where needed.
-    # We do not sort keys globally to preserve semantic ordering (and to mirror CLI bundles).
     s = json.dumps(obj, indent=2)
     return (s + "\n").encode("utf-8")
 
@@ -132,6 +138,20 @@ class BundleMeta:
     env: Dict[str, Any]
 
 
+def _write_manifest(bundle_dir: Path) -> None:
+    files: List[Dict[str, Any]] = []
+    for path in sorted(bundle_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(bundle_dir).as_posix()
+        if rel == "manifest.json":
+            continue
+        files.append({"path": rel, "bytes": _file_size(path), "sha256": _sha256_file(path)})
+
+    manifest = {"bundle_version": 1, "files": files}
+    (bundle_dir / "manifest.json").write_bytes(_json_pretty_bytes(manifest))
+
+
 def write_bundle(
     bundle_dir: str | Path,
     *,
@@ -140,6 +160,7 @@ def write_bundle(
     input_path: str | Path,
     output_value: Any,
     tool_version: Optional[str] = None,
+    deterministic: bool = False,
 ) -> None:
     """Write a reproducible run bundle (Python mirror of `ns-cli --bundle`).
 
@@ -185,13 +206,13 @@ def write_bundle(
     except Exception:
         ns_version = "0.0.0"
 
-    created_unix_ms = int(time.time() * 1000.0)
+    created_unix_ms = 0 if deterministic else int(time.time() * 1000.0)
     meta = BundleMeta(
         tool="nextstat",
         tool_version=(str(tool_version) if tool_version is not None else str(ns_version)),
         created_unix_ms=created_unix_ms,
         command=str(command),
-        args=args,
+        args=_canonicalize_json(args),
         input=BundleInputMeta(
             original_path=str(in_path),
             input_sha256=input_sha256,
@@ -205,19 +226,11 @@ def write_bundle(
     meta_path.write_bytes(_json_pretty_bytes(_as_json(meta)))
 
     out_path = outputs_dir / "result.json"
-    out_path.write_bytes(_json_pretty_bytes(output_value))
+    out_path.write_bytes(
+        _json_pretty_bytes(_canonicalize_json(output_value) if deterministic else output_value)
+    )
 
-    files: List[Dict[str, Any]] = []
-    for rel in ["meta.json", "inputs/input.json", "outputs/result.json"]:
-        p = bdir / rel
-        files.append({"path": rel, "bytes": _file_size(p), "sha256": _sha256_file(p)})
-    for rel in ["inputs/model_spec.json", "inputs/data.json"]:
-        p = bdir / rel
-        if p.exists():
-            files.append({"path": rel, "bytes": _file_size(p), "sha256": _sha256_file(p)})
-
-    manifest = {"bundle_version": 1, "files": files}
-    (bdir / "manifest.json").write_bytes(_json_pretty_bytes(manifest))
+    _write_manifest(bdir)
 
 
 def _as_json(meta: BundleMeta) -> Dict[str, Any]:
@@ -247,4 +260,3 @@ __all__ = [
     "environment_fingerprint",
     "write_bundle",
 ]
-

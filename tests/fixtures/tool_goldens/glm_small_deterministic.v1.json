@@ -1,0 +1,29 @@
+{
+  "case_name": "glm_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_glm_fit": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_glm_fit"
+      },
+      "ok": true,
+      "result": {
+        "coef": [
+          1.229523809523807,
+          1.8952380952380963
+        ],
+        "family": "linear",
+        "sigma2_hat": 0.06559939531368018,
+        "standard_errors": [
+          0.195218146944691,
+          0.07904151730860011
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

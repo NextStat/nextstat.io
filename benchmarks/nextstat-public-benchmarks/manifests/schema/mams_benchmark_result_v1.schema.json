@@ -11,6 +11,7 @@
     "backend",
     "deterministic",
     "status",
+    "environment",
     "meta",
     "dataset",
     "config",
@@ -25,6 +26,7 @@
     "deterministic": { "type": "boolean" },
     "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
     "reason": { "type": "string" },
+    "environment": { "type": "object", "additionalProperties": true },
     "meta": {
       "type": "object",
       "additionalProperties": true,

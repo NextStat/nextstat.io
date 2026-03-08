@@ -59,7 +59,7 @@ class ExecCfg:
 
 
 class ServerTools:
-    def __init__(self, *, server_url: str, exec_cfg: ExecCfg):
+    def __init__(self, *, server_url: str, api_key: Optional[str], exec_cfg: ExecCfg):
         try:
             import httpx  # type: ignore
         except Exception as e:
@@ -67,12 +67,23 @@ class ServerTools:
 
         self._httpx = httpx
         self.server_url = server_url.rstrip("/")
+        self.api_key = api_key.strip() if api_key else None
         self.exec_cfg = exec_cfg
         self.calls: list[dict[str, Any]] = []
         self._idx = 0
 
+    def _headers(self) -> dict[str, str]:
+        if not self.api_key:
+            return {}
+        return {"Authorization": f"Bearer {self.api_key}"}
+
     def _post(self, path: str, payload: dict[str, Any], *, timeout_s: float = 30.0) -> dict[str, Any]:
-        r = self._httpx.post(self.server_url + path, json=payload, timeout=timeout_s)
+        r = self._httpx.post(
+            self.server_url + path,
+            json=payload,
+            timeout=timeout_s,
+            headers=self._headers(),
+        )
         r.raise_for_status()
         obj = r.json()
         if not isinstance(obj, dict):
@@ -96,7 +107,11 @@ class ServerTools:
         last_err: Optional[str] = None
         while True:
             try:
-                obj = self._httpx.get(self.server_url + "/v1/tools/schema", timeout=5.0).json()
+                obj = self._httpx.get(
+                    self.server_url + "/v1/tools/schema",
+                    timeout=5.0,
+                    headers=self._headers(),
+                ).json()
                 if isinstance(obj, dict) and isinstance(obj.get("tools"), list):
                     return
                 last_err = "schema response missing tools[]"
@@ -243,6 +258,12 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out-dir", default="demos/physics_assistant/out/docker_agent", help="Output directory.")
     ap.add_argument("--server-url", default=os.environ.get("NEXTSTAT_SERVER_URL", "http://server:3742"))
+    ap.add_argument(
+        "--api-key",
+        default=os.environ.get("NEXTSTAT_SERVER_API_KEY") or os.environ.get("NEXTSTAT_TOOLS_API_KEY"),
+        help="Bearer token for auth-enabled server mode. "
+        "If omitted, NEXTSTAT_SERVER_API_KEY / NEXTSTAT_TOOLS_API_KEY are checked.",
+    )
 
     ap.add_argument("--root-path", default="tests/fixtures/trex_exports/tttt-prod/data.root")
     ap.add_argument("--channel", default="SR_AllBDT", help="TREx export channel name (used in hist prefix).")
@@ -258,7 +279,7 @@ def main() -> int:
     root_sha256 = _sha256_file(Path(root_path))
 
     exec_cfg = ExecCfg(deterministic=True, eval_mode="parity", threads=1)
-    tools = ServerTools(server_url=str(args.server_url), exec_cfg=exec_cfg)
+    tools = ServerTools(server_url=str(args.server_url), api_key=args.api_key, exec_cfg=exec_cfg)
     tools.wait_ready(timeout_s=60.0)
 
     # The TREx export fixture uses a simple histogram naming convention.

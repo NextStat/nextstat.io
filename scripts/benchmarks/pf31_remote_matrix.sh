@@ -17,10 +17,10 @@ set -euo pipefail
 #   PF31_LOCAL_DIR (local artifact dir)
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PF31_HOST="${PF31_HOST:-88.198.23.172}"
+PF31_HOST="${PF31_HOST:?PF31_HOST must be set}"
 PF31_PORT="${PF31_PORT:-22}"
 PF31_USER="${PF31_USER:-root}"
-PF31_KEY="${PF31_KEY:-$HOME/.ssh/rundesk_hetzner}"
+PF31_KEY="${PF31_KEY:?PF31_KEY must be set}"
 PF31_BIN="${PF31_BIN:-/workspace/nextstat.io/target/release/nextstat}"
 PF31_SPEC="${PF31_SPEC:-/workspace/nextstat.io/benchmarks/unbinned/specs/pf31_gauss_exp_10k.json}"
 PF31_TOYS="${PF31_TOYS:-10000,50000,100000}"

@@ -4,73 +4,22 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  # ── Gate: test, lint, version check ──────────────────────────
-  test:
-    name: Pre-release validation
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+  release-candidate:
+    name: Release Candidate
+    uses: ./.github/workflows/release-candidate.yml
+    with:
+      release_tag: ${{ github.ref_name }}
+      release_mode: publish
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.93.0"
-          components: clippy, rustfmt
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Validate version matches tag
-        if: startsWith(github.ref, 'refs/tags/v')
-        shell: bash
-        run: |
-          TAG="${GITHUB_REF#refs/tags/v}"
-          CARGO_VER=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-          if [ "$TAG" != "$CARGO_VER" ]; then
-            echo "::error::Tag v$TAG does not match Cargo.toml version $CARGO_VER"
-            exit 1
-          fi
-          echo "Version $CARGO_VER matches tag v$TAG"
-
-          # Validate Python package versions match the tag
-          for toml in bindings/ns-py/pyproject.toml bindings/ns-cli-py/pyproject.toml; do
-            PY_VER=$(grep '^version' "$toml" | head -1 | sed 's/.*"\(.*\)"/\1/')
-            if [ "$TAG" != "$PY_VER" ]; then
-              echo "::error::Tag v$TAG does not match $toml version $PY_VER"
-              exit 1
-            fi
-            echo "$toml version $PY_VER matches tag v$TAG"
-          done
-
-          # Validate nextstat-cli pin in ns-py matches the tag
-          CLI_PIN=$(grep 'nextstat-cli==' bindings/ns-py/pyproject.toml | sed 's/.*==\(.*\)".*/\1/')
-          if [ "$TAG" != "$CLI_PIN" ]; then
-            echo "::error::nextstat-cli pin ($CLI_PIN) in ns-py/pyproject.toml does not match tag v$TAG"
-            exit 1
-          fi
-          echo "nextstat-cli pin $CLI_PIN matches tag v$TAG"
-
-      - name: Check formatting
-        run: cargo fmt --all --check
-
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Tests
-        run: cargo test --workspace
-
-  # ── crates.io publish (optional, needs CARGO_REGISTRY_TOKEN secret) ────────
   crates-io-publish:
     name: Publish to crates.io
-    needs: [test]
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    needs: [release-candidate]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -102,7 +51,6 @@ jobs:
             local crate="$1"
             echo "Publishing ${crate}…"
             cargo publish -p "${crate}"
-            # Allow crates.io index propagation for downstream crates.
             sleep 20
           }
 
@@ -115,365 +63,10 @@ jobs:
           publish ns-viz
           publish ns-cli
 
-  # ── Python wheels (multi-arch) ───────────────────────────────
-  # Builds wheels for every supported Python (3.11-3.14) on every platform.
-  # Linux: manylinux_2_17 Docker container (has all interpreters pre-installed).
-  # macOS/Windows: setup-python installs interpreters, --find-interpreter finds them.
-  wheels:
-    name: Wheel (${{ matrix.target }})
-    needs: [test]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-          - os: macos-14
-            target: aarch64-apple-darwin
-          - os: macos-14
-            target: x86_64-apple-darwin
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python interpreters
-        if: runner.os != 'Linux'
-        uses: actions/setup-python@v5
-        with:
-          python-version: |
-            3.11
-            3.12
-            3.13
-            3.14
-
-      - name: Build wheel
-        uses: PyO3/maturin-action@v1
-        with:
-          working-directory: bindings/ns-py
-          target: ${{ matrix.target }}
-          command: build
-          args: --release --out dist --find-interpreter
-          manylinux: "2_17"
-
-      - name: Upload wheel
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-${{ matrix.target }}
-          path: bindings/ns-py/dist/*.whl
-
-  # ── Source distribution ──────────────────────────────────────
-  sdist:
-    name: Source distribution
-    needs: [test]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build sdist
-        uses: PyO3/maturin-action@v1
-        with:
-          working-directory: bindings/ns-py
-          command: sdist
-          args: --out dist
-
-      - name: Upload sdist
-        uses: actions/upload-artifact@v4
-        with:
-          name: sdist
-          path: bindings/ns-py/dist/*.tar.gz
-
-  # ── CLI Python wheels (maturin bindings=bin) ─────────────────
-  # Produces py3-none-{platform} wheels — one per platform, no per-Python builds.
-  cli-wheels:
-    name: CLI wheel (${{ matrix.target }})
-    needs: [test]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-          - os: macos-14
-            target: aarch64-apple-darwin
-          - os: macos-14
-            target: x86_64-apple-darwin
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build CLI wheel
-        uses: PyO3/maturin-action@v1
-        with:
-          working-directory: bindings/ns-cli-py
-          target: ${{ matrix.target }}
-          command: build
-          args: --release --out dist
-          manylinux: "2_17"
-
-      - name: Upload CLI wheel
-        uses: actions/upload-artifact@v4
-        with:
-          name: cli-wheels-${{ matrix.target }}
-          path: bindings/ns-cli-py/dist/*.whl
-
-  # ── CLI source distribution ────────────────────────────────
-  cli-sdist:
-    name: CLI source distribution
-    needs: [test]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build CLI sdist
-        uses: PyO3/maturin-action@v1
-        with:
-          working-directory: bindings/ns-cli-py
-          command: sdist
-          args: --out dist
-
-      - name: Upload CLI sdist
-        uses: actions/upload-artifact@v4
-        with:
-          name: cli-sdist
-          path: bindings/ns-cli-py/dist/*.tar.gz
-
-  # ── CLI binaries (standalone, for GitHub Release) ───────────
-  cli:
-    name: CLI (${{ matrix.target }})
-    needs: [test]
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - os: macos-14
-            target: aarch64-apple-darwin
-          - os: macos-14
-            target: x86_64-apple-darwin
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.93.0"
-          targets: ${{ matrix.target }}
-
-      - name: Cache cargo
-        uses: Swatinem/rust-cache@v2
-
-      - name: Build CLI binary
-        run: cargo build --release -p ns-cli --target ${{ matrix.target }}
-        env:
-          CARGO_TARGET_DIR: target
-
-      - name: Package binary
-        shell: bash
-        run: |
-          mkdir -p dist
-          BIN="target/${{ matrix.target }}/release/nextstat"
-          if [ ! -f "$BIN" ]; then
-            BIN="target/release/nextstat"
-          fi
-          cp "$BIN" dist/nextstat-${{ matrix.target }}
-
-      - name: Upload binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: cli-${{ matrix.target }}
-          path: dist/nextstat-*
-
-  # ── Whitepaper PDF ───────────────────────────────────────────
-  whitepaper:
-    name: Whitepaper PDF
-    needs: [test]
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Build PDF
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            VER="${GITHUB_REF#refs/tags/v}"
-            python3 scripts/build_whitepaper.py --version "$VER"
-          else
-            python3 scripts/build_whitepaper.py
-          fi
-
-      - name: Upload PDF artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: whitepaper
-          path: dist/whitepaper/*
-
-  # ── Validation Pack (Apex2 + workspace fingerprint) ──────────
-  validation-pack:
-    name: Validation Pack
-    needs: [wheels, cli]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Download wheel (linux x86_64)
-        uses: actions/download-artifact@v4
-        with:
-          name: wheels-x86_64-unknown-linux-gnu
-          path: dist
-
-      - name: Download CLI (linux x86_64)
-        uses: actions/download-artifact@v4
-        with:
-          name: cli-x86_64-unknown-linux-gnu
-          path: dist
-
-      - name: Install Python package + deps
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m pip install --upgrade pip
-          WHEEL="$(find dist -name '*cp312*.whl' | head -n 1)"
-          if [[ -z "${WHEEL}" ]]; then
-            echo "::error::No .whl found under dist/"
-            exit 1
-          fi
-          # --no-deps: nextstat-cli is not yet on PyPI at this stage;
-          # the standalone CLI binary is downloaded separately above.
-          pip install --no-deps "${WHEEL}"
-          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "uproot>=5.0" "tqdm>=4.0" "matplotlib>=3.9" "jsonschema>=4.0"
-
-      - name: Render validation pack (JSON + PDF)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts
-          NEXTSTAT_BIN="$(find dist -name 'nextstat-*' -type f ! -name '*.whl' | head -n 1)"
-          if [[ -z "${NEXTSTAT_BIN}" ]]; then
-            echo "::error::No nextstat CLI found under dist/"
-            exit 1
-          fi
-          chmod +x "${NEXTSTAT_BIN}"
-          set +e
-          make validation-pack \
-            VALIDATION_PACK_OUT_DIR=artifacts \
-            VALIDATION_PACK_WORKSPACE=tests/fixtures/complex_workspace.json \
-            VALIDATION_PACK_ARGS="--python python --nextstat-bin ${NEXTSTAT_BIN} --deterministic"
-          MAKE_RC=$?
-          set -e
-          if [[ ! -f "artifacts/validation_report.json" ]]; then
-            echo "::error::Validation report not generated (make rc=$MAKE_RC)"
-            exit 1
-          fi
-          if [[ "$MAKE_RC" != "0" ]]; then
-            echo "::warning::make validation-pack exited rc=$MAKE_RC but all outputs generated"
-          fi
-
-      - name: Validate validation report schema
-        shell: bash
-        run: |
-          set -euo pipefail
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          import jsonschema
-
-          schema = json.loads(Path("docs/schemas/validation/validation_report_v1.schema.json").read_text())
-          inst = json.loads(Path("artifacts/validation_report.json").read_text())
-          jsonschema.validate(inst, schema)
-          print("validation_report_v1: schema ok")
-          PY
-
-      - name: Compare validation pack determinism (Apex2 master input)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts2
-          NEXTSTAT_BIN="$(find dist -name 'nextstat-*' -type f ! -name '*.whl' | head -n 1)"
-          chmod +x "${NEXTSTAT_BIN}"
-
-          # Re-render using the exact Apex2 master JSON output and ensure JSON+PDF+manifest are bit-identical.
-          # Copy pharma_validation.json from first render (FOCE/SAEM is non-deterministic between runs).
-          if [[ -f artifacts/pharma_validation.json ]]; then
-            cp artifacts/pharma_validation.json artifacts2/pharma_validation.json
-          fi
-          set +e
-          make validation-pack \
-            VALIDATION_PACK_OUT_DIR=artifacts2 \
-            VALIDATION_PACK_WORKSPACE=tests/fixtures/complex_workspace.json \
-            VALIDATION_PACK_ARGS="--apex2-master artifacts/apex2_master_report.json --python python --nextstat-bin ${NEXTSTAT_BIN} --deterministic --skip-pharma-validation"
-          MAKE_RC=$?
-          set -e
-          if [[ ! -f "artifacts2/validation_report.json" ]]; then
-            echo "::error::Determinism re-render failed (make rc=$MAKE_RC)"
-            exit 1
-          fi
-          if [[ "$MAKE_RC" != "0" ]]; then
-            echo "::warning::make validation-pack (determinism) exited rc=$MAKE_RC but outputs generated"
-          fi
-
-          sha256sum artifacts/validation_report.json artifacts2/validation_report.json
-          sha256sum artifacts/validation_report.pdf artifacts2/validation_report.pdf
-          sha256sum artifacts/validation_pack_manifest.json artifacts2/validation_pack_manifest.json
-
-          test "$(sha256sum artifacts/validation_report.json | awk '{print $1}')" = "$(sha256sum artifacts2/validation_report.json | awk '{print $1}')"
-          test "$(sha256sum artifacts/validation_report.pdf | awk '{print $1}')" = "$(sha256sum artifacts2/validation_report.pdf | awk '{print $1}')"
-          test "$(sha256sum artifacts/validation_pack_manifest.json | awk '{print $1}')" = "$(sha256sum artifacts2/validation_pack_manifest.json | awk '{print $1}')"
-
-      - name: Write snapshot index (artifact hashes)
-        shell: bash
-        run: |
-          set -euo pipefail
-          # Digest the manifest itself (stdlib-only). This is useful for audit trails even without signatures.
-          python - <<'PY'
-          import hashlib
-          from pathlib import Path
-
-          inp = Path("artifacts/validation_pack_manifest.json")
-          h = hashlib.sha256(inp.read_bytes()).hexdigest()
-          Path("artifacts/validation_pack_manifest.sha256").write_text(h + "\n", encoding="utf-8")
-          Path("artifacts/validation_pack_manifest.sha256.bin").write_bytes(bytes.fromhex(h))
-          print("validation_pack_manifest: sha256 ok")
-          PY
-
-          python3 scripts/benchmarks/write_snapshot_index.py \
-            --suite release-validation-pack \
-            --artifacts-dir artifacts \
-            --out artifacts/snapshot_index.json
-
-      - name: Upload validation pack
-        uses: actions/upload-artifact@v4
-        with:
-          name: validation-pack
-          path: artifacts/*
-
-  # ── GitHub Release ───────────────────────────────────────────
   github-release:
     name: GitHub Release
-    needs: [wheels, cli, sdist, cli-wheels, cli-sdist, whitepaper, validation-pack]
+    needs: [release-candidate]
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -489,7 +82,6 @@ jobs:
         shell: bash
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
-          # Extract the section for this version, or fall back to Unreleased
           BODY=$(awk -v ver="$TAG" '
             /^## \[/ {
               if (found) exit
@@ -501,7 +93,6 @@ jobs:
           if [ -z "$BODY" ]; then
             BODY="Release v${TAG}"
           fi
-          # Write to file to preserve newlines
           echo "$BODY" > /tmp/release_notes.md
 
       - name: Publish GitHub Release
@@ -512,6 +103,11 @@ jobs:
             dist/**/*.whl
             dist/**/*.tar.gz
             dist/cli-*/nextstat-*
+            dist/**/release_candidate_bundle_manifest.json
+            dist/**/release_candidate_bundle_manifest.md
+            dist/**/release_manifest.json
+            dist/**/release_manifest.md
+            dist/**/release_manifest_v1.schema.json
             dist/**/nextstat-whitepaper-*.pdf
             dist/**/nextstat-whitepaper-*.pdf.sha256
             dist/**/apex2_master_report.json
@@ -522,8 +118,37 @@ jobs:
             dist/**/validation_pack_manifest.sha256
             dist/**/validation_pack_manifest.sha256.bin
             dist/**/snapshot_index.json
+            dist/**/m15_config.json
+            dist/**/m15_assessment_table.json
+            dist/**/m15_map.json
+            dist/**/m15_mar.json
+            dist/**/m15_profile_diff_report.json
+            dist/**/m15_profile_diff_report_v1.schema.json
+            dist/**/m15_report.md
+            dist/**/m15_report.pdf
+            dist/**/m15_report.docx
+            dist/**/m15_bundle_manifest.json
+            dist/**/m15_bundle_manifest_v1.schema.json
+            dist/**/m15_bundle_manifest.sha256
+            dist/**/m15_bundle_manifest.sha256.bin
+            dist/**/m15_snapshot_index.json
+            dist/**/m15_reporting_benchmark.json
+            dist/**/m15_reporting_benchmark.md
+            dist/**/m15_reporting_compare.json
+            dist/**/apex2_simplified_likelihood_report.json
+            dist/**/export_benchmark_snapshot_report.json
+            dist/**/export_public_validation_report.json
+            dist/**/promotion_evidence.json
+            dist/**/promotion_evidence_check.json
+            dist/**/promotion_bundle_promotion_report.json
+            dist/**/stable_review_assessment.json
+            dist/**/stable_evidence_policy.json
+            dist/**/stable_evidence_freshness_report.json
+            dist/**/stable_source_semantics_boundary.json
+            dist/**/stable_candidate_blocker_matrix.json
+            dist/**/stable_candidate_review_packet.json
+            dist/**/stable_promotion_decision.json
 
-  # ── PyPI publish: nextstat-cli (must land first) ─────────────
   pypi-publish-cli:
     name: Publish nextstat-cli to PyPI
     needs: [github-release]
@@ -551,7 +176,6 @@ jobs:
         with:
           packages-dir: dist/
 
-  # ── PyPI publish: nextstat (depends on nextstat-cli) ────────
   pypi-publish:
     name: Publish nextstat to PyPI
     needs: [github-release, pypi-publish-cli]

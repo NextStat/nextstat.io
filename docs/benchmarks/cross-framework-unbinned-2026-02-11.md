@@ -3,7 +3,7 @@ title: "Cross-Framework Unbinned Likelihood Benchmark Report"
 date: 2026-02-11
 revision: 3
 status: final
-hardware: Hetzner GEX44 (i5-13500)
+hardware: Hetzner dedicated-bench (i5-13500)
 ---
 
 # Cross-Framework Unbinned Likelihood Benchmark Report
@@ -24,7 +24,7 @@ wall-to-wall and warm fit-only timing) is published at:
 
 | Property | Value |
 |----------|-------|
-| **Server** | Hetzner Dedicated (GEX44 class) |
+| **Server** | Hetzner Dedicated (dedicated-bench class) |
 | **CPU** | 13th Gen Intel Core i5-13500 (14C/20T, P-core max 4.8 GHz) |
 | **Microarchitecture** | Raptor Lake (P-cores: Raptor Cove, E-cores: Gracemont) |
 | **ISA extensions** | SSE4.2, AVX2, AVX-VNNI, FMA, SHA-NI, AES-NI |
@@ -287,7 +287,7 @@ NextStat ↔ zfit: **< 10⁻⁴** on all parameters (larger due to TF f32 interm
 
 Separate from the cross-framework suite. Measures raw NLL evaluation and
 MLE fit cost using Rust's Criterion framework (50 samples, warm-up, statistical analysis)
-on Hetzner GEX44.
+on Hetzner dedicated-bench.
 
 **Gaussian + Exponential** (fused SIMD kernel):
 
@@ -393,7 +393,7 @@ only against RooFit and zfit.
 All runs use the **same NextStat binary** (built from the same commit):
 
 ```bash
-# 1. Build NextStat (release, on Hetzner GEX44)
+# 1. Build NextStat (release, on Hetzner dedicated-bench)
 cd $NEXTSTAT_ROOT
 git pull --ff-only
 cargo build --release -p ns-cli

@@ -1,0 +1,43 @@
+{
+  "aggregate": {
+    "families_with_mixed_pois": [],
+    "families_with_near_neutral_calibration": [
+      "topmass_only"
+    ],
+    "family_labels": [
+      "topmass_only"
+    ],
+    "family_with_highest_calibration_inflation": "topmass_only",
+    "family_with_highest_fit_inflation": "topmass_only",
+    "n_families": 1,
+    "n_total_artifacts": 1
+  },
+  "families": [
+    {
+      "artifact_labels": [
+        "topmass_full"
+      ],
+      "has_mixed_pois": false,
+      "highest_calibration_inflation_artifact": "topmass_full",
+      "highest_calibration_inflation_value": 1.1413389897265351,
+      "highest_fit_inflation_artifact": "topmass_full",
+      "highest_fit_inflation_value": 457.6276341964417,
+      "label": "topmass_only",
+      "labels_with_near_neutral_calibration": [
+        "topmass_full"
+      ],
+      "n_artifacts": 1,
+      "pois": [
+        "m_top"
+      ],
+      "shared_poi": "m_top"
+    }
+  ],
+  "pois": [
+    "m_top"
+  ],
+  "schema_version": "nextstat_measurement_combination_calibration_campaign_family_report_v0",
+  "shared_poi": "m_top",
+  "source_schema_version": "nextstat_measurement_combination_calibration_campaign_brief_v0",
+  "stability": "research-grade"
+}

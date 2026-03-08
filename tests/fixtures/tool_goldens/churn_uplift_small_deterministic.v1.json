@@ -1,0 +1,27 @@
+{
+  "case_name": "churn_uplift_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_churn_uplift": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_churn_uplift"
+      },
+      "ok": true,
+      "result": {
+        "ate": -0.18829778059620672,
+        "ci_lower": -1.112774121156808,
+        "ci_upper": 0.7361785599643945,
+        "gamma_critical": 1.0,
+        "horizon": 60.0,
+        "n_control": 4,
+        "n_treated": 4,
+        "se": 0.47167160232683736
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

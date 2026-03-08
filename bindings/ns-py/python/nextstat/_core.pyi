@@ -33,6 +33,7 @@ class SampleStats(TypedDict, total=False):
     energy: List[List[float]]
     step_size: List[float]
     n_leapfrog: List[List[int]]
+    n_leapfrog_warmup_total: List[int]
     metric_type: str
     mass_diag: List[float]
     inv_mass_matrix: List[float]
@@ -129,13 +130,70 @@ class UnbinnedHypotestResult(TypedDict):
     n_iter_hat: int
     n_iter_mu: int
 
-class WorkspaceAuditResult(TypedDict):
-    n_channels: int
-    n_samples: int
-    n_parameters: int
-    n_bins_total: int
-    modifiers: Dict[str, int]
-    unsupported: List[str]
+class WorkspaceAuditMeasurementInfo(TypedDict):
+    name: str
+    poi: str
+    n_fixed_params: int
+
+
+class PyhfWorkspaceAuditResult(TypedDict):
+    measurements: List[WorkspaceAuditMeasurementInfo]
+    modifier_types_used: Dict[str, int]
+    unsupported_features: List[str]
+    channel_count: int
+    total_bins: int
+    total_samples: int
+    total_modifiers: int
+    parameter_count_estimate: int
+
+
+class SimplifiedFactorizationDiagnosticsResult(TypedDict, total=False):
+    method: str
+    original_rank: int
+    retained_rank: int
+    explained_variance_fraction: float
+    frobenius_residual: float
+    clipped_negative_eigenvalues: int
+    max_clipped_negative_eigenvalue_magnitude: float
+    input_trace: float
+    retained_trace: float
+    stat_covariance_trace: Optional[float]
+    shared_systematic_trace: Optional[float]
+
+
+class SimplifiedFidelityDiagnosticsResult(TypedDict, total=False):
+    max_abs_yield_delta: Optional[float]
+    max_rel_yield_delta: Optional[float]
+
+
+class SimplifiedDiagnosticsResult(TypedDict):
+    factorization: Optional[SimplifiedFactorizationDiagnosticsResult]
+    fidelity: Optional[SimplifiedFidelityDiagnosticsResult]
+
+
+class SimplifiedWorkspaceAuditResult(TypedDict):
+    schema_version: str
+    input_schema_version: str
+    experiment: str
+    analysis_id: str
+    source_format: str
+    poi_name: str
+    channel_names: List[str]
+    channel_count: int
+    total_bins: int
+    has_signal: bool
+    uncertainty_model_kind: str
+    reduced_nuisance_count: int
+    parameter_count_estimate: int
+    total_observed_yield: float
+    total_background_yield: float
+    total_signal_yield: Optional[float]
+    input_has_factorization_diagnostics: bool
+    input_has_fidelity_diagnostics: bool
+    diagnostics: SimplifiedDiagnosticsResult
+
+
+WorkspaceAuditResult = Union[PyhfWorkspaceAuditResult, SimplifiedWorkspaceAuditResult]
 
 # ---------------------------------------------------------------------------
 # Structured return types for econometrics
@@ -224,19 +282,26 @@ class MetaAnalysisResult(TypedDict):
 
 class ChainLadderResult(TypedDict):
     development_factors: List[float]
-    full_triangle: List[List[float]]
-    reserves: List[float]
-    total_reserve: float
+    cumulative_factors: List[float]
+    ultimates: List[float]
+    ibnr: List[float]
+    latest: List[float]
+    total_ibnr: float
+    projected: List[List[float]]
 
 class MackChainLadderResult(TypedDict):
     development_factors: List[float]
-    full_triangle: List[List[float]]
-    reserves: List[float]
-    total_reserve: float
-    se_reserves: List[float]
-    se_total: float
-    ci_lower: List[float]
-    ci_upper: List[float]
+    sigma_sq: List[float]
+    ultimates: List[float]
+    ibnr: List[float]
+    latest: List[float]
+    se: List[float]
+    cv: List[float]
+    pi_lower: List[float]
+    pi_upper: List[float]
+    total_ibnr: float
+    total_se: float
+    conf_level: float
 
 # ---------------------------------------------------------------------------
 # Structured return types for survival
@@ -966,6 +1031,105 @@ class LmmMarginalModel:
     def suggested_bounds(self) -> List[Tuple[float, float]]: ...
 
 
+class BetaBinomialModel:
+    def __init__(self, alpha: float, beta: float) -> None: ...
+
+    @staticmethod
+    def fit(conversion_rates: List[float], sample_sizes: List[int]) -> BetaBinomialModel: ...
+
+    @staticmethod
+    def fit_from_counts(successes: List[int], trials: List[int]) -> BetaBinomialModel: ...
+
+    @property
+    def alpha(self) -> float: ...
+
+    @property
+    def beta(self) -> float: ...
+
+    def mean(self) -> float: ...
+    def variance(self) -> float: ...
+    def overdispersion(self) -> float: ...
+    def posterior(self, successes: int, trials: int) -> BetaBinomialModel: ...
+    def predictive_mean(self, trials: int) -> float: ...
+    def predictive_variance(self, trials: int) -> float: ...
+
+
+class DelayCorrectionModel:
+    def __init__(self, lambda_: float, lambda_se: Optional[float] = ...) -> None: ...
+
+    @staticmethod
+    def fit_from_lag_buckets(buckets: List[Tuple[float, int]]) -> DelayCorrectionModel: ...
+
+    @property
+    def lambda_(self) -> float: ...
+
+    @property
+    def lambda_se(self) -> Optional[float]: ...
+
+    def observed_fraction(self, window_days: float) -> float: ...
+    def correct(self, observed_count: float, window_days: float) -> Tuple[float, float]: ...
+
+
+VarianceReductionMethod = Literal["none", "cuped", "cure"]
+VarianceReductionSolver = Literal["svd", "ridge"]
+CovariateTiming = Literal["pre_treatment", "unknown", "post_treatment", "mixed"]
+
+
+class CovariateProvenance(TypedDict):
+    name: str
+    timing: CovariateTiming
+    source_dataset: Optional[str]
+
+
+class CupedAdjustmentResult(TypedDict):
+    method: VarianceReductionMethod
+    mean_control: float
+    mean_variant: float
+    adjusted_mean_control: float
+    adjusted_mean_variant: float
+    effect: float
+    theta: float
+    rho: float
+    r_squared: float
+    variance_reduction_factor: float
+    original_variance: float
+    adjusted_variance: float
+    effective_sample_multiplier: float
+    num_covariates: int
+    selected_covariates: List[str]
+    covariate_provenance: List[CovariateProvenance]
+    provenance_validated: bool
+    solver: VarianceReductionSolver
+    regression_rank: int
+    condition_number: Optional[float]
+    ridge_lambda: Optional[float]
+    pre_treatment_only: bool
+
+
+class CureAdjustmentResult(TypedDict):
+    method: VarianceReductionMethod
+    mean_control: float
+    mean_variant: float
+    adjusted_mean_control: float
+    adjusted_mean_variant: float
+    effect: float
+    theta: List[float]
+    r_squared: float
+    variance_reduction_factor: float
+    original_variance: float
+    adjusted_variance: float
+    effective_sample_multiplier: float
+    num_covariates: int
+    selected_covariates: List[str]
+    covariate_provenance: List[CovariateProvenance]
+    provenance_validated: bool
+    solver: VarianceReductionSolver
+    regression_rank: int
+    condition_number: Optional[float]
+    ridge_lambda: Optional[float]
+    pre_treatment_only: bool
+
+
 class KalmanModel:
     def __init__(
         self,
@@ -1334,6 +1498,128 @@ def workspace_combine(
     *,
     join: str = "none",
 ) -> str: ...
+def measurement_combine_build_spec_json(
+    measurements_table: str,
+    stat_covariance_table: str,
+    *,
+    poi: str = "mu",
+    systematics_table: Optional[str] = None,
+    correlations_table: Optional[str] = None,
+) -> str: ...
+def measurement_combine_build_spec_from_manifest_json(manifest_path: str) -> str: ...
+def measurement_combine_json(
+    spec_json: str, *, ci_level: float = 0.68, solver: str = "auto"
+) -> str: ...
+def beta_binomial_design_analyze_json(spec_json: str, observed_json: str) -> str: ...
+def beta_binomial_design_operating_characteristics_json(spec_json: str) -> str: ...
+def beta_binomial_design_posterior_predictive_json(spec_json: str, observed_json: str) -> str: ...
+def beta_binomial_design_prior_sensitivity_json(
+    spec_json: str, observed_json: str, campaign_json: str
+) -> str: ...
+def beta_binomial_design_report_json(
+    spec_json: str, observed_json: str, campaign_json: str
+) -> str: ...
+def beta_binomial_design_report_markdown(report_json: str) -> str: ...
+def normal_normal_design_analyze_json(spec_json: str, observed_json: str) -> str: ...
+def normal_normal_design_operating_characteristics_json(spec_json: str) -> str: ...
+def normal_normal_design_posterior_predictive_json(spec_json: str, observed_json: str) -> str: ...
+def normal_normal_design_prior_sensitivity_json(
+    spec_json: str, observed_json: str, campaign_json: str
+) -> str: ...
+def normal_normal_design_report_json(
+    spec_json: str, observed_json: str, campaign_json: str
+) -> str: ...
+def normal_normal_design_report_markdown(report_json: str) -> str: ...
+def measurement_combine_calibrate_json(
+    spec_json: str,
+    *,
+    ci_level: float = 0.68,
+    solver: str = "auto",
+    n_toys: int = 128,
+    seed: int = 42,
+) -> str: ...
+def measurement_combine_calibrate_study_json(
+    spec_json: str,
+    *,
+    ci_level: float = 0.68,
+    solver: str = "auto",
+    n_toys: int = 128,
+    seeds: List[int] = ...,
+) -> str: ...
+def measurement_combine_scenario_study_json(
+    spec_json: str,
+    scenario_study_json: str,
+    *,
+    ci_level: float = 0.68,
+    solver: str = "auto",
+) -> str: ...
+def measurement_combine_calibration_campaign_json(
+    spec_json: str,
+    scenario_study_json: str,
+    *,
+    ci_level: float = 0.68,
+    solver: str = "auto",
+    n_toys: int = 128,
+    seeds: List[int] = ...,
+) -> str: ...
+def measurement_combine_solver_parity_scenario_study_json(
+    spec_json: str,
+    scenario_study_json: str,
+    *,
+    ci_level: float = 0.68,
+    lhs_solver: str = "numerical-paper",
+    rhs_solver: str = "analytic-perturbative",
+) -> str: ...
+def measurement_combine_solver_parity_calibration_campaign_json(
+    spec_json: str,
+    scenario_study_json: str,
+    *,
+    ci_level: float = 0.68,
+    lhs_solver: str = "numerical-paper",
+    rhs_solver: str = "analytic-perturbative",
+    n_toys: int = 128,
+    seeds: List[int] = ...,
+) -> str: ...
+def measurement_combine_solver_parity_scenario_study_reports_json(
+    lhs_report_json: str,
+    rhs_report_json: str,
+    *,
+    lhs_solver: str = "numerical-paper",
+    rhs_solver: str = "analytic-perturbative",
+) -> str: ...
+def measurement_combine_solver_parity_calibration_campaign_reports_json(
+    lhs_report_json: str,
+    rhs_report_json: str,
+    *,
+    lhs_solver: str = "numerical-paper",
+    rhs_solver: str = "analytic-perturbative",
+) -> str: ...
+def measurement_combine_solver_parity_scenario_study_markdown(report_json: str) -> str: ...
+def measurement_combine_solver_parity_calibration_campaign_markdown(report_json: str) -> str: ...
+def measurement_combine_solver_parity_scenario_study_summary_json(report_json: str) -> str: ...
+def measurement_combine_solver_parity_scenario_study_summary_markdown(summary_json: str) -> str: ...
+def measurement_combine_solver_parity_calibration_campaign_summary_json(report_json: str) -> str: ...
+def measurement_combine_solver_parity_calibration_campaign_summary_markdown(summary_json: str) -> str: ...
+def measurement_combine_calibration_campaign_summary_json(report_json: str) -> str: ...
+def measurement_combine_calibration_campaign_summary_markdown(summary_json: str) -> str: ...
+def measurement_combine_calibration_campaign_brief_json(
+    labeled_summary_jsons: List[Tuple[str, str]],
+) -> str: ...
+def measurement_combine_calibration_campaign_brief_markdown(brief_json: str) -> str: ...
+def measurement_combine_calibration_campaign_family_report_json(
+    labeled_brief_jsons: List[Tuple[str, str]],
+) -> str: ...
+def measurement_combine_calibration_campaign_family_report_markdown(report_json: str) -> str: ...
+def measurement_combine_calibration_campaign_family_matrix_json(report_json: str) -> str: ...
+def measurement_combine_calibration_campaign_family_matrix_markdown(matrix_json: str) -> str: ...
+def measurement_combine_calibration_campaign_portfolio_json(
+    labeled_matrix_jsons: List[Tuple[str, str]],
+) -> str: ...
+def measurement_combine_calibration_campaign_portfolio_markdown(report_json: str) -> str: ...
+def measurement_combine_calibration_campaign_portfolio_stability_json(
+    labeled_portfolio_jsons: List[Tuple[str, str]],
+) -> str: ...
+def measurement_combine_calibration_campaign_portfolio_stability_markdown(report_json: str) -> str: ...
 def workspace_prune(
     workspace_json: str,
     *,
@@ -1402,6 +1688,9 @@ def hypotest_toys(
 ) -> Union[float, Tuple[float, List[float]], HypotestToysMetaResult]: ...
 
 def read_root_histogram(root_path: str, hist_path: str) -> Dict[str, Any]: ...
+def _read_root_histogram_bytes(
+    root_bytes: bytes, hist_path: str, *, filename_hint: Optional[str] = ...
+) -> Dict[str, Any]: ...
 @overload
 def fit(
     model: HistFactoryModel,
@@ -1752,6 +2041,102 @@ def sample(
 
 
 @overload
+def sample_walnuts(
+    model: HistFactoryModel,
+    *,
+    n_chains: int = ...,
+    n_warmup: int = ...,
+    n_samples: int = ...,
+    seed: int = ...,
+    max_treedepth: int = ...,
+    max_step_halvings: int = ...,
+    min_micro_steps: int = ...,
+    max_energy_error: float = ...,
+    target_accept: float = ...,
+    target_tree_depth: float = ...,
+    init_strategy: str = ...,
+    metric: Literal["diagonal", "dense", "auto"] = ...,
+    init_jitter: float = ...,
+    init_jitter_rel: Optional[float] = ...,
+    init_overdispersed_rel: Optional[float] = ...,
+    stepsize_jitter: float = ...,
+    data: Optional[List[float]] = ...,
+) -> SamplerResult: ...
+@overload
+def sample_walnuts(
+    model: Posterior,
+    *,
+    n_chains: int = ...,
+    n_warmup: int = ...,
+    n_samples: int = ...,
+    seed: int = ...,
+    max_treedepth: int = ...,
+    max_step_halvings: int = ...,
+    min_micro_steps: int = ...,
+    max_energy_error: float = ...,
+    target_accept: float = ...,
+    target_tree_depth: float = ...,
+    init_strategy: str = ...,
+    metric: Literal["diagonal", "dense", "auto"] = ...,
+    init_jitter: float = ...,
+    init_jitter_rel: Optional[float] = ...,
+    init_overdispersed_rel: Optional[float] = ...,
+    stepsize_jitter: float = ...,
+    data: Literal[None] = ...,
+) -> SamplerResult: ...
+@overload
+def sample_walnuts(
+    model: Union[
+        GaussianMeanModel,
+        FunnelModel,
+        FunnelNcpModel,
+        StdNormalModel,
+        LinearRegressionModel,
+        LogisticRegressionModel,
+        OrderedLogitModel,
+        OrderedProbitModel,
+        PoissonRegressionModel,
+        NegativeBinomialRegressionModel,
+        GammaRegressionModel,
+        TweedieRegressionModel,
+        ComposedGlmModel,
+        LmmMarginalModel,
+        ExponentialSurvivalModel,
+        WeibullSurvivalModel,
+        LogNormalAftModel,
+        CoxPhModel,
+        OneCompartmentOralPkModel,
+        OneCompartmentOralPkNlmeModel,
+        TwoCompartmentIvPkModel,
+        TwoCompartmentOralPkModel,
+        ThreeCompartmentIvPkModel,
+        ThreeCompartmentOralPkModel,
+        GevModel,
+        GpdModel,
+        EightSchoolsModel,
+    ],
+    *,
+    n_chains: int = ...,
+    n_warmup: int = ...,
+    n_samples: int = ...,
+    seed: int = ...,
+    max_treedepth: int = ...,
+    max_step_halvings: int = ...,
+    min_micro_steps: int = ...,
+    max_energy_error: float = ...,
+    target_accept: float = ...,
+    target_tree_depth: float = ...,
+    init_strategy: str = ...,
+    metric: Literal["diagonal", "dense", "auto"] = ...,
+    init_jitter: float = ...,
+    init_jitter_rel: Optional[float] = ...,
+    init_overdispersed_rel: Optional[float] = ...,
+    stepsize_jitter: float = ...,
+    data: Literal[None] = ...,
+) -> SamplerResult: ...
+
+
+@overload
 def sample_mams(
     model: HistFactoryModel,
     *,
@@ -1881,6 +2266,38 @@ def cls_curve(
     alpha: float = ...,
     data: Optional[List[float]] = ...,
 ) -> ClsCurveResult: ...
+
+
+def ads_hill(x: float, ec: float, slope: float) -> float: ...
+
+
+def ads_adstock_geometric(spend: List[float], decay: float) -> List[float]: ...
+
+
+def ads_cuped_adjust(
+    control_outcomes: List[float],
+    control_covariates: List[float],
+    variant_outcomes: List[float],
+    variant_covariates: List[float],
+    *,
+    covariate_name: Optional[str] = ...,
+    covariate_timing: Optional[CovariateTiming] = ...,
+    covariate_source_dataset: Optional[str] = ...,
+    pre_treatment_only: bool = ...,
+) -> CupedAdjustmentResult: ...
+
+
+def ads_cure_adjust(
+    control_outcomes: List[float],
+    control_covariates: List[List[float]],
+    variant_outcomes: List[float],
+    variant_covariates: List[List[float]],
+    *,
+    covariate_names: Optional[List[str]] = ...,
+    covariate_timings: Optional[List[CovariateTiming]] = ...,
+    covariate_source_datasets: Optional[List[str]] = ...,
+    pre_treatment_only: bool = ...,
+) -> CureAdjustmentResult: ...
 
 
 
@@ -2759,6 +3176,8 @@ def churn_bootstrap_hr(
     n_bootstrap: int = ...,
     seed: int = ...,
     conf_level: float = ...,
+    ci_method: Literal["percentile", "bca"] = ...,
+    n_jackknife: int = ...,
 ) -> Dict[str, Any]: ...
 
 

@@ -1,0 +1,65 @@
+{
+  "schema_version": "nextstat.tool_contract_performance_budget.v1",
+  "runner_modes": {
+    "fast": {
+      "max_total_duration_s": 1200,
+      "steps": {
+        "Check agent bootstrap packs": {
+          "max_duration_s": 30,
+          "description": "Generated model-specific bootstrap packs for agents and IDE assistants should stay cheap to validate."
+        },
+        "Run ns-server tool contract tests": {
+          "max_duration_s": 300,
+          "description": "Rust server contract suite should stay within a bounded debug-test budget."
+        },
+        "Sync nextstat Python bindings into active environment": {
+          "max_duration_s": 600,
+          "description": "Maturin develop sync should remain bounded even on a cold local environment."
+        },
+        "Run fast Python tool contract suite": {
+          "max_duration_s": 300,
+          "description": "The canonical fast Python contract suite should stay comfortably sub-5 minutes."
+        }
+      }
+    },
+    "live": {
+      "max_total_duration_s": 1800,
+      "steps": {
+        "Run live nextstat-server tool contract suite": {
+          "max_duration_s": 900,
+          "description": "Live auth-enabled nextstat-server verification should stay within a bounded CI budget."
+        }
+      }
+    },
+    "all": {
+      "max_total_duration_s": 2400,
+      "steps": {}
+    }
+  },
+  "live_metrics": {
+    "server_build_duration_s": {
+      "max_duration_s": 600,
+      "description": "Building the debug nextstat-server binary for live verification."
+    },
+    "server_startup_duration_s": {
+      "max_duration_s": 30,
+      "description": "Time from process spawn to healthy /v1/health response."
+    },
+    "tools_schema_get_duration_s": {
+      "max_duration_s": 5,
+      "description": "Authenticated GET /v1/tools/schema latency in the live server test."
+    },
+    "workspace_audit_duration_s": {
+      "max_duration_s": 10,
+      "description": "Authenticated nextstat_workspace_audit execution latency in the live server test."
+    },
+    "fit_duration_s": {
+      "max_duration_s": 15,
+      "description": "Authenticated nextstat_fit execution latency in the live server test."
+    },
+    "e2e_discovery_duration_s": {
+      "max_duration_s": 60,
+      "description": "Wall time for scripts/e2e_discovery.py in live server mode."
+    }
+  }
+}

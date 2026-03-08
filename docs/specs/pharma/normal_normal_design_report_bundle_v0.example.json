@@ -1,0 +1,19 @@
+{
+  "schema_version": "nextstat_bayesian_design_report_bundle_v0",
+  "stability": "research-grade",
+  "design_family": "normal_normal",
+  "report_schema_version": "nextstat_normal_normal_design_report_v0",
+  "deterministic": true,
+  "artifact_paths": {
+    "run_bundle_meta": "meta.json",
+    "run_bundle_manifest": "manifest.json",
+    "frozen_report_json": "inputs/input.json",
+    "design_report_markdown": "outputs/design_report.md",
+    "design_spec": "outputs/design_spec.json",
+    "current_analysis": "outputs/current_analysis.json",
+    "operating_characteristics": "outputs/operating_characteristics.json",
+    "posterior_predictive": "outputs/posterior_predictive.json",
+    "prior_sensitivity": "outputs/prior_sensitivity.json",
+    "provenance": "outputs/provenance.json"
+  }
+}

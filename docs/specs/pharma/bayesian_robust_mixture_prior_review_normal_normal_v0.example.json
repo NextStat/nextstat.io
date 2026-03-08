@@ -1,0 +1,60 @@
+{
+  "schema_version": "nextstat_bayesian_robust_mixture_prior_review_v0",
+  "stability": "research-grade",
+  "review_id": "continuous_superiority_demo_continuous_superiority_demo_robust_mixture_policy_v0_robust_mixture_prior_review_v0",
+  "design_family": "normal_normal",
+  "design_id": "continuous_superiority_demo",
+  "policy_id": "continuous_superiority_demo_robust_mixture_policy_v0",
+  "mixture_model": "robust_mixture_normal",
+  "prior_target": "treatment_prior",
+  "source_report_schema_version": "nextstat_normal_normal_design_report_v0",
+  "source_policy_schema_version": "nextstat_bayesian_robust_mixture_prior_policy_v0",
+  "source_prior_conflict_schema_version": "nextstat_bayesian_prior_conflict_diagnostic_v0",
+  "generated_from_frozen_report": true,
+  "recommended_mixture_state": "fallback_to_weak",
+  "mixture_eligible": false,
+  "current_informative_weight": 0.0,
+  "effective_component_weights": [
+    {
+      "component_id": "historical_informative",
+      "component_role": "informative",
+      "base_weight": 0.65,
+      "effective_weight": 0.0,
+      "prior": {
+        "mean": 0.6,
+        "sd": 0.3
+      }
+    },
+    {
+      "component_id": "weak_reference",
+      "component_role": "weak_reference",
+      "base_weight": 0.35,
+      "effective_weight": 1.0,
+      "prior": {
+        "mean": 0.0,
+        "sd": 10.0
+      }
+    }
+  ],
+  "gating": {
+    "meets_minimum_information_fraction": true,
+    "passes_action_flip_gate": false,
+    "within_retain_eventual_success_probability_range": false,
+    "within_retain_expected_total_sample_size_range_fraction": true
+  },
+  "diagnostics": {
+    "prior_conflict_severity": "high",
+    "decision_instability": true,
+    "recommended_action_flip_count": 1,
+    "current_target_sample_size": 10.0,
+    "planned_target_sample_size": 20.0,
+    "current_information_fraction": 0.5,
+    "posterior_probability_range": 0.9237988414458498,
+    "eventual_success_probability_range": 1.0,
+    "expected_total_sample_size_range_fraction_of_plan": 0.0
+  },
+  "rationale": [
+    "Published prior-variant action flips block the informative mixture component under the current policy.",
+    "The review falls back to the published weak-reference-only state for the frozen report."
+  ]
+}

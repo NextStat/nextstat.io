@@ -1,0 +1,22 @@
+{
+  "schema_version": "nextstat.tool_contract_artifact_manifest.v1",
+  "reports": {
+    "fast": {
+      "runner_report_path": "tmp/reports/tool_contracts_fast_report.json",
+      "artifact_name": "tool-contracts-fast-report",
+      "download_dir": "tmp/reports/tool-contracts-fast",
+      "downloaded_report_path": "tmp/reports/tool-contracts-fast/tool_contracts_fast_report.json"
+    },
+    "live": {
+      "runner_report_path": "tmp/reports/tool_contracts_live_report.json",
+      "artifact_name": "tool-contracts-live-report",
+      "download_dir": "tmp/reports/tool-contracts-live",
+      "downloaded_report_path": "tmp/reports/tool-contracts-live/tool_contracts_live_report.json"
+    }
+  },
+  "dashboard": {
+    "artifact_name": "tool-contract-dashboard",
+    "json_path": "tmp/reports/tool_contract_dashboard.json",
+    "markdown_path": "tmp/reports/tool_contract_dashboard.md"
+  }
+}

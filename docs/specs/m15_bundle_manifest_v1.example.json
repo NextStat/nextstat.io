@@ -1,0 +1,86 @@
+{
+  "artifacts": {
+    "assessment_table": {
+      "artifact_type": "assessment_table",
+      "path": "m15_assessment_table.json",
+      "role": "risk classification artifact",
+      "sha256": "8f62232bbbfe26effefe9b5b3e4ea26bd1adec2b7ab2591c6751b362d5c5e915"
+    },
+    "map": {
+      "artifact_type": "map",
+      "path": "m15_map.json",
+      "role": "frozen analysis plan",
+      "sha256": "cd5497261486b42a485fcd1e0a18b55c87bd05fe23dacd9d04681a545745879e"
+    },
+    "mar": {
+      "artifact_type": "mar",
+      "path": "m15_mar.json",
+      "role": "analysis report",
+      "sha256": "a1c348c544cfc32857852d45d5ce072a4f805881627c7aa66b8bdedef578091b"
+    },
+    "pharma_validation": {
+      "artifact_type": "pharma_validation",
+      "path": "pharma_validation.json",
+      "role": "pharma IQ/OQ/PQ evidence",
+      "sha256": "4c07a24b39c89d063b8284d231c566c04b5efeafd29b14cccd24d1e9a881b777"
+    },
+    "validation_report": {
+      "artifact_type": "validation_report",
+      "path": "validation_report.json",
+      "role": "cross-suite deterministic validation",
+      "sha256": "47b43b284ed2a43fcd9c41085c389d80770cb5144224fec43bd3c11a29e0b19a"
+    }
+  },
+  "bundle_status": "complete",
+  "deterministic": true,
+  "files": [
+    {
+      "artifact_role": "config",
+      "bytes": 4106,
+      "path": "m15_config.json",
+      "sha256": "1f7935940139d0629330a45796457a1c729d5f6abf5508fe0bf155f1a564cc0d"
+    },
+    {
+      "artifact_role": "assessment_table",
+      "bytes": 3775,
+      "path": "m15_assessment_table.json",
+      "sha256": "8f62232bbbfe26effefe9b5b3e4ea26bd1adec2b7ab2591c6751b362d5c5e915"
+    },
+    {
+      "artifact_role": "map",
+      "bytes": 3248,
+      "path": "m15_map.json",
+      "sha256": "cd5497261486b42a485fcd1e0a18b55c87bd05fe23dacd9d04681a545745879e"
+    },
+    {
+      "artifact_role": "mar",
+      "bytes": 3221,
+      "path": "m15_mar.json",
+      "sha256": "a1c348c544cfc32857852d45d5ce072a4f805881627c7aa66b8bdedef578091b"
+    },
+    {
+      "artifact_role": "validation_report",
+      "bytes": 5494,
+      "path": "validation_report.json",
+      "sha256": "47b43b284ed2a43fcd9c41085c389d80770cb5144224fec43bd3c11a29e0b19a"
+    },
+    {
+      "artifact_role": "pharma_validation",
+      "bytes": 754,
+      "path": "pharma_validation.json",
+      "sha256": "4c07a24b39c89d063b8284d231c566c04b5efeafd29b14cccd24d1e9a881b777"
+    }
+  ],
+  "generated_at": null,
+  "integrity": {
+    "all_hashes_present": true,
+    "deterministic_re_render_verified": true,
+    "missing_required_roles": [],
+    "missing_signoff_roles": [],
+    "signoff_roles_complete": true,
+    "signoff_roles_distinct": true
+  },
+  "jurisdiction_profile": "ich_core",
+  "schema_version": "m15_bundle_manifest_v1",
+  "source_config_sha256": "1f7935940139d0629330a45796457a1c729d5f6abf5508fe0bf155f1a564cc0d"
+}

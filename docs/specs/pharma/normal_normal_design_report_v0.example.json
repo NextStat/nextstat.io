@@ -1,0 +1,347 @@
+{
+  "schema_version": "nextstat_normal_normal_design_report_v0",
+  "stability": "research-grade",
+  "design_family": "normal_normal",
+  "design_spec": {
+    "schema_version": "nextstat_normal_normal_design_v0",
+    "design_id": "continuous_superiority_demo",
+    "control_prior": {
+      "mean": 0.0,
+      "sd": 10.0
+    },
+    "treatment_prior": {
+      "mean": 0.0,
+      "sd": 10.0
+    },
+    "likelihood": {
+      "known_sd_control": 1.0,
+      "known_sd_treatment": 1.0
+    },
+    "looks": [
+      {
+        "id": "interim",
+        "n_control": 10,
+        "n_treatment": 10
+      },
+      {
+        "id": "final",
+        "n_control": 20,
+        "n_treatment": 20
+      }
+    ],
+    "decision_rules": {
+      "success": {
+        "posterior_probability_threshold": 0.975,
+        "treatment_effect_margin": 0.0
+      },
+      "futility": {
+        "posterior_probability_threshold": 0.1,
+        "treatment_effect_margin": 0.0
+      }
+    },
+    "analysis": {
+      "credible_interval_level": 0.95
+    },
+    "simulation": {
+      "n_replicates": 32,
+      "seed": 456,
+      "scenarios": [
+        {
+          "id": "null",
+          "mean_control": 0.0,
+          "mean_treatment": 0.0
+        },
+        {
+          "id": "alt",
+          "mean_control": 0.0,
+          "mean_treatment": 0.75
+        }
+      ]
+    }
+  },
+  "current_analysis": {
+    "schema_version": "nextstat_normal_normal_design_analysis_v0",
+    "stability": "research-grade",
+    "design_id": "continuous_superiority_demo",
+    "look": {
+      "id": "interim",
+      "n_control": 10,
+      "n_treatment": 10
+    },
+    "observed": {
+      "look_id": "interim",
+      "control_sample_mean": 0.1,
+      "treatment_sample_mean": 0.3
+    },
+    "posterior": {
+      "control": {
+        "posterior_mean": 0.0999000999000999,
+        "posterior_sd": 0.316069770620507,
+        "ci_lower": -0.5195852671179297,
+        "ci_upper": 0.7193854669181297
+      },
+      "treatment": {
+        "posterior_mean": 0.2997002997002997,
+        "posterior_sd": 0.316069770620507,
+        "ci_lower": -0.31978506731773,
+        "ci_upper": 0.9191856667183294
+      },
+      "effect_difference": {
+        "margin": 0.0,
+        "posterior_mean": 0.1998001998001998,
+        "posterior_sd": 0.4469901562676742,
+        "ci_lower": -0.6762844079283722,
+        "ci_upper": 1.0758848075287717,
+        "posterior_probability_gt_margin": 0.6725589163359341
+      }
+    },
+    "decision": {
+      "success": false,
+      "futility": false,
+      "recommended_action": "continue",
+      "posterior_probability_gt_margin": 0.6725589163359341,
+      "success_threshold": 0.975,
+      "futility_threshold": 0.1,
+      "margin": 0.0
+    }
+  },
+  "operating_characteristics": {
+    "schema_version": "nextstat_normal_normal_operating_characteristics_v0",
+    "stability": "research-grade",
+    "design_id": "continuous_superiority_demo",
+    "n_replicates": 32,
+    "seed": 456,
+    "scenarios": [
+      {
+        "scenario_id": "null",
+        "mean_control": 0.0,
+        "mean_treatment": 0.0,
+        "success_rate": 0.03125,
+        "futility_rate": 0.1875,
+        "no_decision_rate": 0.78125,
+        "expected_total_sample_size": 36.875,
+        "look_summaries": [
+          {
+            "look_id": "interim",
+            "stop_probability": 0.15625,
+            "success_probability": 0.03125,
+            "futility_probability": 0.125
+          },
+          {
+            "look_id": "final",
+            "stop_probability": 0.0625,
+            "success_probability": 0.0,
+            "futility_probability": 0.0625
+          }
+        ]
+      },
+      {
+        "scenario_id": "alt",
+        "mean_control": 0.0,
+        "mean_treatment": 0.75,
+        "success_rate": 0.625,
+        "futility_rate": 0.0,
+        "no_decision_rate": 0.375,
+        "expected_total_sample_size": 33.125,
+        "look_summaries": [
+          {
+            "look_id": "interim",
+            "stop_probability": 0.34375,
+            "success_probability": 0.34375,
+            "futility_probability": 0.0
+          },
+          {
+            "look_id": "final",
+            "stop_probability": 0.28125,
+            "success_probability": 0.28125,
+            "futility_probability": 0.0
+          }
+        ]
+      }
+    ]
+  },
+  "posterior_predictive": {
+    "schema_version": "nextstat_normal_normal_posterior_predictive_v0",
+    "stability": "research-grade",
+    "design_id": "continuous_superiority_demo",
+    "current_analysis": {
+      "schema_version": "nextstat_normal_normal_design_analysis_v0",
+      "stability": "research-grade",
+      "design_id": "continuous_superiority_demo",
+      "look": {
+        "id": "interim",
+        "n_control": 10,
+        "n_treatment": 10
+      },
+      "observed": {
+        "look_id": "interim",
+        "control_sample_mean": 0.1,
+        "treatment_sample_mean": 0.3
+      },
+      "posterior": {
+        "control": {
+          "posterior_mean": 0.0999000999000999,
+          "posterior_sd": 0.316069770620507,
+          "ci_lower": -0.5195852671179297,
+          "ci_upper": 0.7193854669181297
+        },
+        "treatment": {
+          "posterior_mean": 0.2997002997002997,
+          "posterior_sd": 0.316069770620507,
+          "ci_lower": -0.31978506731773,
+          "ci_upper": 0.9191856667183294
+        },
+        "effect_difference": {
+          "margin": 0.0,
+          "posterior_mean": 0.1998001998001998,
+          "posterior_sd": 0.4469901562676742,
+          "ci_lower": -0.6762844079283722,
+          "ci_upper": 1.0758848075287717,
+          "posterior_probability_gt_margin": 0.6725589163359341
+        }
+      },
+      "decision": {
+        "success": false,
+        "futility": false,
+        "recommended_action": "continue",
+        "posterior_probability_gt_margin": 0.6725589163359341,
+        "success_threshold": 0.975,
+        "futility_threshold": 0.1,
+        "margin": 0.0
+      }
+    },
+    "n_replicates": 32,
+    "seed": 456,
+    "current_total_sample_size": 20.0,
+    "expected_total_sample_size": 40.0,
+    "expected_remaining_sample_size": 20.0,
+    "eventual_success_probability": 0.125,
+    "eventual_futility_probability": 0.0,
+    "eventual_no_decision_probability": 0.875,
+    "future_look_summaries": [
+      {
+        "look_id": "final",
+        "conditional_stop_probability": 0.125,
+        "conditional_success_probability": 0.125,
+        "conditional_futility_probability": 0.0
+      }
+    ]
+  },
+  "prior_sensitivity": {
+    "schema_version": "nextstat_normal_normal_prior_sensitivity_report_v0",
+    "stability": "research-grade",
+    "design_id": "continuous_superiority_demo",
+    "look": {
+      "id": "interim",
+      "n_control": 10,
+      "n_treatment": 10
+    },
+    "observed": {
+      "look_id": "interim",
+      "control_sample_mean": 0.1,
+      "treatment_sample_mean": 0.3
+    },
+    "n_replicates": 32,
+    "seed": 456,
+    "variants": [
+      {
+        "variant_id": "baseline",
+        "is_baseline": true,
+        "control_prior": {
+          "mean": 0.0,
+          "sd": 10.0
+        },
+        "treatment_prior": {
+          "mean": 0.0,
+          "sd": 10.0
+        },
+        "posterior_mean": 0.1998001998001998,
+        "posterior_probability_gt_margin": 0.6725589163359341,
+        "recommended_action": "continue",
+        "eventual_success_probability": 0.125,
+        "eventual_futility_probability": 0.0,
+        "eventual_no_decision_probability": 0.875,
+        "expected_total_sample_size": 40.0,
+        "expected_remaining_sample_size": 20.0,
+        "future_look_summaries": [
+          {
+            "look_id": "final",
+            "conditional_stop_probability": 0.125,
+            "conditional_success_probability": 0.125,
+            "conditional_futility_probability": 0.0
+          }
+        ],
+        "posterior_probability_delta_vs_baseline": 0.0,
+        "eventual_success_probability_delta_vs_baseline": 0.0,
+        "expected_total_sample_size_delta_vs_baseline": 0.0
+      },
+      {
+        "variant_id": "skeptical",
+        "is_baseline": false,
+        "control_prior": {
+          "mean": 0.0,
+          "sd": 10.0
+        },
+        "treatment_prior": {
+          "mean": -1.0,
+          "sd": 0.2
+        },
+        "posterior_mean": -0.7284715284715284,
+        "posterior_probability_gt_margin": 0.02105660071583859,
+        "recommended_action": "stop_for_futility",
+        "eventual_success_probability": 0.0,
+        "eventual_futility_probability": 1.0,
+        "eventual_no_decision_probability": 0.0,
+        "expected_total_sample_size": 20.0,
+        "expected_remaining_sample_size": 0.0,
+        "future_look_summaries": [],
+        "posterior_probability_delta_vs_baseline": -0.6515023156200955,
+        "eventual_success_probability_delta_vs_baseline": -0.125,
+        "expected_total_sample_size_delta_vs_baseline": -20.0
+      },
+      {
+        "variant_id": "enthusiastic",
+        "is_baseline": false,
+        "control_prior": {
+          "mean": 0.0,
+          "sd": 10.0
+        },
+        "treatment_prior": {
+          "mean": 1.0,
+          "sd": 0.2
+        },
+        "posterior_mean": 0.7000999000999,
+        "posterior_probability_gt_margin": 0.9746046741543232,
+        "recommended_action": "continue",
+        "eventual_success_probability": 0.75,
+        "eventual_futility_probability": 0.0,
+        "eventual_no_decision_probability": 0.25,
+        "expected_total_sample_size": 40.0,
+        "expected_remaining_sample_size": 20.0,
+        "future_look_summaries": [
+          {
+            "look_id": "final",
+            "conditional_stop_probability": 0.75,
+            "conditional_success_probability": 0.75,
+            "conditional_futility_probability": 0.0
+          }
+        ],
+        "posterior_probability_delta_vs_baseline": 0.30204575781838905,
+        "eventual_success_probability_delta_vs_baseline": 0.625,
+        "expected_total_sample_size_delta_vs_baseline": 0.0
+      }
+    ]
+  },
+  "provenance": {
+    "software_name": "nextstat",
+    "software_version": "0.9.9",
+    "design_schema_version": "nextstat_normal_normal_design_v0",
+    "analysis_schema_version": "nextstat_normal_normal_design_analysis_v0",
+    "operating_characteristics_schema_version": "nextstat_normal_normal_operating_characteristics_v0",
+    "posterior_predictive_schema_version": "nextstat_normal_normal_posterior_predictive_v0",
+    "prior_sensitivity_campaign_schema_version": "nextstat_normal_normal_prior_sensitivity_campaign_v0",
+    "prior_sensitivity_report_schema_version": "nextstat_normal_normal_prior_sensitivity_report_v0",
+    "simulation_seed": 456,
+    "n_replicates": 32
+  }
+}

@@ -1,0 +1,275 @@
+{
+  "channels": [
+    {
+      "name": "SRLow",
+      "samples": [
+        {
+          "name": "signal",
+          "data": [7.0, 6.0],
+          "modifiers": [
+            {
+              "name": "mu",
+              "type": "normfactor",
+              "data": null
+            },
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            }
+          ]
+        },
+        {
+          "name": "ttbar",
+          "data": [80.0, 55.0],
+          "modifiers": [
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            },
+            {
+              "name": "ttbar_norm",
+              "type": "normsys",
+              "data": {
+                "hi": 1.07,
+                "lo": 0.93
+              }
+            },
+            {
+              "name": "jes_shape",
+              "type": "histosys",
+              "data": {
+                "hi_data": [88.0, 50.0],
+                "lo_data": [72.0, 60.0]
+              }
+            }
+          ]
+        },
+        {
+          "name": "zjets",
+          "data": [30.0, 24.0],
+          "modifiers": [
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            },
+            {
+              "name": "z_norm",
+              "type": "normsys",
+              "data": {
+                "hi": 1.06,
+                "lo": 0.94
+              }
+            },
+            {
+              "name": "boson_shape",
+              "type": "histosys",
+              "data": {
+                "hi_data": [33.0, 26.0],
+                "lo_data": [27.0, 22.0]
+              }
+            }
+          ]
+        },
+        {
+          "name": "rare",
+          "data": [6.0, 5.0],
+          "modifiers": [
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            },
+            {
+              "name": "rare_norm",
+              "type": "normsys",
+              "data": {
+                "hi": 1.1,
+                "lo": 0.9
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "SRHigh",
+      "samples": [
+        {
+          "name": "signal",
+          "data": [4.0, 5.0],
+          "modifiers": [
+            {
+              "name": "mu",
+              "type": "normfactor",
+              "data": null
+            },
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            }
+          ]
+        },
+        {
+          "name": "ttbar",
+          "data": [35.0, 28.0],
+          "modifiers": [
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            },
+            {
+              "name": "ttbar_norm",
+              "type": "normsys",
+              "data": {
+                "hi": 1.07,
+                "lo": 0.93
+              }
+            },
+            {
+              "name": "jes_shape",
+              "type": "histosys",
+              "data": {
+                "hi_data": [40.0, 25.0],
+                "lo_data": [30.0, 31.0]
+              }
+            }
+          ]
+        },
+        {
+          "name": "zjets",
+          "data": [18.0, 14.0],
+          "modifiers": [
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            },
+            {
+              "name": "z_norm",
+              "type": "normsys",
+              "data": {
+                "hi": 1.06,
+                "lo": 0.94
+              }
+            },
+            {
+              "name": "boson_shape",
+              "type": "histosys",
+              "data": {
+                "hi_data": [20.0, 15.5],
+                "lo_data": [16.0, 12.5]
+              }
+            }
+          ]
+        },
+        {
+          "name": "rare",
+          "data": [4.0, 3.0],
+          "modifiers": [
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            },
+            {
+              "name": "rare_norm",
+              "type": "normsys",
+              "data": {
+                "hi": 1.1,
+                "lo": 0.9
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CRTop",
+      "samples": [
+        {
+          "name": "ttbar",
+          "data": [220.0],
+          "modifiers": [
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            },
+            {
+              "name": "ttbar_norm",
+              "type": "normsys",
+              "data": {
+                "hi": 1.07,
+                "lo": 0.93
+              }
+            },
+            {
+              "name": "jes_shape",
+              "type": "histosys",
+              "data": {
+                "hi_data": [232.0],
+                "lo_data": [208.0]
+              }
+            }
+          ]
+        },
+        {
+          "name": "rare",
+          "data": [9.0],
+          "modifiers": [
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            },
+            {
+              "name": "rare_norm",
+              "type": "normsys",
+              "data": {
+                "hi": 1.1,
+                "lo": 0.9
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "name": "SRLow",
+      "data": [124.0, 92.0]
+    },
+    {
+      "name": "SRHigh",
+      "data": [63.0, 51.0]
+    },
+    {
+      "name": "CRTop",
+      "data": [231.0]
+    }
+  ],
+  "measurements": [
+    {
+      "name": "measurement",
+      "config": {
+        "poi": "mu",
+        "parameters": [
+          {
+            "name": "lumi",
+            "inits": [1.0],
+            "bounds": [[0.9, 1.1]],
+            "auxdata": [1.0],
+            "sigmas": [0.015]
+          }
+        ]
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

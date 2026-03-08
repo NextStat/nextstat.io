@@ -1,0 +1,675 @@
+{
+  "baseline": {
+    "build_profile": "release",
+    "case_ids": [
+      "python_beta_binomial_fit_from_counts",
+      "python_delay_correction_fit_from_lag_buckets",
+      "python_cuped_adjust",
+      "python_cure_adjust",
+      "python_response_curve_helpers",
+      "python_kalman_local_level_weekly_filter",
+      "python_kalman_local_linear_trend_weekly_filter",
+      "cli_kalman_local_level_weekly_filter",
+      "cli_kalman_local_linear_trend_weekly_filter"
+    ],
+    "deterministic": true,
+    "host_policy": "nextstat-bench",
+    "hostname": "nextstat-bench",
+    "path": "/benchmarks/artifacts/ads_timeseries_baselines/nextstat-bench/accepted.json",
+    "runs": 5,
+    "schema_version": "nextstat.ads_timeseries_benchmark_result.v1",
+    "smoke": false,
+    "suite": "ads_timeseries_surface",
+    "warmups": 1
+  },
+  "baseline_path": "/benchmarks/artifacts/ads_timeseries_baselines/nextstat-bench/accepted.json",
+  "cases": [
+    {
+      "errors": [],
+      "id": "python_beta_binomial_fit_from_counts",
+      "identity": {
+        "details": {
+          "baseline": {
+            "alpha": 151.0,
+            "beta": 8449.0,
+            "mean": 0.01755814,
+            "overdispersion": 0.00011627,
+            "posterior_alpha": 168.0,
+            "posterior_beta": 8542.0
+          },
+          "current": {
+            "alpha": 151.0,
+            "beta": 8449.0,
+            "mean": 0.01755814,
+            "overdispersion": 0.00011627,
+            "posterior_alpha": 168.0,
+            "posterior_beta": 8542.0
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 1.8e-05,
+          "current_value": 1.8e-05,
+          "fail_ratio": 4.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 2.0,
+          "status": "skipped_floor"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_delay_correction_fit_from_lag_buckets",
+      "identity": {
+        "details": {
+          "baseline": {
+            "corrected_3d": 63.961848,
+            "lambda": 0.35632667,
+            "lambda_se": 0.01167374,
+            "observed_fraction_3d": 0.65664144,
+            "uncertainty_3d": 9.93879
+          },
+          "current": {
+            "corrected_3d": 63.961848,
+            "lambda": 0.35632667,
+            "lambda_se": 0.01167374,
+            "observed_fraction_3d": 0.65664144,
+            "uncertainty_3d": 9.93879
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.000252,
+          "current_value": 0.000252,
+          "fail_ratio": 4.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 2.0,
+          "status": "skipped_floor"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_cuped_adjust",
+      "identity": {
+        "details": {
+          "baseline": {
+            "condition_number": 1.0,
+            "covariate_provenance": [
+              {
+                "name": "pre_clicks",
+                "source_dataset": "ads_preperiod_clicks",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": -0.10869565,
+            "effective_sample_multiplier": 124.85714286,
+            "method": "cuped",
+            "num_covariates": 1,
+            "pre_treatment_only": true,
+            "provenance_validated": true,
+            "r_squared": 0.99199085,
+            "ridge_lambda": null,
+            "selected_covariates": [
+              "pre_clicks"
+            ],
+            "solver": "svd",
+            "variance_reduction_factor": 0.00800915
+          },
+          "current": {
+            "condition_number": 1.0,
+            "covariate_provenance": [
+              {
+                "name": "pre_clicks",
+                "source_dataset": "ads_preperiod_clicks",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": -0.10869565,
+            "effective_sample_multiplier": 124.85714286,
+            "method": "cuped",
+            "num_covariates": 1,
+            "pre_treatment_only": true,
+            "provenance_validated": true,
+            "r_squared": 0.99199085,
+            "ridge_lambda": null,
+            "selected_covariates": [
+              "pre_clicks"
+            ],
+            "solver": "svd",
+            "variance_reduction_factor": 0.00800915
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 3.7e-05,
+          "current_value": 3.7e-05,
+          "fail_ratio": 4.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 2.0,
+          "status": "skipped_floor"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_cure_adjust",
+      "identity": {
+        "details": {
+          "baseline": {
+            "condition_number": 1.0,
+            "covariate_provenance": [
+              {
+                "name": "pre_clicks",
+                "source_dataset": "ads_preperiod_clicks",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_impressions",
+                "source_dataset": "ads_preperiod_impressions",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 0.79726652,
+            "effective_sample_multiplier": 19.85952381,
+            "method": "cure",
+            "num_covariates": 2,
+            "pre_treatment_only": true,
+            "provenance_validated": true,
+            "r_squared": 0.94964633,
+            "ridge_lambda": 0.0001756,
+            "selected_covariates": [
+              "pre_clicks",
+              "pre_impressions"
+            ],
+            "solver": "ridge",
+            "variance_reduction_factor": 0.05035367
+          },
+          "current": {
+            "condition_number": 1.0,
+            "covariate_provenance": [
+              {
+                "name": "pre_clicks",
+                "source_dataset": "ads_preperiod_clicks",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_impressions",
+                "source_dataset": "ads_preperiod_impressions",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 0.79726652,
+            "effective_sample_multiplier": 19.85952381,
+            "method": "cure",
+            "num_covariates": 2,
+            "pre_treatment_only": true,
+            "provenance_validated": true,
+            "r_squared": 0.94964633,
+            "ridge_lambda": 0.0001756,
+            "selected_covariates": [
+              "pre_clicks",
+              "pre_impressions"
+            ],
+            "solver": "ridge",
+            "variance_reduction_factor": 0.05035367
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 5.4e-05,
+          "current_value": 5.4e-05,
+          "fail_ratio": 4.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 2.0,
+          "status": "skipped_floor"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_response_curve_helpers",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adstock_last": 25.0,
+            "adstock_len": 3,
+            "hill_high": 0.69673045,
+            "hill_low": 0.12660394
+          },
+          "current": {
+            "adstock_last": 25.0,
+            "adstock_len": 3,
+            "hill_high": 0.69673045,
+            "hill_low": 0.12660394
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 1.6e-05,
+          "current_value": 1.6e-05,
+          "fail_ratio": 4.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 2.0,
+          "status": "skipped_floor"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_kalman_local_level_weekly_filter",
+      "identity": {
+        "details": {
+          "baseline": {
+            "log_likelihood": -11.676318,
+            "state_dim": 7,
+            "steps": 7
+          },
+          "current": {
+            "log_likelihood": -11.676318,
+            "state_dim": 7,
+            "steps": 7
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.000223,
+          "current_value": 0.000223,
+          "fail_ratio": 4.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 2.0,
+          "status": "skipped_floor"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_kalman_local_linear_trend_weekly_filter",
+      "identity": {
+        "details": {
+          "baseline": {
+            "log_likelihood": -12.99012,
+            "state_dim": 8,
+            "steps": 7
+          },
+          "current": {
+            "log_likelihood": -12.99012,
+            "state_dim": 8,
+            "steps": 7
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.000192,
+          "current_value": 0.000192,
+          "fail_ratio": 4.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 2.0,
+          "status": "skipped_floor"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "cli_kalman_local_level_weekly_filter",
+      "identity": {
+        "details": {
+          "baseline": {
+            "log_likelihood": -11.676318,
+            "state_dim": 7,
+            "steps": 7
+          },
+          "current": {
+            "log_likelihood": -11.676318,
+            "state_dim": 7,
+            "steps": 7
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "cli",
+          "current": "cli",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.008947,
+          "current_value": 0.008947,
+          "fail_ratio": 1.6,
+          "min_baseline_value": 0.005,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.3,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "cli",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "cli_kalman_local_linear_trend_weekly_filter",
+      "identity": {
+        "details": {
+          "baseline": {
+            "log_likelihood": -12.99012,
+            "state_dim": 8,
+            "steps": 7
+          },
+          "current": {
+            "log_likelihood": -12.99012,
+            "state_dim": 8,
+            "steps": 7
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "cli",
+          "current": "cli",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.010056,
+          "current_value": 0.010056,
+          "fail_ratio": 1.6,
+          "min_baseline_value": 0.005,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.3,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "cli",
+      "warnings": []
+    }
+  ],
+  "current": {
+    "build_profile": "release",
+    "case_ids": [
+      "python_beta_binomial_fit_from_counts",
+      "python_delay_correction_fit_from_lag_buckets",
+      "python_cuped_adjust",
+      "python_cure_adjust",
+      "python_response_curve_helpers",
+      "python_kalman_local_level_weekly_filter",
+      "python_kalman_local_linear_trend_weekly_filter",
+      "cli_kalman_local_level_weekly_filter",
+      "cli_kalman_local_linear_trend_weekly_filter"
+    ],
+    "deterministic": true,
+    "host_policy": "nextstat-bench",
+    "hostname": "nextstat-bench",
+    "path": "tmp/ads_timeseries_benchmark_20260308T220938Z/nextstat-bench/ads_timeseries_benchmark.json",
+    "runs": 5,
+    "schema_version": "nextstat.ads_timeseries_benchmark_result.v1",
+    "smoke": false,
+    "suite": "ads_timeseries_surface",
+    "warmups": 1
+  },
+  "current_path": "tmp/ads_timeseries_benchmark_20260308T220938Z/nextstat-bench/ads_timeseries_benchmark.json",
+  "environment_checks": {
+    "case_set": {
+      "baseline": [
+        "python_beta_binomial_fit_from_counts",
+        "python_delay_correction_fit_from_lag_buckets",
+        "python_cuped_adjust",
+        "python_cure_adjust",
+        "python_response_curve_helpers",
+        "python_kalman_local_level_weekly_filter",
+        "python_kalman_local_linear_trend_weekly_filter",
+        "cli_kalman_local_level_weekly_filter",
+        "cli_kalman_local_linear_trend_weekly_filter"
+      ],
+      "current": [
+        "python_beta_binomial_fit_from_counts",
+        "python_delay_correction_fit_from_lag_buckets",
+        "python_cuped_adjust",
+        "python_cure_adjust",
+        "python_response_curve_helpers",
+        "python_kalman_local_level_weekly_filter",
+        "python_kalman_local_linear_trend_weekly_filter",
+        "cli_kalman_local_level_weekly_filter",
+        "cli_kalman_local_linear_trend_weekly_filter"
+      ],
+      "matches": true,
+      "required": [
+        "python_beta_binomial_fit_from_counts",
+        "python_delay_correction_fit_from_lag_buckets",
+        "python_cuped_adjust",
+        "python_cure_adjust",
+        "python_response_curve_helpers",
+        "python_kalman_local_level_weekly_filter",
+        "python_kalman_local_linear_trend_weekly_filter",
+        "cli_kalman_local_level_weekly_filter",
+        "cli_kalman_local_linear_trend_weekly_filter"
+      ]
+    },
+    "deterministic": {
+      "baseline": true,
+      "current": true,
+      "matches": true,
+      "required": true
+    },
+    "host_policy": {
+      "baseline": "nextstat-bench",
+      "current": "nextstat-bench",
+      "matches": true,
+      "required": "nextstat-bench"
+    },
+    "hostname": {
+      "baseline": "nextstat-bench",
+      "current": "nextstat-bench",
+      "matches": true,
+      "required": "nextstat-bench"
+    },
+    "non_smoke": {
+      "baseline": true,
+      "current": true,
+      "matches": true,
+      "required": true
+    },
+    "release_build": {
+      "baseline": "release",
+      "current": "release",
+      "matches": true,
+      "required": "release"
+    },
+    "runs": {
+      "baseline": 5,
+      "current": 5,
+      "matches": true,
+      "required": 5
+    },
+    "warmups": {
+      "baseline": 1,
+      "current": 1,
+      "matches": true,
+      "required": 1
+    }
+  },
+  "ok": true,
+  "policy": {
+    "case_ids": [
+      "python_beta_binomial_fit_from_counts",
+      "python_delay_correction_fit_from_lag_buckets",
+      "python_cuped_adjust",
+      "python_cure_adjust",
+      "python_response_curve_helpers",
+      "python_kalman_local_level_weekly_filter",
+      "python_kalman_local_linear_trend_weekly_filter",
+      "cli_kalman_local_level_weekly_filter",
+      "cli_kalman_local_linear_trend_weekly_filter"
+    ],
+    "cli_metric": {
+      "fail_ratio": 1.6,
+      "min_baseline_value": 0.005,
+      "review_ratio": 1.3
+    },
+    "python_metric": {
+      "fail_ratio": 4.0,
+      "min_baseline_value": 0.001,
+      "review_ratio": 2.0
+    },
+    "require_deterministic": true,
+    "require_non_smoke": true,
+    "required_build_profile": "release",
+    "required_host_policy": "nextstat-bench",
+    "required_hostname": "nextstat-bench",
+    "required_runs": 5,
+    "required_warmups": 1,
+    "schema_version": "nextstat.ads_timeseries_benchmark_compare_policy.v1"
+  },
+  "requires_review": false,
+  "schema_version": "nextstat.ads_timeseries_benchmark_compare_report.v1",
+  "status": "passed",
+  "suite": "ads_timeseries_surface",
+  "summary": {
+    "failed_cases": 0,
+    "review_cases": 0,
+    "skipped_floor_cases": 7,
+    "top_level_errors": []
+  }
+}

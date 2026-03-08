@@ -1,0 +1,47 @@
+{
+  "case_name": "kalman_simulate_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_kalman": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_kalman"
+      },
+      "ok": true,
+      "result": {
+        "xs": [
+          [
+            0.0
+          ],
+          [
+            0.04203872533667616
+          ],
+          [
+            -0.02920766811853838
+          ],
+          [
+            -0.09732003152264229
+          ]
+        ],
+        "ys": [
+          [
+            0.03104910899873118
+          ],
+          [
+            0.15946644221116388
+          ],
+          [
+            -0.32625804964505273
+          ],
+          [
+            -0.010594978846174247
+          ]
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

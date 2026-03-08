@@ -1,0 +1,63 @@
+{
+  "bundle_dir": "tmp/simplified_likelihood_promotion_evidence_bundle_20260308T173340Z/nextstat-bench",
+  "bundle_json_path": "tmp/simplified_likelihood_promotion_evidence_bundle_20260308T173340Z/nextstat-bench/promotion_evidence.json",
+  "bundle_summary": {
+    "artifact_count": 17,
+    "benchmark_host": "nextstat-bench",
+    "required_artifact_count": 17,
+    "schema_version": "nextstat_simplified_likelihood_promotion_evidence_bundle_v0",
+    "status": "ok",
+    "supports_public_fixture_matrix": true,
+    "supports_speedup_claim": true
+  },
+  "checked_at_utc": "1970-01-01T00:00:00Z",
+  "checks": {
+    "consistency": {
+      "artifact_count": 17,
+      "errors": [],
+      "expected_summary_status": "ok",
+      "ok": true,
+      "required_artifact_count": 17,
+      "status": "passed"
+    },
+    "inventory": {
+      "artifact_count": 17,
+      "byte_mismatches": [],
+      "byte_size_verified_count": 17,
+      "duplicate_roles": [],
+      "errors": [],
+      "hash_verified_count": 17,
+      "missing_files": [],
+      "missing_roles": [],
+      "ok": true,
+      "sha256_mismatches": [],
+      "status": "passed"
+    },
+    "promotion_readiness": {
+      "actual_benchmark_host": "nextstat-bench",
+      "actual_min_end_to_end_upper_limit_speedup": 10.325036821081905,
+      "actual_public_fixture_matrix_status": "ok",
+      "actual_speedup_target_supported": true,
+      "actual_stable_surface_supported": true,
+      "errors": [],
+      "ok": true,
+      "required_benchmark_host": "nextstat-bench",
+      "required_min_end_to_end_upper_limit_speedup": 10.0,
+      "status": "passed"
+    },
+    "schema_validation": {
+      "errors": [],
+      "ok": true,
+      "schema_path": "/docs/schemas/benchmarks/simplified_likelihood_promotion_evidence_bundle_v0.schema.json",
+      "status": "passed"
+    }
+  },
+  "ok": true,
+  "require_promotion_ready": true,
+  "schema_version": "nextstat_simplified_likelihood_promotion_evidence_check_v0",
+  "status": "passed",
+  "summary": {
+    "top_level_errors": []
+  },
+  "surface": "simplified_likelihood"
+}

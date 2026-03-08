@@ -1,0 +1,338 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/pharma/bayesian_robust_mixture_prior_review_v0.schema.json",
+  "title": "NextStat Bayesian Robust Mixture Prior Review v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "stability",
+    "review_id",
+    "design_family",
+    "design_id",
+    "policy_id",
+    "mixture_model",
+    "prior_target",
+    "source_report_schema_version",
+    "source_policy_schema_version",
+    "source_prior_conflict_schema_version",
+    "generated_from_frozen_report",
+    "recommended_mixture_state",
+    "mixture_eligible",
+    "current_informative_weight",
+    "effective_component_weights",
+    "gating",
+    "diagnostics",
+    "rationale"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_bayesian_robust_mixture_prior_review_v0"
+    },
+    "stability": {
+      "type": "string",
+      "minLength": 1
+    },
+    "review_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "design_family": {
+      "enum": [
+        "beta_binomial",
+        "normal_normal"
+      ]
+    },
+    "design_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mixture_model": {
+      "enum": [
+        "robust_mixture_beta",
+        "robust_mixture_normal"
+      ]
+    },
+    "prior_target": {
+      "enum": [
+        "control_prior",
+        "treatment_prior"
+      ]
+    },
+    "source_report_schema_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_policy_schema_version": {
+      "const": "nextstat_bayesian_robust_mixture_prior_policy_v0"
+    },
+    "source_prior_conflict_schema_version": {
+      "const": "nextstat_bayesian_prior_conflict_diagnostic_v0"
+    },
+    "generated_from_frozen_report": {
+      "const": true
+    },
+    "recommended_mixture_state": {
+      "enum": [
+        "retain",
+        "taper",
+        "fallback_to_weak"
+      ]
+    },
+    "mixture_eligible": {
+      "type": "boolean"
+    },
+    "current_informative_weight": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "effective_component_weights": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "gating": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "meets_minimum_information_fraction",
+        "passes_action_flip_gate",
+        "within_retain_eventual_success_probability_range",
+        "within_retain_expected_total_sample_size_range_fraction"
+      ],
+      "properties": {
+        "meets_minimum_information_fraction": {
+          "type": "boolean"
+        },
+        "passes_action_flip_gate": {
+          "type": "boolean"
+        },
+        "within_retain_eventual_success_probability_range": {
+          "type": "boolean"
+        },
+        "within_retain_expected_total_sample_size_range_fraction": {
+          "type": "boolean"
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prior_conflict_severity",
+        "decision_instability",
+        "recommended_action_flip_count",
+        "current_target_sample_size",
+        "planned_target_sample_size",
+        "current_information_fraction",
+        "posterior_probability_range",
+        "eventual_success_probability_range",
+        "expected_total_sample_size_range_fraction_of_plan"
+      ],
+      "properties": {
+        "prior_conflict_severity": {
+          "enum": [
+            "low",
+            "moderate",
+            "high"
+          ]
+        },
+        "decision_instability": {
+          "type": "boolean"
+        },
+        "recommended_action_flip_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "current_target_sample_size": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "planned_target_sample_size": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        },
+        "current_information_fraction": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "posterior_probability_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "eventual_success_probability_range": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "expected_total_sample_size_range_fraction_of_plan": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        }
+      }
+    },
+    "rationale": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "design_family": {
+            "const": "beta_binomial"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mixture_model": {
+            "const": "robust_mixture_beta"
+          },
+          "effective_component_weights": {
+            "items": {
+              "$ref": "#/$defs/beta_component_weight"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "design_family": {
+            "const": "normal_normal"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mixture_model": {
+            "const": "robust_mixture_normal"
+          },
+          "effective_component_weights": {
+            "items": {
+              "$ref": "#/$defs/normal_component_weight"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "beta_component_weight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_id",
+        "component_role",
+        "base_weight",
+        "effective_weight",
+        "prior"
+      ],
+      "properties": {
+        "component_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "component_role": {
+          "enum": [
+            "informative",
+            "weak_reference"
+          ]
+        },
+        "base_weight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "effective_weight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "prior": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "alpha",
+            "beta"
+          ],
+          "properties": {
+            "alpha": {
+              "type": "number",
+              "exclusiveMinimum": 0.0
+            },
+            "beta": {
+              "type": "number",
+              "exclusiveMinimum": 0.0
+            }
+          }
+        }
+      }
+    },
+    "normal_component_weight": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_id",
+        "component_role",
+        "base_weight",
+        "effective_weight",
+        "prior"
+      ],
+      "properties": {
+        "component_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "component_role": {
+          "enum": [
+            "informative",
+            "weak_reference"
+          ]
+        },
+        "base_weight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "effective_weight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "prior": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mean",
+            "sd"
+          ],
+          "properties": {
+            "mean": {
+              "type": "number"
+            },
+            "sd": {
+              "type": "number",
+              "exclusiveMinimum": 0.0
+            }
+          }
+        }
+      }
+    }
+  }
+}

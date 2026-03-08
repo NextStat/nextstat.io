@@ -1,0 +1,5 @@
+systematic,measurement,magnitude,error_on_error,aux_mean
+b-JES,atlas_ljets,0.30,0.10,0.0
+b-JES,cms_ljets,0.28,0.10,0.0
+hadronization,atlas_ljets,0.20,0.00,0.0
+hadronization,cms_ljets,0.18,0.00,0.0

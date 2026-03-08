@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/releases/release_manifest_v1.schema.json",
+  "title": "NextStat Release Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at_utc",
+    "release_tag",
+    "version",
+    "mode",
+    "git_sha",
+    "version_alignment",
+    "required_release_surfaces",
+    "optional_manual_surfaces",
+    "candidate_artifacts",
+    "pharma_release_policy",
+    "publish_targets"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.release_manifest.v1"
+    },
+    "generated_at_utc": {
+      "type": "string"
+    },
+    "release_tag": {
+      "type": "string",
+      "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+.*$"
+    },
+    "version": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "prepare",
+        "publish"
+      ]
+    },
+    "git_sha": {
+      "type": "string"
+    },
+    "version_alignment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cargo_toml",
+        "ns_py_pyproject",
+        "ns_cli_py_pyproject",
+        "nextstat_cli_pin"
+      ],
+      "properties": {
+        "cargo_toml": {
+          "type": "string"
+        },
+        "ns_py_pyproject": {
+          "type": "string"
+        },
+        "ns_cli_py_pyproject": {
+          "type": "string"
+        },
+        "nextstat_cli_pin": {
+          "type": "string"
+        }
+      }
+    },
+    "required_release_surfaces": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/release_surface"
+      }
+    },
+    "optional_manual_surfaces": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/release_surface"
+      }
+    },
+    "candidate_artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflow_artifacts",
+        "github_release_asset_globs"
+      ],
+      "properties": {
+        "workflow_artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "github_release_asset_globs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "pharma_release_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prerelease_python_install_mode",
+        "canonical_release_evidence_platform",
+        "cross_platform_saem_mode",
+        "canonical_release_evidence_artifact"
+      ],
+      "properties": {
+        "prerelease_python_install_mode": {
+          "type": "string",
+          "enum": [
+            "local_artifact_only"
+          ]
+        },
+        "canonical_release_evidence_platform": {
+          "type": "string",
+          "enum": [
+            "linux"
+          ]
+        },
+        "cross_platform_saem_mode": {
+          "type": "string",
+          "enum": [
+            "acceptance_envelope"
+          ]
+        },
+        "canonical_release_evidence_artifact": {
+          "type": "string",
+          "enum": [
+            "pharma_validation.json"
+          ]
+        }
+      }
+    },
+    "publish_targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "crates_io",
+        "pypi"
+      ],
+      "properties": {
+        "crates_io": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pypi": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "release_surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "make_target",
+        "workflow_job",
+        "docs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "make_target": {
+          "type": "string"
+        },
+        "workflow_job": {
+          "type": "string"
+        },
+        "docs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -24,6 +24,28 @@ if str(THIS_DIR) not in sys.path:
     sys.path.insert(0, str(THIS_DIR))
 
 
+def _strip_source_bindings_path_when_preferring_installed() -> None:
+    if os.environ.get("NEXTSTAT_PREFER_INSTALLED") != "1":
+        return
+    repo_root = THIS_DIR.parents[1]
+    source_bindings = (repo_root / "bindings" / "ns-py" / "python").resolve()
+    filtered: list[str] = []
+    for entry in sys.path:
+        if not entry:
+            filtered.append(entry)
+            continue
+        try:
+            if Path(entry).resolve() == source_bindings:
+                continue
+        except OSError:
+            pass
+        filtered.append(entry)
+    sys.path[:] = filtered
+
+
+_strip_source_bindings_path_when_preferring_installed()
+
+
 @dataclass(frozen=True)
 class _TimingRecord:
     nodeid: str

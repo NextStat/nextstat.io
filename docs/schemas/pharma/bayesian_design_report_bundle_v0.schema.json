@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/pharma/bayesian_design_report_bundle_v0.schema.json",
+  "title": "NextStat Bayesian Design Report Bundle v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "stability",
+    "design_family",
+    "report_schema_version",
+    "deterministic",
+    "artifact_paths"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_bayesian_design_report_bundle_v0"
+    },
+    "stability": {
+      "const": "research-grade"
+    },
+    "design_family": {
+      "type": "string",
+      "enum": ["beta_binomial", "normal_normal"]
+    },
+    "report_schema_version": {
+      "type": "string",
+      "enum": [
+        "nextstat_beta_binomial_design_report_v0",
+        "nextstat_normal_normal_design_report_v0"
+      ]
+    },
+    "deterministic": {
+      "const": true
+    },
+    "artifact_paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "run_bundle_meta",
+        "run_bundle_manifest",
+        "frozen_report_json",
+        "design_report_markdown",
+        "design_spec",
+        "current_analysis",
+        "operating_characteristics",
+        "posterior_predictive",
+        "prior_sensitivity",
+        "provenance"
+      ],
+      "properties": {
+        "run_bundle_meta": {
+          "const": "meta.json"
+        },
+        "run_bundle_manifest": {
+          "const": "manifest.json"
+        },
+        "frozen_report_json": {
+          "const": "inputs/input.json"
+        },
+        "design_report_markdown": {
+          "const": "outputs/design_report.md"
+        },
+        "design_spec": {
+          "const": "outputs/design_spec.json"
+        },
+        "current_analysis": {
+          "const": "outputs/current_analysis.json"
+        },
+        "operating_characteristics": {
+          "const": "outputs/operating_characteristics.json"
+        },
+        "posterior_predictive": {
+          "const": "outputs/posterior_predictive.json"
+        },
+        "prior_sensitivity": {
+          "const": "outputs/prior_sensitivity.json"
+        },
+        "provenance": {
+          "const": "outputs/provenance.json"
+        }
+      }
+    }
+  }
+}

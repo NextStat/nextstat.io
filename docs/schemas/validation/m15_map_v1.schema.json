@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/validation/m15_map_v1.schema.json",
+  "title": "NextStat ICH M15 Model Analysis Plan v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "document_status",
+    "jurisdiction_profile",
+    "profile_requirements",
+    "context_of_use",
+    "questions",
+    "planned_datasets",
+    "methods",
+    "technical_acceptance_criteria",
+    "governance",
+    "signoff",
+    "linked_artifacts"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "m15_map_v1"
+    },
+    "generated_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "document_status": {
+      "type": "string",
+      "enum": ["draft", "frozen", "approved", "superseded"]
+    },
+    "jurisdiction_profile": {
+      "type": "string",
+      "enum": ["ich_core", "ema_step5_2026", "fda_draft_2024"]
+    },
+    "profile_requirements": {
+      "$ref": "#/$defs/profile_requirements"
+    },
+    "context_of_use": {
+      "type": "string",
+      "minLength": 1
+    },
+    "questions": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/question_ref" }
+    },
+    "planned_datasets": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/dataset_ref" }
+    },
+    "methods": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/method_ref" }
+    },
+    "technical_acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/criterion" }
+    },
+    "governance": {
+      "$ref": "#/$defs/governance"
+    },
+    "signoff": {
+      "$ref": "#/$defs/signoff"
+    },
+    "linked_artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assessment_table_ref"],
+      "properties": {
+        "assessment_table_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "validation_report_ref": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "profile_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_label",
+        "canonical_reference",
+        "framing_heading",
+        "framing_text",
+        "mandatory_sections"
+      ],
+      "properties": {
+        "profile_label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "framing_heading": {
+          "type": "string",
+          "minLength": 1
+        },
+        "framing_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mandatory_sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "question_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["question_id", "question_of_interest"],
+      "properties": {
+        "question_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question_of_interest": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "dataset_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataset_id", "description", "purpose"],
+      "properties": {
+        "dataset_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "method_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method_id", "description"],
+      "properties": {
+        "method_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "software_ref": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["criterion_id", "description", "acceptance_rule"],
+      "properties": {
+        "criterion_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "acceptance_rule": {
+          "type": "string",
+          "minLength": 1
+        },
+        "applies_to_question_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "governance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authors", "reviewers", "approvers"],
+      "properties": {
+        "authors": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "reviewers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "approvers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "signoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary_author", "qa_reviewer", "approver", "status"],
+      "properties": {
+        "primary_author": {
+          "type": "string",
+          "minLength": 1
+        },
+        "qa_reviewer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approver": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "reviewed", "approved"]
+        }
+      }
+    }
+  }
+}

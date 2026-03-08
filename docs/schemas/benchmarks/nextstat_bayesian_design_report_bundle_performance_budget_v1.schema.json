@@ -1,0 +1,110 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/nextstat_bayesian_design_report_bundle_performance_budget_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bayesian Design Report Bundle Performance Budget v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "runner_modes",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.bayesian_design_report_bundle_performance_budget.v1"
+    },
+    "runner_modes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "smoke",
+        "release"
+      ],
+      "properties": {
+        "smoke": {
+          "$ref": "#/$defs/runner_mode"
+        },
+        "release": {
+          "$ref": "#/$defs/runner_mode"
+        }
+      }
+    },
+    "cases": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "beta_small",
+        "beta_large",
+        "normal_small",
+        "normal_large"
+      ],
+      "properties": {
+        "beta_small": {
+          "$ref": "#/$defs/case_budget"
+        },
+        "beta_large": {
+          "$ref": "#/$defs/case_budget"
+        },
+        "normal_small": {
+          "$ref": "#/$defs/case_budget"
+        },
+        "normal_large": {
+          "$ref": "#/$defs/case_budget"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "runner_mode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repeat",
+        "manifest_repeat"
+      ],
+      "properties": {
+        "repeat": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "manifest_repeat": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "case_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "description",
+        "max_bundle_duration_s",
+        "max_manifest_regen_duration_s",
+        "max_bundle_bytes",
+        "max_manifest_bytes"
+      ],
+      "properties": {
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "max_bundle_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "max_manifest_regen_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "max_bundle_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_manifest_bytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}

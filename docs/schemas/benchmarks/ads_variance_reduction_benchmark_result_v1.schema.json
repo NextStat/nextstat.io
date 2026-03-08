@@ -1,0 +1,301 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/ads_variance_reduction_benchmark_result_v1.schema.json",
+  "title": "Ads variance-reduction benchmark result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "meta",
+    "protocol",
+    "host",
+    "binary",
+    "python",
+    "results",
+    "scenario_summaries",
+    "derived"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.ads_variance_reduction_benchmark_result.v1" },
+    "suite": { "const": "ads_variance_reduction_matrix" },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generated_at_utc",
+        "runner",
+        "host_policy",
+        "smoke",
+        "deterministic",
+        "git_commit",
+        "scenario_manifest"
+      ],
+      "properties": {
+        "generated_at_utc": { "type": "string" },
+        "runner": { "type": "string" },
+        "host_policy": { "type": "string" },
+        "smoke": { "type": "boolean" },
+        "deterministic": { "type": "boolean" },
+        "git_commit": { "type": ["string", "null"] },
+        "scenario_manifest": { "type": "string" }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runs", "warmups"],
+      "properties": {
+        "runs": { "type": "integer", "minimum": 1 },
+        "warmups": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hostname", "platform", "machine", "processor", "cpu_model", "python_version"],
+      "properties": {
+        "hostname": { "type": "string" },
+        "platform": { "type": "string" },
+        "machine": { "type": "string" },
+        "processor": { "type": "string" },
+        "cpu_model": { "type": "string" },
+        "python_version": { "type": "string" }
+      }
+    },
+    "binary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "version", "sha256", "build_profile"],
+      "properties": {
+        "path": { "type": "string" },
+        "version": { "type": "string" },
+        "sha256": { "type": "string" },
+        "build_profile": { "type": "string" }
+      }
+    },
+    "python": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nextstat_version"],
+      "properties": {
+        "nextstat_version": { "type": "string" }
+      }
+    },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/resultCase" }
+    },
+    "scenario_summaries": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/scenarioSummary" }
+    },
+    "derived": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "all_cases_ok",
+        "case_count",
+        "scenario_count",
+        "method_count",
+        "python_case_count",
+        "slowest_case_id",
+        "slowest_median_s",
+        "ridge_case_count",
+        "ridge_case_ids",
+        "ridge_scenario_count",
+        "ridge_scenario_ids"
+      ],
+      "properties": {
+        "all_cases_ok": { "type": "boolean" },
+        "case_count": { "type": "integer", "minimum": 1 },
+        "scenario_count": { "type": "integer", "minimum": 1 },
+        "method_count": { "type": "integer", "minimum": 1 },
+        "python_case_count": { "type": "integer", "minimum": 1 },
+        "slowest_case_id": { "type": "string" },
+        "slowest_median_s": { "type": "number", "minimum": 0.0 },
+        "ridge_case_count": { "type": "integer", "minimum": 0 },
+        "ridge_case_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "ridge_scenario_count": { "type": "integer", "minimum": 0 },
+        "ridge_scenario_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "covariateProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "timing", "source_dataset"],
+      "properties": {
+        "name": { "type": "string" },
+        "timing": { "type": "string" },
+        "source_dataset": { "type": ["string", "null"] }
+      }
+    },
+    "resultDetails": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adjusted_variance",
+        "available_covariates",
+        "condition_number",
+        "covariate_provenance",
+        "effect",
+        "effective_sample_multiplier",
+        "estimated_variance",
+        "mean_control",
+        "mean_variant",
+        "method",
+        "metric_type",
+        "n_per_arm",
+        "num_covariates",
+        "original_variance",
+        "pooled_covariate_zero_fraction",
+        "pooled_outcome_zero_fraction",
+        "pre_treatment_only",
+        "primary_covariate",
+        "provenance_validated",
+        "r_squared",
+        "regression_rank",
+        "ridge_lambda",
+        "ridge_used",
+        "scenario_collinearity_regime",
+        "scenario_description",
+        "scenario_id",
+        "scenario_sparsity_regime",
+        "selected_covariates",
+        "solver",
+        "standard_error",
+        "variance_reduction_factor"
+      ],
+      "properties": {
+        "adjusted_variance": { "type": "number", "minimum": 0.0 },
+        "available_covariates": { "type": "integer", "minimum": 0 },
+        "condition_number": { "type": ["number", "null"], "minimum": 0.0 },
+        "covariate_provenance": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/covariateProvenance" }
+        },
+        "effect": { "type": "number" },
+        "effective_sample_multiplier": { "type": ["number", "null"], "minimum": 1.0 },
+        "estimated_variance": { "type": "number", "minimum": 0.0 },
+        "mean_control": { "type": "number" },
+        "mean_variant": { "type": "number" },
+        "method": { "enum": ["naive", "cuped", "cure"] },
+        "metric_type": { "enum": ["continuous", "ratio_style", "binary"] },
+        "n_per_arm": { "type": "integer", "minimum": 1 },
+        "num_covariates": { "type": "integer", "minimum": 0 },
+        "original_variance": { "type": "number", "minimum": 0.0 },
+        "pooled_covariate_zero_fraction": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "pooled_outcome_zero_fraction": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "pre_treatment_only": { "type": "boolean" },
+        "primary_covariate": { "type": "string" },
+        "provenance_validated": { "type": "boolean" },
+        "r_squared": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 },
+        "regression_rank": { "type": ["integer", "null"], "minimum": 0 },
+        "ridge_lambda": { "type": ["number", "null"], "minimum": 0.0 },
+        "ridge_used": { "type": "boolean" },
+        "scenario_collinearity_regime": { "type": "string" },
+        "scenario_description": { "type": "string" },
+        "scenario_id": { "type": "string" },
+        "scenario_sparsity_regime": { "type": "string" },
+        "selected_covariates": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "solver": { "type": ["string", "null"] },
+        "standard_error": { "type": "number", "minimum": 0.0 },
+        "variance_reduction_factor": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 }
+      }
+    },
+    "resultCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case_id", "surface", "status", "min_s", "median_s", "max_s", "samples_s", "details"],
+      "properties": {
+        "case_id": { "type": "string" },
+        "surface": { "const": "python" },
+        "status": { "const": "ok" },
+        "min_s": { "type": "number", "minimum": 0.0 },
+        "median_s": { "type": "number", "minimum": 0.0 },
+        "max_s": { "type": "number", "minimum": 0.0 },
+        "samples_s": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number", "minimum": 0.0 }
+        },
+        "details": { "$ref": "#/$defs/resultDetails" }
+      }
+    },
+    "scenarioSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "available_covariates",
+        "best_method_by_standard_error",
+        "collinearity_regime",
+        "cuped_effective_sample_multiplier",
+        "cuped_median_s",
+        "cuped_r_squared",
+        "cuped_runtime_ratio_vs_naive",
+        "cuped_solver",
+        "cuped_standard_error",
+        "cuped_variance_ratio_vs_naive",
+        "cure_effective_sample_multiplier",
+        "cure_median_s",
+        "cure_r_squared",
+        "cure_ridge_lambda",
+        "cure_runtime_ratio_vs_naive",
+        "cure_solver",
+        "cure_standard_error",
+        "cure_variance_ratio_vs_naive",
+        "metric_type",
+        "n_per_arm",
+        "naive_median_s",
+        "naive_standard_error",
+        "pooled_covariate_zero_fraction",
+        "pooled_outcome_zero_fraction",
+        "primary_covariate",
+        "scenario_id",
+        "sparsity_regime"
+      ],
+      "properties": {
+        "available_covariates": { "type": "integer", "minimum": 1 },
+        "best_method_by_standard_error": { "enum": ["naive", "cuped", "cure"] },
+        "collinearity_regime": { "type": "string" },
+        "cuped_effective_sample_multiplier": { "type": "number", "minimum": 1.0 },
+        "cuped_median_s": { "type": "number", "minimum": 0.0 },
+        "cuped_r_squared": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "cuped_runtime_ratio_vs_naive": { "type": "number", "minimum": 0.0 },
+        "cuped_solver": { "type": "string" },
+        "cuped_standard_error": { "type": "number", "minimum": 0.0 },
+        "cuped_variance_ratio_vs_naive": { "type": "number", "minimum": 0.0 },
+        "cure_effective_sample_multiplier": { "type": "number", "minimum": 1.0 },
+        "cure_median_s": { "type": "number", "minimum": 0.0 },
+        "cure_r_squared": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "cure_ridge_lambda": { "type": ["number", "null"], "minimum": 0.0 },
+        "cure_runtime_ratio_vs_naive": { "type": "number", "minimum": 0.0 },
+        "cure_solver": { "type": "string" },
+        "cure_standard_error": { "type": "number", "minimum": 0.0 },
+        "cure_variance_ratio_vs_naive": { "type": "number", "minimum": 0.0 },
+        "metric_type": { "enum": ["continuous", "ratio_style", "binary"] },
+        "n_per_arm": { "type": "integer", "minimum": 1 },
+        "naive_median_s": { "type": "number", "minimum": 0.0 },
+        "naive_standard_error": { "type": "number", "minimum": 0.0 },
+        "pooled_covariate_zero_fraction": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "pooled_outcome_zero_fraction": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "primary_covariate": { "type": "string" },
+        "scenario_id": { "type": "string" },
+        "sparsity_regime": { "type": "string" }
+      }
+    }
+  }
+}

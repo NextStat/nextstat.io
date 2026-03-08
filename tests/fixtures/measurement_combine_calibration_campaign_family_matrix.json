@@ -1,0 +1,66 @@
+{
+  "aggregate": {
+    "calibration_order": [
+      "cross_fixture",
+      "topmass_only"
+    ],
+    "families_with_mixed_pois": [
+      "cross_fixture"
+    ],
+    "family_with_highest_joint_severity": "cross_fixture",
+    "fit_order": [
+      "cross_fixture",
+      "topmass_only"
+    ],
+    "joint_order": [
+      "cross_fixture",
+      "topmass_only"
+    ],
+    "n_families": 2
+  },
+  "families": [
+    {
+      "calibration_rank": 1,
+      "fit_rank": 1,
+      "has_mixed_pois": true,
+      "highest_calibration_inflation_value": 1.1413389897265351,
+      "highest_fit_inflation_value": 457.6276341964417,
+      "joint_rank": 1,
+      "joint_severity_score": 522.3082616847112,
+      "label": "cross_fixture",
+      "n_artifacts": 2
+    },
+    {
+      "calibration_rank": 2,
+      "fit_rank": 2,
+      "has_mixed_pois": false,
+      "highest_calibration_inflation_value": 1.1413389897265351,
+      "highest_fit_inflation_value": 457.6276341964417,
+      "joint_rank": 2,
+      "joint_severity_score": 522.3082616847112,
+      "label": "topmass_only",
+      "n_artifacts": 1
+    }
+  ],
+  "pairwise": [
+    {
+      "calibration_dominance": "tie",
+      "fit_dominance": "tie",
+      "joint_dominance": "tie",
+      "lhs": "cross_fixture",
+      "lhs_calibration_minus_rhs": 0.0,
+      "lhs_fit_minus_rhs": 0.0,
+      "lhs_joint_minus_rhs": 0.0,
+      "rhs": "topmass_only",
+      "same_poi_coverage": false
+    }
+  ],
+  "pois": [
+    "m_top",
+    "mu"
+  ],
+  "schema_version": "nextstat_measurement_combination_calibration_campaign_family_matrix_v0",
+  "shared_poi": null,
+  "source_schema_version": "nextstat_measurement_combination_calibration_campaign_family_report_v0",
+  "stability": "research-grade"
+}

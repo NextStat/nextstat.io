@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/bayesian_assessment_v1.schema.json",
+  "title": "NextStat Bayesian Assessment v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "source_suite_path",
+    "source_suite_sha256",
+    "source_suite_summary",
+    "parity_summary",
+    "core_quality",
+    "promotion_gate"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.bayesian_assessment.v1" },
+    "suite": { "const": "bayesian" },
+    "source_suite_path": { "type": "string", "minLength": 1 },
+    "source_suite_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "source_suite_summary": { "type": "object", "additionalProperties": true },
+    "parity_summary": { "type": "object", "additionalProperties": true },
+    "core_quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "status", "failures", "warnings"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["passed", "failed"] },
+        "failures": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "promotion_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "status", "target_backend", "policy", "reviewed_cases", "review_summary", "failures"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["passed", "failed"] },
+        "target_backend": { "type": "string", "minLength": 1 },
+        "policy": { "type": "object", "additionalProperties": true },
+        "reviewed_cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "case",
+              "backend",
+              "path",
+              "status",
+              "reason",
+              "divergence_rate",
+              "max_treedepth_rate",
+              "max_r_hat",
+              "min_ess_bulk",
+              "min_ess_tail",
+              "min_ebfmi",
+              "min_ess_bulk_per_sec"
+            ],
+            "properties": {
+              "case": { "type": "string", "minLength": 1 },
+              "backend": { "type": "string", "minLength": 1 },
+              "path": { "type": "string" },
+              "status": { "type": "string" },
+              "reason": { "type": ["string", "null"] },
+              "divergence_rate": { "type": ["number", "null"], "minimum": 0 },
+              "max_treedepth_rate": { "type": ["number", "null"], "minimum": 0 },
+              "max_r_hat": { "type": ["number", "null"], "minimum": 0 },
+              "min_ess_bulk": { "type": ["number", "null"], "minimum": 0 },
+              "min_ess_tail": { "type": ["number", "null"], "minimum": 0 },
+              "min_ebfmi": { "type": ["number", "null"], "minimum": 0 },
+              "min_ess_bulk_per_sec": { "type": ["number", "null"], "minimum": 0 }
+            }
+          }
+        },
+        "review_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "n_reviewed_cases",
+            "n_failures",
+            "n_failing_cases",
+            "failing_cases",
+            "worst_divergence_rate",
+            "worst_max_treedepth_rate",
+            "worst_max_r_hat",
+            "worst_min_ess_bulk",
+            "worst_min_ess_tail",
+            "worst_min_ess_bulk_per_sec",
+            "worst_min_ebfmi"
+          ],
+          "properties": {
+            "n_reviewed_cases": { "type": "integer", "minimum": 0 },
+            "n_failures": { "type": "integer", "minimum": 0 },
+            "n_failing_cases": { "type": "integer", "minimum": 0 },
+            "failing_cases": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "worst_divergence_rate": { "$ref": "#/$defs/metric_extreme" },
+            "worst_max_treedepth_rate": { "$ref": "#/$defs/metric_extreme" },
+            "worst_max_r_hat": { "$ref": "#/$defs/metric_extreme" },
+            "worst_min_ess_bulk": { "$ref": "#/$defs/metric_extreme" },
+            "worst_min_ess_tail": { "$ref": "#/$defs/metric_extreme" },
+            "worst_min_ess_bulk_per_sec": { "$ref": "#/$defs/metric_extreme" },
+            "worst_min_ebfmi": { "$ref": "#/$defs/metric_extreme" }
+          }
+        },
+        "failures": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "metric_extreme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["case", "value"],
+      "properties": {
+        "case": { "type": ["string", "null"] },
+        "value": { "type": ["number", "null"], "minimum": 0 }
+      }
+    }
+  }
+}

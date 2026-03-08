@@ -1,0 +1,78 @@
+{
+  "baseline_recommended_action": "continue",
+  "baseline_variant_id": "baseline",
+  "conflict_severity": "high",
+  "decision_instability": true,
+  "design_family": "normal_normal",
+  "design_id": "continuous_superiority_demo",
+  "diagnostic_id": "continuous_superiority_demo_prior_conflict_diagnostic_v0",
+  "generated_from_frozen_report": true,
+  "metrics": {
+    "baseline_posterior_probability_gt_margin": 0.6725589163359341,
+    "decision_margin_ratio": 3.152839098069199,
+    "eventual_success_probability_range": 0.75,
+    "expected_total_sample_size_range": 20.0,
+    "expected_total_sample_size_range_fraction_of_plan": 0.5,
+    "futility_threshold": 0.1,
+    "max_abs_eventual_success_probability_delta_vs_baseline": 0.625,
+    "max_abs_expected_total_sample_size_delta_vs_baseline": 20.0,
+    "max_abs_posterior_probability_delta_vs_baseline": 0.6515023156200955,
+    "nearest_decision_threshold_margin": 0.30244108366406586,
+    "posterior_probability_range": 0.9535480734384846,
+    "recommended_action_flip_count": 1,
+    "recommended_action_flip_variant_ids": [
+      "skeptical"
+    ],
+    "success_threshold": 0.975
+  },
+  "rationale": [
+    "Recommended action flips for at least one published prior variant.",
+    "Flip variants: `skeptical`."
+  ],
+  "reported_variant_count": 3,
+  "schema_version": "nextstat_bayesian_prior_conflict_diagnostic_v0",
+  "source_prior_sensitivity_schema_version": "nextstat_normal_normal_prior_sensitivity_report_v0",
+  "source_report_schema_version": "nextstat_normal_normal_design_report_v0",
+  "stability": "research-grade",
+  "thresholds": {
+    "high_recommended_action_flip_count_threshold": 1,
+    "moderate_decision_margin_ratio_threshold": 0.5,
+    "moderate_eventual_success_probability_range_threshold": 0.25,
+    "moderate_expected_total_sample_size_range_fraction_threshold": 0.25
+  },
+  "variant_summaries": [
+    {
+      "eventual_success_probability": 0.125,
+      "eventual_success_probability_delta_vs_baseline": 0.0,
+      "expected_total_sample_size": 40.0,
+      "expected_total_sample_size_delta_vs_baseline": 0.0,
+      "is_baseline": true,
+      "posterior_probability_delta_vs_baseline": 0.0,
+      "posterior_probability_gt_margin": 0.6725589163359341,
+      "recommended_action": "continue",
+      "variant_id": "baseline"
+    },
+    {
+      "eventual_success_probability": 0.0,
+      "eventual_success_probability_delta_vs_baseline": -0.125,
+      "expected_total_sample_size": 20.0,
+      "expected_total_sample_size_delta_vs_baseline": -20.0,
+      "is_baseline": false,
+      "posterior_probability_delta_vs_baseline": -0.6515023156200955,
+      "posterior_probability_gt_margin": 0.02105660071583859,
+      "recommended_action": "stop_for_futility",
+      "variant_id": "skeptical"
+    },
+    {
+      "eventual_success_probability": 0.75,
+      "eventual_success_probability_delta_vs_baseline": 0.625,
+      "expected_total_sample_size": 40.0,
+      "expected_total_sample_size_delta_vs_baseline": 0.0,
+      "is_baseline": false,
+      "posterior_probability_delta_vs_baseline": 0.30204575781838905,
+      "posterior_probability_gt_margin": 0.9746046741543232,
+      "recommended_action": "continue",
+      "variant_id": "enthusiastic"
+    }
+  ]
+}

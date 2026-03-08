@@ -1,0 +1,56 @@
+{
+  "case_name": "churn_compare_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_churn_compare": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_churn_compare"
+      },
+      "ok": true,
+      "result": {
+        "alpha": 0.05,
+        "correction_method": "benjamini_hochberg",
+        "n": 8,
+        "n_events": 4,
+        "overall_chi_squared": 0.4864864864864866,
+        "overall_df": 1,
+        "overall_p_value": 0.48549880264428225,
+        "pairwise": [
+          {
+            "chi_squared": 0.4864864864864866,
+            "group_a": 0,
+            "group_b": 1,
+            "hazard_ratio_proxy": 1.8571428571428574,
+            "median_diff": -30.0,
+            "p_adjusted": 0.48549880264428225,
+            "p_value": 0.48549880264428225,
+            "significant": false
+          }
+        ],
+        "segments": [
+          {
+            "expected": 1.4,
+            "group": 0,
+            "median": 60.0,
+            "n": 4,
+            "n_events": 2,
+            "observed": 2.0
+          },
+          {
+            "expected": 2.6,
+            "group": 1,
+            "median": 90.0,
+            "n": 4,
+            "n_events": 2,
+            "observed": 2.0
+          }
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

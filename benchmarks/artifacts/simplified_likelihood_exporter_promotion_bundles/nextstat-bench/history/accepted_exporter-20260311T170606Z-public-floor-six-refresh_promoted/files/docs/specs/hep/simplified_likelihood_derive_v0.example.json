@@ -1,0 +1,43 @@
+{
+  "schema_version": "nextstat_simplified_likelihood_derive_v0",
+  "source_workspace": {
+    "format": "pyhf",
+    "schema_version": "pyhf_workspace_v1",
+    "poi_name": "mu"
+  },
+  "fit_result": {
+    "schema_version": "nextstat_fit_result_v0",
+    "background_state": "postfit_background"
+  },
+  "selection": {
+    "channels": ["SR"],
+    "bins": ["SR/bin0", "SR/bin1"]
+  },
+  "reduction": {
+    "output_uncertainty_model": "basis",
+    "basis_method": "eigen",
+    "explained_variance_target": 0.995,
+    "constraint_covariance_source": "source_model_constraints",
+    "max_components": 6,
+    "split_stat_covariance": true
+  },
+  "jacobian": {
+    "method": "finite_difference",
+    "relative_step": 0.01,
+    "absolute_step_floor": 0.000001
+  },
+  "fidelity_smoke": {
+    "random_draws": 128,
+    "qmu_test_mu": 1.0,
+    "upper_limit_cl": 0.95
+  },
+  "output_contract": {
+    "schema_version": "nextstat_simplified_likelihood_v0",
+    "require_factorization_diagnostics": true,
+    "require_fidelity_diagnostics": true
+  },
+  "unsupported_semantics": [
+    "Exact nuisance ranking parity is not guaranteed for covariance-dominated sources.",
+    "Publication-ready signal patchsets remain outside v0 derive scope."
+  ]
+}

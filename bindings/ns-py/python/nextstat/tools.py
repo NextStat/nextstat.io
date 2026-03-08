@@ -34,6 +34,7 @@ Usage standalone (MCP server)::
 
 from __future__ import annotations
 
+import base64
 import copy
 import json
 import math
@@ -42,1421 +43,267 @@ import urllib.error
 import urllib.request
 from typing import Any, Optional
 
+from ._tool_manifest import build_toolkit_descriptor, get_transport_tools
+
 
 # ---------------------------------------------------------------------------
 # Tool registry
 # ---------------------------------------------------------------------------
 
-_EXECUTION_SCHEMA: dict[str, Any] = {
-    "type": "object",
-    "description": (
-        "Optional execution controls. If deterministic=true (default), NextStat will attempt to "
-        "enforce parity-friendly settings (threads=1, eval_mode='parity') where supported."
-    ),
-    "properties": {
-        "deterministic": {
-            "type": "boolean",
-            "description": "If true, prefer deterministic parity behavior (default: true).",
-            "default": True,
-        },
-        "threads": {
-            "type": "integer",
-            "description": (
-                "Requested thread count. If omitted and deterministic=true, defaults to 1. "
-                "If 0, use library default."
-            ),
-        },
-        "eval_mode": {
-            "type": "string",
-            "description": "Evaluation mode. 'parity' favors numerical stability; 'fast' may use approximations.",
-            "enum": ["parity", "fast"],
-        },
-    },
-}
-
-_TOOLS: list[dict[str, Any]] = [
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_fit",
-            "description": (
-                "Run Maximum Likelihood Estimation (MLE) on a HistFactory statistical model. "
-                "Returns best-fit parameters, uncertainties, NLL at minimum, and convergence info. "
-                "The workspace_json must be a pyhf-style or HS3-style JSON workspace string."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "workspace_json": {
-                        "type": "string",
-                        "description": "JSON string of the pyhf or HS3 workspace. Auto-detected.",
-                    },
-                    "execution": _EXECUTION_SCHEMA,
-                },
-                "required": ["workspace_json"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_hypotest",
-            "description": (
-                "Run an asymptotic CLs hypothesis test at a given signal strength mu (qtilde). "
-                "Returns CLs, CLs+b, and CLb (pyhf-compatible semantics)."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "workspace_json": {
-                        "type": "string",
-                        "description": "JSON string of the pyhf or HS3 workspace.",
-                    },
-                    "mu": {
-                        "type": "number",
-                        "description": "Signal strength hypothesis to test (e.g. 1.0 for SM).",
-                    },
-                    "execution": _EXECUTION_SCHEMA,
-                },
-                "required": ["workspace_json", "mu"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_hypotest_toys",
-            "description": (
-                "Run a toy-based CLs hypothesis test at a given signal strength mu (qtilde). "
-                "This is stochastic; specify seed for reproducibility."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "workspace_json": {
-                        "type": "string",
-                        "description": "JSON string of the pyhf or HS3 workspace.",
-                    },
-                    "mu": {
-                        "type": "number",
-                        "description": "Signal strength hypothesis to test (e.g. 1.0 for SM).",
-                    },
-                    "n_toys": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "description": "Number of toy pseudo-experiments. Default 1000.",
-                        "default": 1000,
-                    },
-                    "seed": {
-                        "type": "integer",
-                        "minimum": 0,
-                        "description": "RNG seed. Default 42.",
-                        "default": 42,
-                    },
-                    "expected_set": {
-                        "type": "boolean",
-                        "description": "If true, return expected CLs bands (±1σ, ±2σ). Default false.",
-                        "default": False,
-                    },
-                    "return_meta": {
-                        "type": "boolean",
-                        "description": "If true, include toy meta/statistics in the result. Default false.",
-                        "default": False,
-                    },
-                    "execution": _EXECUTION_SCHEMA,
-                },
-                "required": ["workspace_json", "mu"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_upper_limit",
-            "description": (
-                "Compute the 95% CL upper limit on signal strength via CLs. "
-                "Returns observed limit and optionally expected limits (±1σ, ±2σ)."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "workspace_json": {
-                        "type": "string",
-                        "description": "JSON string of the pyhf or HS3 workspace.",
-                    },
-                    "expected": {
-                        "type": "boolean",
-                        "description": "If true, return expected limits with ±1σ/±2σ bands.",
-                        "default": False,
-                    },
-                    "alpha": {
-                        "type": "number",
-                        "description": "Confidence level alpha (default 0.05 for 95% CL).",
-                        "default": 0.05,
-                    },
-                    "lo": {
-                        "type": "number",
-                        "description": "Lower bracket for root finding (default 0.0).",
-                        "default": 0.0,
-                    },
-                    "hi": {
-                        "type": ["number", "null"],
-                        "description": "Upper bracket for root finding (default: POI upper bound or 10.0).",
-                        "default": None,
-                    },
-                    "rtol": {
-                        "type": "number",
-                        "description": "Relative tolerance for root finding (default 1e-4).",
-                        "default": 1e-4,
-                    },
-                    "max_iter": {
-                        "type": "integer",
-                        "minimum": 1,
-                        "description": "Max root-finding iterations (default 80).",
-                        "default": 80,
-                    },
-                    "execution": _EXECUTION_SCHEMA,
-                },
-                "required": ["workspace_json"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_ranking",
-            "description": (
-                "Compute nuisance parameter ranking (systematic impact on signal strength). "
-                "Returns a sorted list of systematics with their impact (delta_mu_up, delta_mu_down), "
-                "pull values, and constraints. This is the physics equivalent of Feature Importance."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "workspace_json": {
-                        "type": "string",
-                        "description": "JSON string of the pyhf or HS3 workspace.",
-                    },
-                    "top_n": {
-                        "type": "integer",
-                        "description": "Return only the top N most impactful systematics. Default: all.",
-                    },
-                    "execution": _EXECUTION_SCHEMA,
-                },
-                "required": ["workspace_json"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_discovery_asymptotic",
-            "description": (
-                "Compute an asymptotic discovery-style statistic at mu=0 from a profiled likelihood scan. "
-                "Returns q0, z0, and p0 (one-sided). This is NOT CLs."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "workspace_json": {
-                        "type": "string",
-                        "description": "JSON string of the pyhf or HS3 workspace.",
-                    },
-                    "execution": _EXECUTION_SCHEMA,
-                },
-                "required": ["workspace_json"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_scan",
-            "description": (
-                "Run a profile likelihood scan over signal strength values. "
-                "Returns (mu, q_mu, 2*delta_NLL) arrays for plotting the likelihood curve."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "workspace_json": {
-                        "type": "string",
-                        "description": "JSON string of the pyhf or HS3 workspace.",
-                    },
-                    "start": {
-                        "type": "number",
-                        "description": "Start of mu scan range. Default 0.0.",
-                        "default": 0.0,
-                    },
-                    "stop": {
-                        "type": "number",
-                        "description": "End of mu scan range. Default 5.0.",
-                        "default": 5.0,
-                    },
-                    "points": {
-                        "type": "integer",
-                        "description": "Number of scan points. Default 21.",
-                        "default": 21,
-                    },
-                    "execution": _EXECUTION_SCHEMA,
-                },
-                "required": ["workspace_json"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_workspace_audit",
-            "description": (
-                "Audit a pyhf workspace for compatibility. Reports channel count, sample count, "
-                "modifier types, parameter count, and any unsupported features."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "workspace_json": {
-                        "type": "string",
-                        "description": "JSON string of the pyhf workspace to audit.",
-                    },
-                    "execution": _EXECUTION_SCHEMA,
-                },
-                "required": ["workspace_json"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_read_root_histogram",
-            "description": (
-                "Read a TH1 histogram from a ROOT file, including sumw2 and under/overflow bins. "
-                "Returns bin edges, bin content, and flow bins for downstream analysis."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "root_path": {
-                        "type": "string",
-                        "description": "Path to a ROOT file on disk.",
-                    },
-                    "hist_path": {
-                        "type": "string",
-                        "description": "Histogram path/key inside the ROOT file (e.g. 'dir/hist').",
-                    },
-                    "execution": _EXECUTION_SCHEMA,
-                },
-                "required": ["root_path", "hist_path"],
-            },
-        },
-    },
-    # -----------------------------------------------------------------------
-    # Cross-vertical tools (GLM, Bayesian, Survival, Econometrics, etc.)
-    # -----------------------------------------------------------------------
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_glm_fit",
-            "description": (
-                "Fit a Generalized Linear Model (GLM). Supports linear, logistic, Poisson, and "
-                "negative binomial regression. Returns coefficients, standard errors, and predictions. "
-                "Input is tabular: X (2D array of features), y (1D array of outcomes)."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Feature matrix (2D array, each inner array is one observation).",
-                    },
-                    "y": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Response variable (1D array).",
-                    },
-                    "family": {
-                        "type": "string",
-                        "enum": ["linear", "logistic", "poisson", "negbin"],
-                        "description": "GLM family. Default: linear.",
-                        "default": "linear",
-                    },
-                    "include_intercept": {
-                        "type": "boolean",
-                        "description": "Whether to include an intercept term. Default: true.",
-                        "default": True,
-                    },
-                    "l2": {
-                        "type": ["number", "null"],
-                        "description": "L2 regularization strength (ridge). Default: none.",
-                        "default": None,
-                    },
-                },
-                "required": ["x", "y"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_bayesian_sample",
-            "description": (
-                "Run Bayesian NUTS sampling on any NextStat model. Returns posterior draws, "
-                "diagnostics (ESS, R-hat, divergences, E-BFMI), and sample statistics. "
-                "The model_spec describes which model to build (e.g. logistic regression, survival, etc.)."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "model_type": {
-                        "type": "string",
-                        "enum": [
-                            "linear_regression", "logistic_regression", "poisson_regression",
-                            "negbin_regression", "cox_ph", "weibull_survival",
-                            "lognormal_aft", "ordered_logit", "ordered_probit",
-                            "histfactory",
-                        ],
-                        "description": "Type of model to sample from.",
-                    },
-                    "x": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Feature matrix (for regression/survival models).",
-                    },
-                    "y": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Response variable.",
-                    },
-                    "time": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Event/censoring times (survival models only).",
-                    },
-                    "event": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Event indicator: 1=event, 0=censored (survival models only).",
-                    },
-                    "n_levels": {
-                        "type": "integer",
-                        "description": "Number of ordinal levels (ordered logit/probit only).",
-                    },
-                    "workspace_json": {
-                        "type": "string",
-                        "description": "pyhf/HS3 workspace JSON (histfactory model only).",
-                    },
-                    "n_chains": {
-                        "type": "integer",
-                        "description": "Number of MCMC chains. Default: 4.",
-                        "default": 4,
-                    },
-                    "n_warmup": {
-                        "type": "integer",
-                        "description": "Number of warmup iterations per chain. Default: 500.",
-                        "default": 500,
-                    },
-                    "n_samples": {
-                        "type": "integer",
-                        "description": "Number of post-warmup samples per chain. Default: 1000.",
-                        "default": 1000,
-                    },
-                    "seed": {
-                        "type": "integer",
-                        "description": "Random seed. Default: 42.",
-                        "default": 42,
-                    },
-                    "target_accept": {
-                        "type": "number",
-                        "description": "Target acceptance rate for NUTS. Default: 0.8.",
-                        "default": 0.8,
-                    },
-                },
-                "required": ["model_type"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_survival_fit",
-            "description": (
-                "Fit a survival model via MLE. Supports Cox PH, Weibull, Log-Normal AFT, and "
-                "Exponential models. Returns parameter estimates (log-hazard ratios or AFT coefficients), "
-                "standard errors, and NLL. Input: X (covariates), time (event/censoring times), "
-                "event (1=event, 0=censored)."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Covariate matrix.",
-                    },
-                    "time": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Event or censoring times.",
-                    },
-                    "event": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Event indicator (1=event, 0=censored).",
-                    },
-                    "model": {
-                        "type": "string",
-                        "enum": ["cox_ph", "weibull", "lognormal_aft", "exponential"],
-                        "description": "Survival model type. Default: cox_ph.",
-                        "default": "cox_ph",
-                    },
-                },
-                "required": ["x", "time", "event"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_kaplan_meier",
-            "description": (
-                "Compute the Kaplan-Meier survival curve and optionally a log-rank test. "
-                "Returns time points, survival probabilities, confidence intervals, and "
-                "number at risk. If group labels are provided, also returns a log-rank test."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "time": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Event or censoring times.",
-                    },
-                    "event": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Event indicator (1=event, 0=censored).",
-                    },
-                    "group": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Optional group labels for log-rank test (e.g. 0/1 for two arms).",
-                    },
-                },
-                "required": ["time", "event"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_panel_fe",
-            "description": (
-                "Fit a panel data model with entity fixed effects (within estimator). "
-                "Returns coefficients with cluster-robust standard errors. "
-                "Equivalent to Stata's xtreg, fe."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Feature matrix (no intercept column needed).",
-                    },
-                    "y": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Response variable.",
-                    },
-                    "entity": {
-                        "type": "array",
-                        "items": {},
-                        "description": "Entity/group identifiers (e.g. firm IDs).",
-                    },
-                    "time": {
-                        "type": "array",
-                        "items": {},
-                        "description": "Optional time identifiers (required for cluster='time' or 'two_way').",
-                    },
-                    "cluster": {
-                        "type": "string",
-                        "enum": ["entity", "time", "two_way", "none"],
-                        "description": "Cluster-robust SE type. Default: entity.",
-                        "default": "entity",
-                    },
-                },
-                "required": ["x", "y", "entity"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_did",
-            "description": (
-                "Estimate a Difference-in-Differences (DiD) model via two-way fixed effects (TWFE). "
-                "Returns the ATT (average treatment effect on the treated) with cluster-robust SE."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "y": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Outcome variable.",
-                    },
-                    "treat": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Treatment indicator (0/1).",
-                    },
-                    "post": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Post-treatment indicator (0/1).",
-                    },
-                    "entity": {
-                        "type": "array",
-                        "items": {},
-                        "description": "Entity identifiers.",
-                    },
-                    "time": {
-                        "type": "array",
-                        "items": {},
-                        "description": "Time period identifiers.",
-                    },
-                    "x": {
-                        "type": ["array", "null"],
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Optional control covariates.",
-                        "default": None,
-                    },
-                    "cluster": {
-                        "type": "string",
-                        "enum": ["entity", "time", "two_way", "none"],
-                        "default": "entity",
-                    },
-                },
-                "required": ["y", "treat", "post", "entity", "time"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_iv_2sls",
-            "description": (
-                "Estimate an Instrumental Variables (IV) model via Two-Stage Least Squares (2SLS). "
-                "Returns structural coefficients, standard errors (HC1 or cluster-robust), and "
-                "first-stage F-statistics for weak instrument diagnostics."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "y": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Outcome variable.",
-                    },
-                    "endog": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Endogenous regressors.",
-                    },
-                    "instruments": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Excluded instruments.",
-                    },
-                    "exog": {
-                        "type": ["array", "null"],
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Optional exogenous controls.",
-                        "default": None,
-                    },
-                    "cov": {
-                        "type": "string",
-                        "enum": ["homoskedastic", "hc1", "cluster", "hac"],
-                        "description": "Covariance estimator. Default: hc1.",
-                        "default": "hc1",
-                    },
-                    "cluster": {
-                        "type": ["array", "null"],
-                        "items": {},
-                        "description": "Cluster labels when cov='cluster'.",
-                        "default": None,
-                    },
-                    "time_index": {
-                        "type": ["array", "null"],
-                        "items": {},
-                        "description": "Ordered time index when cov='hac'.",
-                        "default": None,
-                    },
-                    "max_lag": {
-                        "type": ["integer", "null"],
-                        "description": "Maximum Newey-West lag when cov='hac'. Default: automatic.",
-                        "default": None,
-                    },
-                },
-                "required": ["y", "endog", "instruments"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_aipw",
-            "description": (
-                "Estimate a doubly-robust Average Treatment Effect (ATE or ATT) via "
-                "Augmented Inverse Probability Weighting (AIPW). Returns the treatment effect "
-                "estimate, standard error, and propensity diagnostics."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "x": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Covariate matrix.",
-                    },
-                    "y": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Outcome variable.",
-                    },
-                    "treatment": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Treatment indicator (0/1).",
-                    },
-                    "estimand": {
-                        "type": "string",
-                        "enum": ["ate", "att"],
-                        "description": "Estimand: ATE or ATT. Default: ate.",
-                        "default": "ate",
-                    },
-                },
-                "required": ["x", "y", "treatment"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_meta_analysis",
-            "description": (
-                "Run a meta-analysis (fixed or random effects). Input: effect sizes and their "
-                "standard errors from multiple studies. Returns pooled estimate, confidence interval, "
-                "heterogeneity statistics (I², Q, tau²)."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "effects": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Effect sizes from each study.",
-                    },
-                    "standard_errors": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Standard errors of each study's effect.",
-                    },
-                    "method": {
-                        "type": "string",
-                        "enum": ["fixed", "random"],
-                        "description": "Meta-analysis method. Default: random.",
-                        "default": "random",
-                    },
-                },
-                "required": ["effects", "standard_errors"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_kalman",
-            "description": (
-                "Run Kalman filtering, smoothing, or forecasting on a linear state-space model. "
-                "Returns filtered/smoothed state estimates, log-likelihood, and optionally forecasts."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "F": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "State transition matrix.",
-                    },
-                    "H": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Observation matrix.",
-                    },
-                    "Q": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Process noise covariance.",
-                    },
-                    "R": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Observation noise covariance.",
-                    },
-                    "x0": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Initial state mean.",
-                    },
-                    "P0": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Initial state covariance.",
-                    },
-                    "y": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Observation sequence (each element is an observation vector).",
-                    },
-                    "operation": {
-                        "type": "string",
-                        "enum": ["filter", "smooth", "forecast"],
-                        "description": "Operation to perform. Default: filter.",
-                        "default": "filter",
-                    },
-                    "n_ahead": {
-                        "type": "integer",
-                        "description": "Number of steps to forecast ahead (forecast mode only). Default: 10.",
-                        "default": 10,
-                    },
-                },
-                "required": ["F", "H", "Q", "R", "x0", "P0", "y"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_churn_retention",
-            "description": (
-                "Compute a churn retention curve from tenure and event data. "
-                "Returns survival probabilities at specified time points, "
-                "plus optional cohort matrix and diagnostics."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "tenure": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Subscription tenure (time from signup to event/censoring).",
-                    },
-                    "event": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Churn indicator (1=churned, 0=still active).",
-                    },
-                    "time_grid": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Time points at which to evaluate retention. Default: [30, 60, 90, 180, 365].",
-                    },
-                },
-                "required": ["tenure", "event"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_chain_ladder",
-            "description": (
-                "Run chain ladder or Mack chain ladder reserving on an insurance loss triangle. "
-                "Returns ultimate losses, reserves, development factors, and (for Mack) prediction errors."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "triangle": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": ["number", "null"]}},
-                        "description": "Loss triangle as 2D array (rows=origin periods, cols=development periods). Use null for missing entries.",
-                    },
-                    "method": {
-                        "type": "string",
-                        "enum": ["basic", "mack"],
-                        "description": "basic = deterministic chain ladder; mack = with prediction errors. Default: mack.",
-                        "default": "mack",
-                    },
-                },
-                "required": ["triangle"],
-            },
-        },
-    },
-    # -------------------------------------------------------------------
-    # Pharma / NLME tools
-    # -------------------------------------------------------------------
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_pharma_fit",
-            "description": (
-                "Fit a nonlinear mixed-effects (NLME) population PK model using FOCE, FOCEI, or SAEM. "
-                "Supports 1/2/3-compartment models with IV or oral absorption. "
-                "Returns population parameters (theta), random-effect variances (omega), individual ETAs, OFV, and convergence info."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "times": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Flat array of observation times across all subjects.",
-                    },
-                    "y": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Flat array of observed concentrations (same length as times).",
-                    },
-                    "subject_idx": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Subject index for each observation (0-based).",
-                    },
-                    "n_subjects": {
-                        "type": "integer",
-                        "description": "Total number of subjects.",
-                    },
-                    "doses": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Per-subject dose amounts (length = n_subjects).",
-                    },
-                    "model": {
-                        "type": "string",
-                        "enum": ["1cpt_iv", "1cpt_oral", "2cpt_iv", "2cpt_oral", "3cpt_iv", "3cpt_oral"],
-                        "description": "PK compartment model. Default: 1cpt_oral.",
-                        "default": "1cpt_oral",
-                    },
-                    "method": {
-                        "type": "string",
-                        "enum": ["foce", "focei", "fo", "saem"],
-                        "description": "Estimation method. Default: focei.",
-                        "default": "focei",
-                    },
-                    "error_model": {
-                        "type": "string",
-                        "enum": ["additive", "proportional", "combined"],
-                        "description": "Residual error model. Default: proportional.",
-                        "default": "proportional",
-                    },
-                    "theta_init": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Initial population PK parameter estimates (e.g. [Ka, CL, V] for 1cpt_oral).",
-                    },
-                    "omega_init": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Initial omega diagonal elements (IIV variances).",
-                    },
-                    "sigma": {
-                        "type": "number",
-                        "description": "Initial residual error magnitude. Default: 0.1.",
-                        "default": 0.1,
-                    },
-                    "bioavailability": {
-                        "type": "number",
-                        "description": "Bioavailability fraction (0-1). Default: 1.0.",
-                        "default": 1.0,
-                    },
-                    "execution": _EXECUTION_SCHEMA,
-                },
-                "required": ["times", "y", "subject_idx", "n_subjects", "doses", "theta_init", "omega_init"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_pharma_vpc",
-            "description": (
-                "Run a Visual Predictive Check (VPC) for a fitted population PK model. "
-                "Simulates n_sim replicate datasets, returns observed and simulated quantile bands "
-                "(median, 5th, 95th percentiles) for visual comparison."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "times": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Flat array of observation times.",
-                    },
-                    "y": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Flat array of observed concentrations.",
-                    },
-                    "subject_idx": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Subject index for each observation.",
-                    },
-                    "n_subjects": {
-                        "type": "integer",
-                        "description": "Total number of subjects.",
-                    },
-                    "doses": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Per-subject dose amounts.",
-                    },
-                    "model": {
-                        "type": "string",
-                        "enum": ["1cpt_iv", "1cpt_oral", "2cpt_iv", "2cpt_oral"],
-                        "description": "PK model type.",
-                    },
-                    "theta": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Fitted population parameters.",
-                    },
-                    "omega_matrix": {
-                        "type": "array",
-                        "items": {"type": "array", "items": {"type": "number"}},
-                        "description": "Fitted omega covariance matrix.",
-                    },
-                    "sigma": {
-                        "type": "number",
-                        "description": "Fitted residual error.",
-                    },
-                    "error_model": {
-                        "type": "string",
-                        "enum": ["additive", "proportional", "combined"],
-                        "default": "proportional",
-                    },
-                    "n_sim": {
-                        "type": "integer",
-                        "description": "Number of simulated datasets. Default: 200.",
-                        "default": 200,
-                    },
-                    "seed": {
-                        "type": "integer",
-                        "default": 42,
-                    },
-                },
-                "required": ["times", "y", "subject_idx", "n_subjects", "doses", "model", "theta", "omega_matrix", "sigma"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_trial_simulate",
-            "description": (
-                "Simulate a clinical PK trial: generate concentration profiles for n_subjects "
-                "with inter-individual variability. Returns concentrations, individual parameters, "
-                "AUC, Cmax, Tmax, and Ctrough for each subject."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "n_subjects": {
-                        "type": "integer",
-                        "description": "Number of virtual subjects.",
-                    },
-                    "dose": {
-                        "type": "number",
-                        "description": "Dose amount.",
-                    },
-                    "obs_times": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Observation time points.",
-                    },
-                    "pk_model": {
-                        "type": "string",
-                        "enum": ["1cpt_iv", "1cpt_oral", "2cpt_iv", "2cpt_oral"],
-                        "default": "1cpt_oral",
-                    },
-                    "theta": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Population PK parameters.",
-                    },
-                    "omega": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Omega diagonal (IIV variances).",
-                    },
-                    "sigma": {
-                        "type": "number",
-                        "description": "Residual error magnitude.",
-                    },
-                    "error_model": {
-                        "type": "string",
-                        "enum": ["additive", "proportional", "combined"],
-                        "default": "proportional",
-                    },
-                    "seed": {"type": "integer", "default": 42},
-                },
-                "required": ["n_subjects", "dose", "obs_times", "theta", "omega", "sigma"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_bioequivalence",
-            "description": (
-                "Run average bioequivalence (ABE) analysis on a 2x2 crossover study. "
-                "Returns geometric mean ratio, 90% CI, and BE conclusion. "
-                "Optionally compute power or sample size."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "operation": {
-                        "type": "string",
-                        "enum": ["test", "power", "sample_size"],
-                        "description": "test=run ABE, power=compute power, sample_size=compute N.",
-                        "default": "test",
-                    },
-                    "test_values": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Log-transformed AUC/Cmax for test formulation (for 'test' operation).",
-                    },
-                    "ref_values": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Log-transformed AUC/Cmax for reference formulation (for 'test' operation).",
-                    },
-                    "cv": {
-                        "type": "number",
-                        "description": "Intra-subject CV (for power/sample_size). Default: 0.30.",
-                        "default": 0.30,
-                    },
-                    "gmr": {
-                        "type": "number",
-                        "description": "Assumed geometric mean ratio (for power/sample_size). Default: 0.95.",
-                        "default": 0.95,
-                    },
-                    "n_total": {
-                        "type": "integer",
-                        "description": "Total sample size (for 'power' operation).",
-                    },
-                    "target_power": {
-                        "type": "number",
-                        "description": "Target power (for 'sample_size'). Default: 0.80.",
-                        "default": 0.80,
-                    },
-                },
-                "required": [],
-            },
-        },
-    },
-    # -------------------------------------------------------------------
-    # Safety / Reliability tools
-    # -------------------------------------------------------------------
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_fault_tree_mc",
-            "description": (
-                "Run Monte Carlo simulation on a fault tree (FTA). "
-                "Returns P(top event failure), confidence interval, and Birnbaum component importance measures. "
-                "Supports Bernoulli, uncertain Bernoulli (logit-normal), and Weibull mission-time failure modes."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "spec": {
-                        "type": "object",
-                        "description": (
-                            "Fault tree specification: {components: [{type, ...}], nodes: [{Component: idx} or {Gate: {gate, children}}], top_event: idx}. "
-                            "Component types: {type:'bernoulli', p:float}, {type:'bernoulli_uncertain', mu:float, sigma:float}, "
-                            "{type:'weibull_mission', k:float, lambda:float, mission_time:float}. "
-                            "Gate types: 'And', 'Or'."
-                        ),
-                    },
-                    "n_scenarios": {
-                        "type": "integer",
-                        "description": "Number of Monte Carlo scenarios. Default: 1000000.",
-                        "default": 1000000,
-                    },
-                    "seed": {"type": "integer", "default": 42},
-                    "device": {
-                        "type": "string",
-                        "enum": ["cpu", "cuda"],
-                        "default": "cpu",
-                    },
-                },
-                "required": ["spec"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_fault_tree_ce_is",
-            "description": (
-                "Run Cross-Entropy Importance Sampling (CE-IS) on a fault tree for rare-event probability estimation. "
-                "More efficient than crude MC when P(failure) is very small (< 1e-4). "
-                "Returns P(failure), SE, CI, number of CE levels, and coefficient of variation."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "spec": {
-                        "type": "object",
-                        "description": "Fault tree specification (same format as nextstat_fault_tree_mc).",
-                    },
-                    "n_per_level": {
-                        "type": "integer",
-                        "description": "Samples per CE level. Default: 10000.",
-                        "default": 10000,
-                    },
-                    "elite_fraction": {
-                        "type": "number",
-                        "description": "Elite fraction for CE update. Default: 0.01.",
-                        "default": 0.01,
-                    },
-                    "max_levels": {
-                        "type": "integer",
-                        "description": "Max CE iterations. Default: 20.",
-                        "default": 20,
-                    },
-                    "seed": {"type": "integer", "default": 42},
-                },
-                "required": ["spec"],
-            },
-        },
-    },
-    # -------------------------------------------------------------------
-    # Dose-response tools
-    # -------------------------------------------------------------------
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_dose_response",
-            "description": (
-                "Evaluate or fit an Emax or Sigmoid Emax dose-response model. "
-                "Returns predicted response at given concentrations, or NLL for parameter fitting."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "model": {
-                        "type": "string",
-                        "enum": ["emax", "sigmoid_emax"],
-                        "description": "Dose-response model type.",
-                    },
-                    "e0": {"type": "number", "description": "Baseline effect (placebo)."},
-                    "emax": {"type": "number", "description": "Maximum drug effect."},
-                    "ec50": {"type": "number", "description": "Concentration at 50% Emax."},
-                    "gamma": {
-                        "type": "number",
-                        "description": "Hill coefficient (only for sigmoid_emax). Default: 1.",
-                        "default": 1.0,
-                    },
-                    "conc": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Concentration values for prediction.",
-                    },
-                    "obs": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Observed responses (if provided, returns NLL instead of predictions).",
-                    },
-                },
-                "required": ["model", "e0", "emax", "ec50", "conc"],
-            },
-        },
-    },
-    # -------------------------------------------------------------------
-    # Competing risks tools
-    # -------------------------------------------------------------------
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_competing_risks",
-            "description": (
-                "Analyze competing risks data: compute cumulative incidence functions (CIF), "
-                "Gray's test for group comparison, or Fine-Gray subdistribution hazard regression."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "operation": {
-                        "type": "string",
-                        "enum": ["cif", "gray_test", "fine_gray"],
-                        "description": "cif=cumulative incidence, gray_test=group comparison, fine_gray=regression.",
-                    },
-                    "times": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Event/censoring times.",
-                    },
-                    "events": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Event type (0=censored, 1=cause1, 2=cause2, ...).",
-                    },
-                    "target_cause": {
-                        "type": "integer",
-                        "description": "Cause of interest. Default: 1.",
-                        "default": 1,
-                    },
-                    "groups": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Group labels (required for gray_test).",
-                    },
-                    "x": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Flat covariate matrix (required for fine_gray).",
-                    },
-                    "p": {
-                        "type": "integer",
-                        "description": "Number of covariates (required for fine_gray).",
-                    },
-                },
-                "required": ["operation", "times", "events"],
-            },
-        },
-    },
-    # -------------------------------------------------------------------
-    # Econometrics: event study
-    # -------------------------------------------------------------------
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_event_study",
-            "description": (
-                "Run an event study (dynamic DiD) with leads and lags around treatment. "
-                "Returns period-specific treatment effects and confidence intervals for parallel trends testing."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "y": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Outcome variable.",
-                    },
-                    "entity": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Entity identifiers.",
-                    },
-                    "time": {
-                        "type": "array",
-                        "items": {"type": "integer"},
-                        "description": "Time period identifiers.",
-                    },
-                    "treat_time": {
-                        "type": "array",
-                        "items": {"type": ["integer", "null"]},
-                        "description": "Treatment onset time for each entity (null if never treated).",
-                    },
-                    "n_leads": {
-                        "type": "integer",
-                        "description": "Number of pre-treatment leads. Default: 3.",
-                        "default": 3,
-                    },
-                    "n_lags": {
-                        "type": "integer",
-                        "description": "Number of post-treatment lags. Default: 3.",
-                        "default": 3,
-                    },
-                    "cluster": {
-                        "type": "string",
-                        "enum": ["entity", "time", "two_way"],
-                        "default": "entity",
-                    },
-                },
-                "required": ["y", "entity", "time", "treat_time"],
-            },
-        },
-    },
-    # -------------------------------------------------------------------
-    # Volatility tools
-    # -------------------------------------------------------------------
-    {
-        "type": "function",
-        "function": {
-            "name": "nextstat_garch_fit",
-            "description": (
-                "Fit a GARCH(1,1), EGARCH(1,1), or GJR-GARCH(1,1) volatility model to a return series. "
-                "Returns estimated parameters (omega, alpha, beta, and model-specific terms), "
-                "log-likelihood, conditional variances, and standardized residuals."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "returns": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "description": "Return series (e.g. log-returns of asset prices).",
-                    },
-                    "model": {
-                        "type": "string",
-                        "enum": ["garch", "egarch", "gjr_garch"],
-                        "description": "Volatility model. Default: garch.",
-                        "default": "garch",
-                    },
-                },
-                "required": ["returns"],
-            },
-        },
-    },
-]
+_TOOLS: list[dict[str, Any]] = get_transport_tools("local")
 
 
-def _http_json_get(url: str, *, timeout_s: float) -> Any:
-    req = urllib.request.Request(url, method="GET")
+def _build_local_toolkit_descriptor() -> dict[str, Any]:
+    return build_toolkit_descriptor("local")
+
+
+def _validate_toolkit_descriptor_schema(
+    descriptor: Any,
+    *,
+    expected_transport: str,
+) -> dict[str, Any]:
+    if not isinstance(descriptor, dict):
+        raise RuntimeError("Invalid tool schema response: descriptor must be an object")
+    if descriptor.get("schema_version") != "nextstat.tool_schema.v1":
+        raise RuntimeError("Invalid tool schema response: unexpected schema_version")
+    if descriptor.get("transport") != expected_transport:
+        raise RuntimeError(
+            f"Invalid tool schema response: expected transport={expected_transport!r}"
+        )
+
+    tools = descriptor.get("tools")
+    if not isinstance(tools, list):
+        raise RuntimeError("Invalid tool schema response: missing 'tools' list")
+    capabilities = descriptor.get("capabilities")
+    if not isinstance(capabilities, list):
+        raise RuntimeError("Invalid tool schema response: missing 'capabilities' list")
+    guidance = descriptor.get("guidance")
+    if not isinstance(guidance, dict):
+        raise RuntimeError("Invalid tool schema response: missing 'guidance' object")
+    hints = guidance.get("hints")
+    if not isinstance(hints, list) or not hints:
+        raise RuntimeError("Invalid tool schema response: guidance.hints must be a non-empty list")
+    if not all(isinstance(hint, str) and hint.strip() for hint in hints):
+        raise RuntimeError(
+            "Invalid tool schema response: guidance.hints must contain only non-empty strings"
+        )
+    recipes = guidance.get("recipes")
+    if not isinstance(recipes, list):
+        raise RuntimeError("Invalid tool schema response: guidance.recipes must be a list")
+
+    tool_names: list[str] = []
+    for idx, tool in enumerate(tools):
+        if not isinstance(tool, dict) or tool.get("type") != "function":
+            raise RuntimeError(f"Invalid tool schema response: tools[{idx}] must be a function tool")
+        function = tool.get("function")
+        if not isinstance(function, dict):
+            raise RuntimeError(f"Invalid tool schema response: tools[{idx}].function must be an object")
+        name = function.get("name")
+        if not isinstance(name, str) or not name.startswith("nextstat_"):
+            raise RuntimeError(f"Invalid tool schema response: tools[{idx}].function.name is invalid")
+        if name in tool_names:
+            raise RuntimeError(f"Invalid tool schema response: duplicate tool {name!r}")
+        if not isinstance(function.get("description"), str) or not function["description"].strip():
+            raise RuntimeError(
+                f"Invalid tool schema response: tools[{idx}].function.description is invalid"
+            )
+        if not isinstance(function.get("parameters"), dict):
+            raise RuntimeError(
+                f"Invalid tool schema response: tools[{idx}].function.parameters must be an object"
+            )
+        tool_names.append(name)
+
+    capability_map: dict[str, dict[str, Any]] = {}
+    for idx, capability in enumerate(capabilities):
+        if not isinstance(capability, dict):
+            raise RuntimeError(f"Invalid tool schema response: capabilities[{idx}] must be an object")
+        name = capability.get("name")
+        if not isinstance(name, str) or not name.startswith("nextstat_"):
+            raise RuntimeError(f"Invalid tool schema response: capabilities[{idx}].name is invalid")
+        if name in capability_map:
+            raise RuntimeError(f"Invalid tool schema response: duplicate capability {name!r}")
+        if not isinstance(capability.get("local_available"), bool):
+            raise RuntimeError(
+                f"Invalid tool schema response: capabilities[{idx}].local_available must be boolean"
+            )
+        if not isinstance(capability.get("server_available"), bool):
+            raise RuntimeError(
+                f"Invalid tool schema response: capabilities[{idx}].server_available must be boolean"
+            )
+        policy = capability.get("server_policy")
+        if not isinstance(policy, dict):
+            raise RuntimeError(
+                f"Invalid tool schema response: capabilities[{idx}].server_policy must be an object"
+            )
+        availability = policy.get("availability")
+        if availability not in ("exposed", "local_only"):
+            raise RuntimeError(
+                f"Invalid tool schema response: capabilities[{idx}].server_policy.availability is invalid"
+            )
+        if not isinstance(policy.get("reason_code"), str) or not policy["reason_code"].strip():
+            raise RuntimeError(
+                f"Invalid tool schema response: capabilities[{idx}].server_policy.reason_code is invalid"
+            )
+        if not isinstance(policy.get("reason"), str) or not policy["reason"].strip():
+            raise RuntimeError(
+                f"Invalid tool schema response: capabilities[{idx}].server_policy.reason is invalid"
+            )
+        if capability["server_available"] != (availability == "exposed"):
+            raise RuntimeError(
+                "Invalid tool schema response: server_available and server_policy.availability disagree"
+            )
+        capability_map[name] = capability
+
+    availability_key = "local_available" if expected_transport == "local" else "server_available"
+    for name in tool_names:
+        capability = capability_map.get(name)
+        if capability is None:
+            raise RuntimeError(f"Invalid tool schema response: missing capability entry for {name!r}")
+        if capability.get(availability_key) is not True:
+            raise RuntimeError(
+                f"Invalid tool schema response: capability {name!r} is not available on transport {expected_transport!r}"
+            )
+
+    seen_recipe_ids: set[str] = set()
+    for idx, recipe in enumerate(recipes):
+        if not isinstance(recipe, dict):
+            raise RuntimeError(f"Invalid tool schema response: guidance.recipes[{idx}] must be an object")
+        recipe_id = recipe.get("id")
+        if not isinstance(recipe_id, str) or not recipe_id.strip():
+            raise RuntimeError(f"Invalid tool schema response: guidance.recipes[{idx}].id is invalid")
+        if recipe_id in seen_recipe_ids:
+            raise RuntimeError(
+                f"Invalid tool schema response: duplicate guidance recipe {recipe_id!r}"
+            )
+        seen_recipe_ids.add(recipe_id)
+        if recipe.get("transport") != expected_transport:
+            raise RuntimeError(
+                f"Invalid tool schema response: guidance.recipes[{idx}].transport must equal {expected_transport!r}"
+            )
+        for field in ("title", "summary", "prompt"):
+            value = recipe.get(field)
+            if not isinstance(value, str) or not value.strip():
+                raise RuntimeError(
+                    f"Invalid tool schema response: guidance.recipes[{idx}].{field} is invalid"
+                )
+        recipe_tools = recipe.get("tools")
+        if not isinstance(recipe_tools, list) or not recipe_tools:
+            raise RuntimeError(
+                f"Invalid tool schema response: guidance.recipes[{idx}].tools must be a non-empty list"
+            )
+        for tool_name in recipe_tools:
+            if tool_name not in tool_names:
+                raise RuntimeError(
+                    f"Invalid tool schema response: guidance recipe {recipe_id!r} references unavailable tool {tool_name!r}"
+                )
+        recipe_docs = recipe.get("docs")
+        if not isinstance(recipe_docs, list) or not recipe_docs:
+            raise RuntimeError(
+                f"Invalid tool schema response: guidance.recipes[{idx}].docs must be a non-empty list"
+            )
+        if not all(isinstance(doc, str) and doc.strip() for doc in recipe_docs):
+            raise RuntimeError(
+                f"Invalid tool schema response: guidance.recipes[{idx}].docs must contain only non-empty strings"
+            )
+
+    return descriptor
+
+class ServerTransportError(RuntimeError):
+    """Network-level failure while contacting nextstat-server."""
+
+
+class ServerHTTPError(RuntimeError):
+    """HTTP error returned by nextstat-server."""
+
+    def __init__(self, method: str, url: str, status_code: int, detail: str) -> None:
+        self.method = method
+        self.url = url
+        self.status_code = int(status_code)
+        self.detail = detail
+        super().__init__(f"HTTP {status_code} from {url}: {detail}")
+
+
+class InvalidServerResponseError(RuntimeError):
+    """The server responded, but the payload violated the declared contract."""
+
+
+def _resolve_server_api_key(api_key: Optional[str]) -> Optional[str]:
+    if api_key and api_key.strip():
+        return api_key.strip()
+    for k in ("NEXTSTAT_TOOLS_API_KEY", "NEXTSTAT_SERVER_API_KEY"):
+        v = os.environ.get(k)
+        if v and v.strip():
+            return v.strip()
+    return None
+
+
+def _server_headers(*, api_key: Optional[str], content_type_json: bool = False) -> dict[str, str]:
+    headers: dict[str, str] = {}
+    if content_type_json:
+        headers["Content-Type"] = "application/json"
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    return headers
+
+
+def _http_json_get(url: str, *, timeout_s: float, api_key: Optional[str] = None) -> Any:
+    req = urllib.request.Request(url, headers=_server_headers(api_key=api_key), method="GET")
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             data = resp.read().decode("utf-8")
-            return json.loads(data)
+            try:
+                return json.loads(data)
+            except Exception as e:
+                raise InvalidServerResponseError(
+                    f"Invalid JSON response from {url}: {e}"
+                ) from e
     except urllib.error.HTTPError as e:
         body = None
         try:
             body = e.read().decode("utf-8")
         except Exception:
             body = None
-        raise RuntimeError(f"HTTP {e.code} from {url}: {body or e.reason}")
+        raise ServerHTTPError("GET", url, e.code, body or e.reason)
     except Exception as e:
-        raise RuntimeError(f"Failed GET {url}: {e}")
+        if isinstance(e, InvalidServerResponseError):
+            raise
+        raise ServerTransportError(f"Failed GET {url}: {e}") from e
 
 
-def _http_json_post(url: str, payload: dict[str, Any], *, timeout_s: float) -> Any:
+def _http_json_post(
+    url: str,
+    payload: dict[str, Any],
+    *,
+    timeout_s: float,
+    api_key: Optional[str] = None,
+) -> Any:
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         url,
         data=data,
-        headers={"Content-Type": "application/json"},
+        headers=_server_headers(api_key=api_key, content_type_json=True),
         method="POST",
     )
     try:
         with urllib.request.urlopen(req, timeout=timeout_s) as resp:
             out = resp.read().decode("utf-8")
-            return json.loads(out)
+            try:
+                return json.loads(out)
+            except Exception as e:
+                raise InvalidServerResponseError(
+                    f"Invalid JSON response from {url}: {e}"
+                ) from e
     except urllib.error.HTTPError as e:
         body = None
         try:
             body = e.read().decode("utf-8")
         except Exception:
             body = None
-        raise RuntimeError(f"HTTP {e.code} from {url}: {body or e.reason}")
+        raise ServerHTTPError("POST", url, e.code, body or e.reason)
     except Exception as e:
-        raise RuntimeError(f"Failed POST {url}: {e}")
+        if isinstance(e, InvalidServerResponseError):
+            raise
+        raise ServerTransportError(f"Failed POST {url}: {e}") from e
 
 def _resolve_server_url(server_url: Optional[str]) -> Optional[str]:
     if server_url:
@@ -1472,6 +319,7 @@ def get_toolkit(
     *,
     transport: str = "local",
     server_url: Optional[str] = None,
+    api_key: Optional[str] = None,
     timeout_s: float = 10.0,
 ) -> list[dict[str, Any]]:
     """Return OpenAI-compatible function-calling tool definitions.
@@ -1484,6 +332,8 @@ def get_toolkit(
             - ``"local"`` (default): return the in-process Python tool registry.
             - ``"server"``: fetch the registry from ``nextstat-server`` at ``GET /v1/tools/schema``.
         server_url: Base URL for server mode, e.g. ``"http://127.0.0.1:3742"``.
+        api_key: Optional bearer token for auth-enabled server mode. If omitted, the
+            client will also check ``NEXTSTAT_TOOLS_API_KEY`` and ``NEXTSTAT_SERVER_API_KEY``.
         timeout_s: HTTP timeout (server mode only).
 
     Returns:
@@ -1502,18 +352,53 @@ def get_toolkit(
             tools=tools,
         )
     """
+    if transport not in ("local", "server"):
+        raise ValueError(f"Unknown transport: {transport!r}. Use 'local' or 'server'.")
+    schema = get_toolkit_descriptor(
+        transport=transport,
+        server_url=server_url,
+        api_key=api_key,
+        timeout_s=timeout_s,
+    )
+    tools = schema.get("tools")
+    if not isinstance(tools, list):
+        raise RuntimeError("Invalid tool schema response: missing 'tools' list")
+    return copy.deepcopy(tools)
+
+
+def get_toolkit_descriptor(
+    *,
+    transport: str = "local",
+    server_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    timeout_s: float = 10.0,
+) -> dict[str, Any]:
+    """Return the full tool-discovery descriptor for a transport.
+
+    The descriptor is a versioned machine-readable envelope that contains:
+    - ``tools``: callable OpenAI-compatible function definitions
+    - ``capabilities``: transport/policy metadata for tool discovery
+
+    ``get_toolkit()`` remains the compatibility helper when only the callable
+    ``tools`` list is needed.
+    """
     if transport == "local":
-        return copy.deepcopy(_TOOLS)
+        return _validate_toolkit_descriptor_schema(
+            _build_local_toolkit_descriptor(),
+            expected_transport="local",
+        )
     if transport != "server":
         raise ValueError(f"Unknown transport: {transport!r}. Use 'local' or 'server'.")
     server_url = _resolve_server_url(server_url)
     if not server_url:
         raise ValueError("server_url is required for transport='server'")
-    schema = _http_json_get(f"{server_url.rstrip('/')}/v1/tools/schema", timeout_s=timeout_s)
-    tools = schema.get("tools")
-    if not isinstance(tools, list):
-        raise RuntimeError("Invalid server schema response: missing 'tools' list")
-    return tools
+    api_key = _resolve_server_api_key(api_key)
+    schema = _http_json_get(
+        f"{server_url.rstrip('/')}/v1/tools/schema",
+        timeout_s=timeout_s,
+        api_key=api_key,
+    )
+    return _validate_toolkit_descriptor_schema(schema, expected_transport="server")
 
 
 def get_tool_names() -> list[str]:
@@ -1548,6 +433,69 @@ def _load_model(workspace_json: str):
 def _normal_sf(z: float) -> float:
     """Standard normal survival function (1 - CDF) without SciPy."""
     return 0.5 * math.erfc(z / math.sqrt(2.0))
+
+
+def _normalize_chain_ladder_triangle(triangle: list[list[Any]]) -> list[list[float]]:
+    if not isinstance(triangle, list) or not triangle:
+        raise ValueError("triangle must be a non-empty 2D array")
+    if not all(isinstance(row, list) for row in triangle):
+        raise ValueError("triangle must be a 2D array")
+
+    n = len(triangle)
+    row_lengths = [len(row) for row in triangle]
+    is_square = all(length == n for length in row_lengths)
+
+    normalized: list[list[float]] = []
+    for i, row in enumerate(triangle):
+        expected = n - i
+        if is_square:
+            values = row[:expected]
+        else:
+            if len(row) != expected:
+                raise ValueError(
+                    f"triangle row {i} has length {len(row)}, expected {expected} for ragged upper-left triangle"
+                )
+            values = row
+
+        parsed_row: list[float] = []
+        for j, value in enumerate(values):
+            if value is None:
+                raise ValueError(f"triangle[{i}][{j}] must be a finite non-negative number")
+            number = float(value)
+            if not math.isfinite(number) or number < 0.0:
+                raise ValueError(f"triangle[{i}][{j}] must be a finite non-negative number")
+            parsed_row.append(number)
+        normalized.append(parsed_row)
+
+    return normalized
+
+
+def _strict_event_bools(values: list[Any], field_name: str) -> list[bool]:
+    out: list[bool] = []
+    for idx, value in enumerate(values):
+        if isinstance(value, bool):
+            out.append(value)
+        elif isinstance(value, int) and value in (0, 1):
+            out.append(bool(value))
+        else:
+            raise ValueError(
+                f"{field_name}[{idx}] must be boolean or 0/1 integer (got {value!r})"
+            )
+    return out
+
+
+def _strict_binary_u8(values: list[Any], field_name: str) -> list[int]:
+    out: list[int] = []
+    for idx, value in enumerate(values):
+        if isinstance(value, bool):
+            out.append(int(value))
+        elif isinstance(value, int) and value in (0, 1):
+            out.append(value)
+        else:
+            raise ValueError(
+                f"{field_name}[{idx}] must be boolean or 0/1 integer (got {value!r})"
+            )
+    return out
 
 
 def _apply_execution(nextstat, tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
@@ -1732,9 +680,24 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
         return dict(result)
 
     if name == "nextstat_read_root_histogram":
-        root_path = arguments["root_path"]
         hist_path = arguments["hist_path"]
-        result = nextstat.read_root_histogram(root_path, hist_path)
+        root_path = arguments.get("root_path")
+        root_bytes_base64 = arguments.get("root_bytes_base64")
+        filename_hint = arguments.get("filename_hint")
+
+        if bool(root_path) == bool(root_bytes_base64):
+            raise ValueError(
+                "nextstat_read_root_histogram requires exactly one of root_path or root_bytes_base64"
+            )
+        if root_bytes_base64 is not None:
+            root_bytes = base64.b64decode(str(root_bytes_base64), validate=True)
+            result = nextstat._read_root_histogram_bytes(
+                root_bytes,
+                hist_path,
+                filename_hint=(str(filename_hint) if filename_hint is not None else None),
+            )
+        else:
+            result = nextstat.read_root_histogram(str(root_path), hist_path)
         return dict(result)
 
     # -------------------------------------------------------------------
@@ -1798,17 +761,19 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
         n_samples = int(arguments.get("n_samples", 1000))
         seed = int(arguments.get("seed", 42))
         target_accept = float(arguments.get("target_accept", 0.8))
+        y_int = [int(v) for v in y] if y is not None else None
+        event_bool = [bool(v) for v in event_arr] if event_arr is not None else None
 
         model_map = {
             "linear_regression": lambda: nextstat.LinearRegressionModel(x, y),
-            "logistic_regression": lambda: nextstat.LogisticRegressionModel(x, y),
-            "poisson_regression": lambda: nextstat.PoissonRegressionModel(x, y),
-            "negbin_regression": lambda: nextstat.NegativeBinomialRegressionModel(x, y),
-            "cox_ph": lambda: nextstat.CoxPhModel(x, time_arr, event_arr),
-            "weibull_survival": lambda: nextstat.WeibullSurvivalModel(x, time_arr, event_arr),
-            "lognormal_aft": lambda: nextstat.LogNormalAftModel(x, time_arr, event_arr),
-            "ordered_logit": lambda: nextstat.OrderedLogitModel(x, y, n_levels),
-            "ordered_probit": lambda: nextstat.OrderedProbitModel(x, y, n_levels),
+            "logistic_regression": lambda: nextstat.LogisticRegressionModel(x, y_int),
+            "poisson_regression": lambda: nextstat.PoissonRegressionModel(x, y_int),
+            "negbin_regression": lambda: nextstat.NegativeBinomialRegressionModel(x, y_int),
+            "cox_ph": lambda: nextstat.CoxPhModel(time_arr, event_bool, x, ties="efron"),
+            "weibull_survival": lambda: nextstat.WeibullSurvivalModel(time_arr, event_bool),
+            "lognormal_aft": lambda: nextstat.LogNormalAftModel(time_arr, event_bool),
+            "ordered_logit": lambda: nextstat.OrderedLogitModel(x, y_int, n_levels),
+            "ordered_probit": lambda: nextstat.OrderedProbitModel(x, y_int, n_levels),
             "histfactory": lambda: nextstat.HistFactoryModel.from_workspace(ws_json),
         }
         if mt not in model_map:
@@ -1828,6 +793,7 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
         return {
             "model_type": mt,
             "n_chains": n_chains,
+            "n_warmup": n_warmup,
             "n_samples": n_samples,
             "param_names": raw.get("param_names", []),
             "diagnostics": diag,
@@ -1840,16 +806,21 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
         }
 
     if name == "nextstat_survival_fit":
-        x = arguments["x"]
-        time_arr = arguments["time"]
-        event_arr = arguments["event"]
+        x = [[float(v) for v in row] for row in arguments["x"]]
+        time_arr = [float(v) for v in arguments["time"]]
+        event_arr = [bool(v) for v in arguments["event"]]
         model_name = arguments.get("model", "cox_ph")
 
+        if len(x) != len(time_arr) or len(time_arr) != len(event_arr):
+            raise ValueError("x, time, and event must have the same length")
+        if x and any(len(row) != len(x[0]) for row in x):
+            raise ValueError("x must be a rectangular 2D array")
+
         model_map = {
-            "cox_ph": lambda: nextstat.CoxPhModel(x, time_arr, event_arr),
-            "weibull": lambda: nextstat.WeibullSurvivalModel(x, time_arr, event_arr),
-            "lognormal_aft": lambda: nextstat.LogNormalAftModel(x, time_arr, event_arr),
-            "exponential": lambda: nextstat.ExponentialSurvivalModel(x, time_arr, event_arr),
+            "cox_ph": lambda: nextstat.CoxPhModel(time_arr, event_arr, x, ties="efron"),
+            "weibull": lambda: nextstat.WeibullSurvivalModel(time_arr, event_arr),
+            "lognormal_aft": lambda: nextstat.LogNormalAftModel(time_arr, event_arr),
+            "exponential": lambda: nextstat.ExponentialSurvivalModel(time_arr, event_arr),
         }
         if model_name not in model_map:
             raise ValueError(f"Unknown survival model: {model_name!r}")
@@ -1864,9 +835,16 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
         }
 
     if name == "nextstat_kaplan_meier":
-        time_arr = arguments["time"]
-        event_arr = arguments["event"]
+        time_arr = [float(v) for v in arguments["time"]]
+        event_arr = [bool(v) for v in arguments["event"]]
         group_arr = arguments.get("group")
+        if group_arr is not None:
+            group_arr = [int(v) for v in group_arr]
+
+        if len(time_arr) != len(event_arr):
+            raise ValueError("time and event must have the same length")
+        if group_arr is not None and len(group_arr) != len(time_arr):
+            raise ValueError("group must have the same length as time and event")
 
         km = nextstat.kaplan_meier(time_arr, event_arr)
         out = dict(km)
@@ -1874,6 +852,15 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
             lr = nextstat.log_rank_test(time_arr, event_arr, group_arr)
             out["log_rank"] = dict(lr)
         return out
+
+    if name == "nextstat_log_rank_test":
+        times = [float(v) for v in arguments["times"]]
+        events = _strict_event_bools(arguments["events"], "events")
+        groups = [int(v) for v in arguments["groups"]]
+        if len(times) != len(events) or len(events) != len(groups):
+            raise ValueError("times, events, and groups must have the same length")
+        result = nextstat.log_rank_test(times, events, groups)
+        return dict(result)
 
     if name == "nextstat_panel_fe":
         import nextstat.econometrics as econ
@@ -1984,6 +971,30 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
             result = nextstat.meta_random(effects, ses)
         return dict(result)
 
+    if name == "nextstat_ads_cuped_adjust":
+        result = nextstat.ads.cuped_adjust(
+            arguments["control_outcomes"],
+            arguments["control_covariates"],
+            arguments["variant_outcomes"],
+            arguments["variant_covariates"],
+            covariate_name=arguments.get("covariate_name"),
+            covariate_provenance=arguments.get("covariate_provenance"),
+            pre_treatment_only=bool(arguments.get("pre_treatment_only", True)),
+        )
+        return dict(result)
+
+    if name == "nextstat_ads_cure_adjust":
+        result = nextstat.ads.cure_adjust(
+            arguments["control_outcomes"],
+            arguments["control_covariates"],
+            arguments["variant_outcomes"],
+            arguments["variant_covariates"],
+            covariate_names=arguments.get("covariate_names"),
+            covariate_provenance=arguments.get("covariate_provenance"),
+            pre_treatment_only=bool(arguments.get("pre_treatment_only", True)),
+        )
+        return dict(result)
+
     if name == "nextstat_kalman":
         F = arguments["F"]
         H = arguments["H"]
@@ -1991,38 +1002,283 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
         R = arguments["R"]
         x0 = arguments["x0"]
         P0 = arguments["P0"]
-        y = arguments["y"]
         operation = arguments.get("operation", "filter")
         n_ahead = int(arguments.get("n_ahead", 10))
+        alpha = arguments.get("alpha")
 
-        model = nextstat.KalmanModel(F=F, H=H, Q=Q, R=R, x0=x0, P0=P0, y=y)
+        model = nextstat.KalmanModel(f=F, q=Q, h=H, r=R, m0=x0, p0=P0)
 
         if operation == "filter":
-            result = nextstat.kalman_filter(model)
+            y = arguments["y"]
+            result = nextstat.kalman_filter(model, y)
         elif operation == "smooth":
-            result = nextstat.kalman_smooth(model)
+            y = arguments["y"]
+            result = nextstat.kalman_smooth(model, y)
         elif operation == "forecast":
-            result = nextstat.kalman_forecast(model, n_ahead=n_ahead)
+            y = arguments["y"]
+            forecast_kwargs = {"steps": n_ahead}
+            if alpha is not None:
+                forecast_kwargs["alpha"] = float(alpha)
+            result = nextstat.kalman_forecast(model, y, **forecast_kwargs)
+        elif operation == "simulate":
+            simulate_kwargs = {
+                "t_max": int(arguments["t_max"]),
+                "seed": int(arguments.get("seed", 42)),
+                "init": arguments.get("init", "sample"),
+            }
+            simulate_x0 = arguments.get("simulate_x0")
+            if simulate_x0 is not None:
+                simulate_kwargs["x0"] = [float(v) for v in simulate_x0]
+            result = nextstat.kalman_simulate(model, **simulate_kwargs)
+        elif operation == "em":
+            y = arguments["y"]
+            result = nextstat.kalman_em(
+                model,
+                y,
+                max_iter=int(arguments.get("max_iter", 50)),
+                tol=float(arguments.get("tol", 1e-6)),
+                estimate_q=bool(arguments.get("estimate_q", True)),
+                estimate_r=bool(arguments.get("estimate_r", True)),
+                estimate_f=bool(arguments.get("estimate_f", False)),
+                estimate_h=bool(arguments.get("estimate_h", False)),
+                min_diag=float(arguments.get("min_diag", 1e-12)),
+            )
+            result = {
+                "converged": bool(result["converged"]),
+                "n_iter": int(result["n_iter"]),
+                "loglik_trace": [float(v) for v in result["loglik_trace"]],
+                "f": result["f"],
+                "h": result["h"],
+                "q": result["q"],
+                "r": result["r"],
+            }
         else:
             raise ValueError(f"Unknown kalman operation: {operation!r}")
         return dict(result)
 
-    if name == "nextstat_churn_retention":
-        tenure = arguments["tenure"]
-        event = arguments["event"]
-        time_grid = arguments.get("time_grid", [30, 60, 90, 180, 365])
+    if name == "nextstat_churn_generate_data":
+        result = nextstat.churn_generate_data(
+            n_customers=int(arguments.get("n_customers", 2000)),
+            n_cohorts=int(arguments.get("n_cohorts", 6)),
+            max_time=float(arguments.get("max_time", 24.0)),
+            treatment_fraction=float(arguments.get("treatment_fraction", 0.3)),
+            seed=int(arguments.get("seed", 42)),
+        )
+        return dict(result)
 
-        result = nextstat.churn_retention(tenure, event, time_grid=time_grid)
+    if name == "nextstat_churn_risk_model":
+        times = [float(v) for v in arguments["times"]]
+        events = _strict_event_bools(arguments["events"], "events")
+        covariates = [[float(v) for v in row] for row in arguments["covariates"]]
+        names = [str(v) for v in arguments["names"]]
+        conf_level = float(arguments.get("conf_level", 0.95))
+        if len(times) != len(events):
+            raise ValueError("times and events must have the same length")
+        if len(covariates) != len(times):
+            raise ValueError("covariates must have the same length as times and events")
+        if covariates and any(len(row) != len(covariates[0]) for row in covariates):
+            raise ValueError("covariates must be a rectangular 2D array")
+        if not covariates or len(names) != len(covariates[0]):
+            raise ValueError("names must match the covariate column count")
+        result = nextstat.churn_risk_model(
+            times,
+            events,
+            covariates,
+            names,
+            conf_level=conf_level,
+        )
+        return dict(result)
+
+    if name == "nextstat_churn_retention":
+        times = arguments.get("times", arguments.get("tenure"))
+        if times is None:
+            raise ValueError("nextstat_churn_retention requires times (or legacy tenure)")
+        raw_events = arguments.get("events", arguments.get("event"))
+        if raw_events is None:
+            raise ValueError("nextstat_churn_retention requires events (or legacy event)")
+        groups = arguments.get("groups")
+        if groups is None:
+            raise ValueError("nextstat_churn_retention requires groups")
+        conf_level = float(arguments.get("conf_level", 0.95))
+        events = _strict_event_bools(raw_events, "events")
+
+        result = nextstat.churn_retention(times, events, groups, conf_level=conf_level)
+        return dict(result)
+
+    if name == "nextstat_churn_compare":
+        times = arguments["times"]
+        groups = arguments["groups"]
+        events = _strict_event_bools(arguments["events"], "events")
+        conf_level = float(arguments.get("conf_level", 0.95))
+        correction = arguments.get("correction", "benjamini_hochberg")
+        if correction == "bh":
+            correction = "benjamini_hochberg"
+        alpha = float(arguments.get("alpha", 0.05))
+        result = nextstat.churn_compare(
+            times,
+            events,
+            groups,
+            conf_level=conf_level,
+            correction=correction,
+            alpha=alpha,
+        )
+        return dict(result)
+
+    if name == "nextstat_churn_diagnostics":
+        times = [float(v) for v in arguments["times"]]
+        events = _strict_event_bools(arguments["events"], "events")
+        groups = [int(v) for v in arguments["groups"]]
+        treated = _strict_binary_u8(arguments.get("treated", []), "treated")
+        covariates = [[float(v) for v in row] for row in arguments.get("covariates", [])]
+        covariate_names = [str(v) for v in arguments.get("covariate_names", [])]
+        trim = float(arguments.get("trim", 0.01))
+
+        if len(times) != len(events) or len(events) != len(groups):
+            raise ValueError("times, events, and groups must have the same length")
+        if treated and len(treated) != len(times):
+            raise ValueError("treated must have the same length as times, events, and groups")
+        if covariates and len(covariates) != len(times):
+            raise ValueError("covariates must have the same length as times, events, and groups")
+        if covariates and any(len(row) != len(covariates[0]) for row in covariates):
+            raise ValueError("covariates must be a rectangular 2D array")
+        if covariate_names and (not covariates or len(covariate_names) != len(covariates[0])):
+            raise ValueError("covariate_names must match the covariate column count")
+
+        result = nextstat.churn_diagnostics(
+            times,
+            events,
+            groups,
+            treated=treated,
+            covariates=covariates,
+            covariate_names=covariate_names,
+            trim=trim,
+        )
+        return dict(result)
+
+    if name == "nextstat_churn_cohort_matrix":
+        times = [float(v) for v in arguments["times"]]
+        events = _strict_event_bools(arguments["events"], "events")
+        groups = [int(v) for v in arguments["groups"]]
+        period_boundaries = [float(v) for v in arguments["period_boundaries"]]
+        if len(times) != len(events) or len(events) != len(groups):
+            raise ValueError("times, events, and groups must have the same length")
+        if not period_boundaries:
+            raise ValueError("period_boundaries must be non-empty")
+        result = nextstat.churn_cohort_matrix(times, events, groups, period_boundaries)
+        return dict(result)
+
+    if name == "nextstat_churn_bootstrap_hr":
+        times = [float(v) for v in arguments["times"]]
+        events = _strict_event_bools(arguments["events"], "events")
+        covariates = [[float(v) for v in row] for row in arguments["covariates"]]
+        names = [str(v) for v in arguments["names"]]
+        if len(times) != len(events):
+            raise ValueError("times and events must have the same length")
+        if len(covariates) != len(times):
+            raise ValueError("covariates must have the same length as times and events")
+        if covariates and any(len(row) != len(covariates[0]) for row in covariates):
+            raise ValueError("covariates must be a rectangular 2D array")
+        if not covariates or len(names) != len(covariates[0]):
+            raise ValueError("names must match the covariate column count")
+        result = nextstat.churn_bootstrap_hr(
+            times,
+            events,
+            covariates,
+            names,
+            n_bootstrap=int(arguments.get("n_bootstrap", 1000)),
+            seed=int(arguments.get("seed", 42)),
+            conf_level=float(arguments.get("conf_level", 0.95)),
+            ci_method=str(arguments.get("ci_method", "percentile")),
+            n_jackknife=int(arguments.get("n_jackknife", 200)),
+        )
+        return dict(result)
+
+    if name == "nextstat_churn_ingest":
+        times = [float(v) for v in arguments["times"]]
+        events = _strict_event_bools(arguments["events"], "events")
+        groups_arg = arguments.get("groups")
+        treated_arg = arguments.get("treated")
+        covariates = [[float(v) for v in row] for row in arguments.get("covariates", [])]
+        covariate_names = [str(v) for v in arguments.get("covariate_names", [])]
+        observation_end = arguments.get("observation_end")
+        groups = [int(v) for v in groups_arg] if groups_arg is not None else None
+        treated = (
+            _strict_binary_u8(treated_arg, "treated") if treated_arg is not None else None
+        )
+
+        if len(times) != len(events):
+            raise ValueError("times and events must have the same length")
+        if groups is not None and len(groups) != len(times):
+            raise ValueError("groups must have the same length as times and events")
+        if treated is not None and len(treated) != len(times):
+            raise ValueError("treated must have the same length as times and events")
+        if covariates and len(covariates) != len(times):
+            raise ValueError("covariates must have the same length as times and events")
+        if covariates and any(len(row) != len(covariates[0]) for row in covariates):
+            raise ValueError("covariates must be a rectangular 2D array")
+        if covariate_names and (not covariates or len(covariate_names) != len(covariates[0])):
+            raise ValueError("covariate_names must match the covariate column count")
+
+        result = nextstat.churn_ingest(
+            times,
+            events,
+            groups=groups,
+            treated=treated,
+            covariates=covariates,
+            covariate_names=covariate_names,
+            observation_end=float(observation_end) if observation_end is not None else None,
+        )
+        return dict(result)
+
+    if name == "nextstat_churn_uplift":
+        times = [float(v) for v in arguments["times"]]
+        events = _strict_event_bools(arguments["events"], "events")
+        treated = _strict_binary_u8(arguments["treated"], "treated")
+        covariates = [[float(v) for v in row] for row in arguments.get("covariates", [])]
+        if len(times) != len(events) or len(events) != len(treated) or len(treated) != len(covariates):
+            raise ValueError("times, events, treated, and covariates must have the same length")
+        if covariates and any(len(row) != len(covariates[0]) for row in covariates):
+            raise ValueError("covariates must be a rectangular 2D array")
+        horizon = float(arguments.get("horizon", 12.0))
+        result = nextstat.churn_uplift(times, events, treated, covariates, horizon=horizon)
+        return dict(result)
+
+    if name == "nextstat_churn_uplift_survival":
+        times = [float(v) for v in arguments["times"]]
+        events = _strict_event_bools(arguments["events"], "events")
+        treated = _strict_binary_u8(arguments["treated"], "treated")
+        covariates = [[float(v) for v in row] for row in arguments.get("covariates", [])]
+        if len(times) != len(events) or len(events) != len(treated):
+            raise ValueError("times, events, and treated must have the same length")
+        if covariates and len(covariates) != len(times):
+            raise ValueError("covariates must have the same length as times, events, and treated")
+        if covariates and any(len(row) != len(covariates[0]) for row in covariates):
+            raise ValueError("covariates must be a rectangular 2D array")
+        horizon = float(arguments.get("horizon", 12.0))
+        eval_horizons = [float(v) for v in arguments.get("eval_horizons", [3.0, 6.0, 12.0, 24.0])]
+        trim = float(arguments.get("trim", 0.01))
+        result = nextstat.churn_uplift_survival(
+            times,
+            events,
+            treated,
+            covariates=covariates,
+            horizon=horizon,
+            eval_horizons=eval_horizons,
+            trim=trim,
+        )
         return dict(result)
 
     if name == "nextstat_chain_ladder":
-        triangle = arguments["triangle"]
+        triangle = _normalize_chain_ladder_triangle(arguments["triangle"])
         method = arguments.get("method", "mack")
+        conf_level = float(arguments.get("conf_level", 0.95))
 
         if method == "mack":
-            result = nextstat.mack_chain_ladder(triangle)
-        else:
+            result = nextstat.mack_chain_ladder(triangle, conf_level=conf_level)
+        elif method in ("basic", "chain_ladder"):
             result = nextstat.chain_ladder(triangle)
+        else:
+            raise ValueError(f"Unknown chain ladder method: {method!r}")
         return dict(result)
 
     # -------------------------------------------------------------------
@@ -2034,6 +1290,7 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
         model_type = arguments.get("model", "1cpt_oral")
         error_model = arguments.get("error_model", "proportional")
         sigma = float(arguments.get("sigma", 0.1))
+        sigma_add = arguments.get("sigma_add")
         bioavailability = float(arguments.get("bioavailability", 1.0))
         theta_init = arguments["theta_init"]
         omega_init = arguments["omega_init"]
@@ -2048,6 +1305,7 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
             bioavailability=bioavailability,
             error_model=error_model,
             sigma=sigma,
+            sigma_add=(float(sigma_add) if sigma_add is not None else None),
             theta_init=theta_init,
             omega_init=omega_init,
         )
@@ -2060,6 +1318,7 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
         return dict(result)
 
     if name == "nextstat_pharma_vpc":
+        sigma_add = arguments.get("sigma_add")
         result = nextstat.pk_vpc(
             times=arguments["times"],
             y=arguments["y"],
@@ -2067,14 +1326,70 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
             n_subjects=int(arguments["n_subjects"]),
             model=arguments["model"],
             doses=arguments["doses"],
+            bioavailability=float(arguments.get("bioavailability", 1.0)),
             theta=arguments["theta"],
             omega_matrix=arguments["omega_matrix"],
             sigma=float(arguments["sigma"]),
+            sigma_add=(float(sigma_add) if sigma_add is not None else None),
             error_model=arguments.get("error_model", "proportional"),
             n_sim=int(arguments.get("n_sim", 200)),
+            quantiles=arguments.get("quantiles"),
+            n_bins=int(arguments.get("n_bins", 10)),
             seed=int(arguments.get("seed", 42)),
+            pi_level=float(arguments.get("pi_level", 0.90)),
         )
         return dict(result)
+
+    if name == "nextstat_pk_gof":
+        sigma_add = arguments.get("sigma_add")
+        records = nextstat.pk_gof(
+            times=arguments["times"],
+            y=arguments["y"],
+            subject_idx=arguments["subject_idx"],
+            model=arguments.get("model", "1cpt_oral"),
+            doses=arguments["doses"],
+            bioavailability=float(arguments.get("bioavailability", 1.0)),
+            theta=arguments["theta"],
+            eta=arguments["eta"],
+            error_model=arguments.get("error_model", "proportional"),
+            sigma=float(arguments.get("sigma", 0.1)),
+            sigma_add=(float(sigma_add) if sigma_add is not None else None),
+        )
+        return {
+            "model": arguments.get("model", "1cpt_oral"),
+            "n_subjects": len(arguments["eta"]),
+            "n_records": len(records),
+            "records": [dict(record) for record in records],
+        }
+
+    if name == "nextstat_pk_npde":
+        sigma_add = arguments.get("sigma_add")
+        result = nextstat.pk_npde(
+            times=arguments["times"],
+            y=arguments["y"],
+            subject_idx=arguments["subject_idx"],
+            n_subjects=int(arguments["n_subjects"]),
+            model=arguments.get("model", "1cpt_oral"),
+            doses=arguments["doses"],
+            bioavailability=float(arguments.get("bioavailability", 1.0)),
+            theta=arguments["theta"],
+            omega_matrix=arguments["omega_matrix"],
+            error_model=arguments.get("error_model", "proportional"),
+            sigma=float(arguments.get("sigma", 0.1)),
+            sigma_add=(float(sigma_add) if sigma_add is not None else None),
+            n_sim=int(arguments.get("n_sim", 500)),
+            seed=int(arguments.get("seed", 42)),
+        )
+        return {
+            "model": arguments.get("model", "1cpt_oral"),
+            "n_subjects": int(arguments["n_subjects"]),
+            "n_records": len(result["records"]),
+            "n_sim": int(arguments.get("n_sim", 500)),
+            "seed": int(arguments.get("seed", 42)),
+            "records": [dict(record) for record in result["records"]],
+            "mean": float(result["mean"]),
+            "variance": float(result["variance"]),
+        }
 
     if name == "nextstat_trial_simulate":
         result = nextstat.simulate_trial(
@@ -2086,6 +1401,7 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
             omega=arguments["omega"],
             sigma=float(arguments["sigma"]),
             error_model=arguments.get("error_model", "proportional"),
+            bioavailability=float(arguments.get("bioavailability", 1.0)),
             seed=int(arguments.get("seed", 42)),
         )
         return dict(result)
@@ -2129,11 +1445,15 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
         return dict(result)
 
     if name == "nextstat_fault_tree_ce_is":
-        result = nextstat.fault_tree_mc_ce_is(
+        core = getattr(nextstat, "_core", None)
+        if core is None:
+            raise RuntimeError("nextstat._core is unavailable")
+        result = core.fault_tree_mc_ce_is(
             arguments["spec"],
             n_per_level=int(arguments.get("n_per_level", 10_000)),
             elite_fraction=float(arguments.get("elite_fraction", 0.01)),
             max_levels=int(arguments.get("max_levels", 20)),
+            q_max=float(arguments.get("q_max", 0.99)),
             seed=int(arguments.get("seed", 42)),
         )
         return dict(result)
@@ -2143,25 +1463,54 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
     # -------------------------------------------------------------------
 
     if name == "nextstat_dose_response":
+        core = getattr(nextstat, "_core", None)
+        if core is None:
+            raise RuntimeError("nextstat._core is unavailable")
         model_type = arguments["model"]
         e0 = float(arguments["e0"])
         emax = float(arguments["emax"])
         ec50 = float(arguments["ec50"])
-        conc = arguments["conc"]
-        obs = arguments.get("obs")
+        conc = arguments.get("conc", arguments.get("dose"))
+        obs = arguments.get("obs", arguments.get("response"))
+        error_model = arguments.get("error_model", "additive")
+        sigma = float(arguments.get("sigma", 0.05))
+        sigma_add_raw = arguments.get("sigma_add")
+        sigma_add = None if sigma_add_raw is None else float(sigma_add_raw)
+
+        if conc is None:
+            raise ValueError("nextstat_dose_response requires conc (or alias dose)")
 
         if model_type == "emax":
             if obs is not None:
-                nll = nextstat.emax_nll(e0, emax, ec50, conc, obs)
+                nll = core.emax_nll(
+                    e0,
+                    emax,
+                    ec50,
+                    conc,
+                    obs,
+                    error_model=error_model,
+                    sigma=sigma,
+                    sigma_add=sigma_add,
+                )
                 return {"model": "emax", "nll": float(nll)}
-            pred = nextstat.emax_predict(e0, emax, ec50, conc)
+            pred = core.emax_predict(e0, emax, ec50, conc)
             return {"model": "emax", **dict(pred)}
         elif model_type == "sigmoid_emax":
             gamma = float(arguments.get("gamma", 1.0))
             if obs is not None:
-                nll = nextstat.sigmoid_emax_nll(e0, emax, ec50, gamma, conc, obs)
+                nll = core.sigmoid_emax_nll(
+                    e0,
+                    emax,
+                    ec50,
+                    gamma,
+                    conc,
+                    obs,
+                    error_model=error_model,
+                    sigma=sigma,
+                    sigma_add=sigma_add,
+                )
                 return {"model": "sigmoid_emax", "nll": float(nll)}
-            pred = nextstat.sigmoid_emax_predict(e0, emax, ec50, gamma, conc)
+            pred = core.sigmoid_emax_predict(e0, emax, ec50, gamma, conc)
             return {"model": "sigmoid_emax", **dict(pred)}
         else:
             raise ValueError(f"Unknown dose-response model: {model_type!r}")
@@ -2171,22 +1520,31 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
     # -------------------------------------------------------------------
 
     if name == "nextstat_competing_risks":
+        core = getattr(nextstat, "_core", None)
+        if core is None:
+            raise RuntimeError("nextstat._core is unavailable")
         op = arguments["operation"]
         times = arguments["times"]
         events = arguments["events"]
         target_cause = int(arguments.get("target_cause", 1))
+        conf_level = float(arguments.get("conf_level", 0.95))
 
         if op == "cif":
-            result = nextstat.cumulative_incidence(times, events, target_cause)
+            result = core.cumulative_incidence(
+                times,
+                events,
+                target_cause,
+                conf_level=conf_level,
+            )
             return dict(result)
         elif op == "gray_test":
             groups = arguments["groups"]
-            result = nextstat.gray_test(times, events, groups, target_cause)
+            result = core.gray_test(times, events, groups, target_cause)
             return dict(result)
         elif op == "fine_gray":
             x = arguments["x"]
             p = int(arguments["p"])
-            result = nextstat.fine_gray_fit(times, events, x, p, target_cause)
+            result = core.fine_gray_fit(times, events, x, p, target_cause)
             return dict(result)
         else:
             raise ValueError(f"Unknown competing risks operation: {op!r}")
@@ -2198,31 +1556,48 @@ def _execute_tool_impl(nextstat, name: str, arguments: dict[str, Any]) -> dict[s
     if name == "nextstat_event_study":
         import nextstat.econometrics as econ
 
-        result = econ.event_study_fit(
+        treat_time = arguments["treat_time"]
+        treat = [0 if value is None else 1 for value in treat_time]
+        event_time = [0 if value is None else int(value) for value in treat_time]
+
+        result = econ.event_study_twfe_fit(
             y=arguments["y"],
+            treat=treat,
             entity=arguments["entity"],
             time=arguments["time"],
-            treat_time=arguments["treat_time"],
-            n_leads=int(arguments.get("n_leads", 3)),
-            n_lags=int(arguments.get("n_lags", 3)),
+            event_time=event_time,
+            window=(-int(arguments.get("n_leads", 3)), int(arguments.get("n_lags", 3))),
+            reference=-1,
             cluster=arguments.get("cluster", "entity"),
         )
-        return dict(result)
+        return {
+            "rel_times": list(result.rel_times),
+            "coef": list(result.coef),
+            "standard_errors": list(result.standard_errors),
+            "covariance": [list(row) for row in result.covariance],
+            "reference": result.reference,
+            "n_obs": result.n_obs,
+            "n_entities": result.n_entities,
+            "n_times": result.n_times,
+            "cluster": result.cluster,
+        }
 
     # -------------------------------------------------------------------
     # Volatility tools
     # -------------------------------------------------------------------
 
     if name == "nextstat_garch_fit":
+        import nextstat.volatility as vol
+
         returns = arguments["returns"]
         model_type = arguments.get("model", "garch")
 
         if model_type == "garch":
-            result = nextstat.garch11_fit(returns)
+            result = vol.garch(returns)
         elif model_type == "egarch":
-            result = nextstat.egarch11_fit(returns)
+            result = vol.egarch(returns)
         elif model_type == "gjr_garch":
-            result = nextstat.gjr_garch11_fit(returns)
+            result = vol.gjr_garch(returns)
         else:
             raise ValueError(f"Unknown GARCH model: {model_type!r}")
         return dict(result)
@@ -2247,6 +1622,7 @@ def execute_tool(
     *,
     transport: str = "local",
     server_url: Optional[str] = None,
+    api_key: Optional[str] = None,
     timeout_s: float = 30.0,
     fallback_to_local: bool = True,
 ) -> dict[str, Any]:
@@ -2257,8 +1633,12 @@ def execute_tool(
             - ``"local"`` (default): execute in-process via Python bindings.
             - ``"server"``: execute over HTTP via ``nextstat-server`` at ``POST /v1/tools/execute``.
         server_url: Base URL for server mode, e.g. ``"http://127.0.0.1:3742"``.
+        api_key: Optional bearer token for auth-enabled server mode. If omitted, the
+            client will also check ``NEXTSTAT_TOOLS_API_KEY`` and ``NEXTSTAT_SERVER_API_KEY``.
         timeout_s: HTTP timeout (server mode only).
-        fallback_to_local: If true (default), failed server calls fall back to local execution (if available).
+        fallback_to_local: If true (default), network/transport failures in server mode fall back
+            to local execution (if available). HTTP auth/rate-limit failures and invalid server
+            envelopes do not silently fall back.
     """
     if transport == "server":
         server_url = _resolve_server_url(server_url)
@@ -2267,17 +1647,21 @@ def execute_tool(
                 "server_url is required for transport='server' "
                 "(or set NEXTSTAT_SERVER_URL / NEXTSTAT_TOOLS_SERVER_URL)"
             )
+        api_key = _resolve_server_api_key(api_key)
         try:
             out = _http_json_post(
                 f"{server_url.rstrip('/')}/v1/tools/execute",
                 {"name": name, "arguments": arguments},
                 timeout_s=timeout_s,
+                api_key=api_key,
             )
             if not isinstance(out, dict) or out.get("schema_version") != "nextstat.tool_result.v1":
-                raise RuntimeError("Invalid server tool response (missing tool_result.v1 envelope)")
+                raise InvalidServerResponseError(
+                    "Invalid server tool response (missing tool_result.v1 envelope)"
+                )
             return out
         except Exception as e:
-            if fallback_to_local:
+            if fallback_to_local and isinstance(e, ServerTransportError):
                 try:
                     local = execute_tool(name, arguments, transport="local")
                     meta = local.get("meta")
@@ -2291,7 +1675,7 @@ def execute_tool(
                         meta["warnings"] = warnings
                     return local
                 except Exception:
-                    # Fall through to a transport error envelope if local execution is unavailable.
+                    # Fall through to an error envelope if local execution is unavailable.
                     pass
             return {
                 "schema_version": "nextstat.tool_result.v1",

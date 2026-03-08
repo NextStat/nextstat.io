@@ -1,0 +1,101 @@
+{
+  "based_on_map_ref": "m15_map.json",
+  "context_of_use": "Support model-informed dose selection and simulation-backed regulatory briefing materials for adults with moderate renal impairment.",
+  "criterion_results": [
+    {
+      "criterion_id": "TC-001",
+      "notes": "evaluated pharma_validation.json/status",
+      "observed_value": "ok",
+      "status": "met"
+    },
+    {
+      "criterion_id": "TC-002",
+      "notes": "evaluated validation_report.json/apex2_summary/overall",
+      "observed_value": "pass",
+      "status": "met"
+    }
+  ],
+  "deviations": [],
+  "document_status": "reviewed",
+  "executed_datasets": [
+    {
+      "dataset_id": "DS-001",
+      "provenance_ref": "validation_report.json#/dataset_fingerprint/workspace_sha256"
+    },
+    {
+      "dataset_id": "DS-002",
+      "provenance_ref": "pharma_validation.json#/summary"
+    }
+  ],
+  "generated_at": null,
+  "governance": {
+    "approvers": [
+      "Priya Nair"
+    ],
+    "authors": [
+      "Elena Voss",
+      "Martin Hale"
+    ],
+    "reviewers": [
+      "Martin Hale"
+    ]
+  },
+  "jurisdiction_profile": "ich_core",
+  "limitations": [
+    "Conclusions remain bounded by the linked validation and pharma qualification artifacts."
+  ],
+  "linked_artifacts": {
+    "assessment_table_ref": "m15_assessment_table.json",
+    "pharma_validation_ref": "pharma_validation.json",
+    "validation_report_ref": "validation_report.json"
+  },
+  "methods_executed": [
+    {
+      "method_id": "AM-001",
+      "notes": "Executed with deterministic evidence bundle generation.",
+      "status": "completed"
+    }
+  ],
+  "profile_requirements": {
+    "canonical_reference": "ICH M15 core cross-jurisdiction framing for model-informed drug development reporting.",
+    "framing_heading": "ICH Core Results Framing",
+    "framing_text": "Frame results as evidence-based support statements linked back to the frozen MAP and deterministic validation evidence.",
+    "mandatory_sections": [
+      "Question Conclusions",
+      "Criterion Results",
+      "Deviations",
+      "Governance",
+      "Linked Artifacts"
+    ],
+    "profile_label": "ICH Core"
+  },
+  "questions": [
+    {
+      "conclusion": "All mapped technical acceptance criteria were met for QOI-001.",
+      "conclusion_status": "supported",
+      "evidence_refs": [
+        "validation_report.json#/apex2_summary/overall",
+        "pharma_validation.json#/status"
+      ],
+      "question_id": "QOI-001",
+      "question_of_interest": "Can the population PK model support dose adjustment recommendations for adults with moderate renal impairment?"
+    },
+    {
+      "conclusion": "All mapped technical acceptance criteria were met for QOI-002.",
+      "conclusion_status": "supported",
+      "evidence_refs": [
+        "validation_report.json#/apex2_summary/overall",
+        "pharma_validation.json#/status"
+      ],
+      "question_id": "QOI-002",
+      "question_of_interest": "Can exposure simulations justify that a reduced maintenance dose preserves target exposure in the evaluated subgroup?"
+    }
+  ],
+  "schema_version": "m15_mar_v1",
+  "signoff": {
+    "approver": "Priya Nair",
+    "primary_author": "Elena Voss",
+    "qa_reviewer": "Martin Hale",
+    "status": "reviewed"
+  }
+}

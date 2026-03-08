@@ -68,26 +68,30 @@ pub fn render(artifact: &RankingArtifact, config: &VizConfig) -> crate::Result<S
         // Impact up bar (blue-ish)
         let up = artifact.delta_mu_up[i];
         let bar_w = (up * impact_px_per_unit).abs();
-        let bar_x = if up >= 0.0 { impact_x_center } else { impact_x_center - bar_w };
-        canvas.rect(
-            bar_x,
-            y - row_h * 0.22,
-            bar_w,
-            row_h * 0.22,
-            &Style::filled(config.colors.expected.with_alpha(0.7)),
-        );
+        if bar_w > 0.01 {
+            let bar_x = if up >= 0.0 { impact_x_center } else { impact_x_center - bar_w };
+            canvas.rect(
+                bar_x,
+                y - row_h * 0.22,
+                bar_w,
+                row_h * 0.22,
+                &Style::filled(config.colors.expected.with_alpha(0.7)),
+            );
+        }
 
         // Impact down bar (red-ish)
         let down = artifact.delta_mu_down[i];
         let bar_w_d = (down * impact_px_per_unit).abs();
-        let bar_x_d = if down >= 0.0 { impact_x_center } else { impact_x_center - bar_w_d };
-        canvas.rect(
-            bar_x_d,
-            y,
-            bar_w_d,
-            row_h * 0.22,
-            &Style::filled(config.colors.signal.with_alpha(0.7)),
-        );
+        if bar_w_d > 0.01 {
+            let bar_x_d = if down >= 0.0 { impact_x_center } else { impact_x_center - bar_w_d };
+            canvas.rect(
+                bar_x_d,
+                y,
+                bar_w_d,
+                row_h * 0.22,
+                &Style::filled(config.colors.signal.with_alpha(0.7)),
+            );
+        }
     }
 
     // Center line
@@ -142,7 +146,7 @@ pub fn render(artifact: &RankingArtifact, config: &VizConfig) -> crate::Result<S
         let err_hi =
             pull_x_center + (artifact.pull[i] + artifact.constraint[i]) * pull_px_per_sigma;
 
-        canvas.error_bar(pull_px, err_lo, err_hi, 3.0, &LineStyle::solid(Color::rgb(0, 0, 0), 1.0));
+        canvas.error_bar_h(err_lo, err_hi, y, 3.0, &LineStyle::solid(Color::rgb(0, 0, 0), 1.0));
         canvas.marker(
             pull_px,
             y,

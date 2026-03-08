@@ -12,18 +12,27 @@ This runner writes a single schema-backed JSON artifact per invocation.
 from __future__ import annotations
 
 import argparse
+import ctypes.util
 import hashlib
 import json
 import math
+import os
 import platform
-import random
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any, Mapping
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.bench_env import collect_environment
+from _synthetic_datasets import (
+    logistic as _logistic,
+    make_eight_schools_dataset,
+    make_hier_random_intercept_dataset,
+    make_logistic_regression_dataset,
+)
 
 
 def sha256_file(path: Path) -> str:
@@ -177,6 +186,57 @@ def _write_json(path: Path, doc: dict[str, Any]) -> None:
     path.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n")
 
 
+def _cmdstan_version_key(path: Path) -> tuple[int, ...]:
+    raw = path.name.removeprefix("cmdstan-")
+    parts: list[int] = []
+    for token in raw.split("."):
+        m = re.match(r"^(\d+)", token)
+        if not m:
+            break
+        parts.append(int(m.group(1)))
+    return tuple(parts)
+
+
+def _discover_local_cmdstan_install(seed_repo_root: Path) -> Path | None:
+    vendor_root = seed_repo_root / "vendor" / "cmdstan"
+    candidates = sorted((p for p in vendor_root.glob("cmdstan-*") if p.is_dir()), key=_cmdstan_version_key)
+    if not candidates:
+        return None
+    return candidates[-1].resolve()
+
+
+def _resolve_cmdstan_home(seed_repo_root: Path, ambient_cmdstan: str | None) -> tuple[Path | None, str | None]:
+    local_cmdstan = _discover_local_cmdstan_install(seed_repo_root)
+    if local_cmdstan is not None:
+        return local_cmdstan.resolve(), "vendor"
+    if ambient_cmdstan:
+        return Path(ambient_cmdstan).resolve(), "ambient"
+    return None, None
+
+
+def _choose_pymc_pytensor_flags(
+    existing_flags: str | None, *, has_openblas: bool, has_blas: bool
+) -> tuple[str | None, str | None]:
+    if existing_flags:
+        return existing_flags, "env"
+    if has_openblas:
+        return "blas__ldflags=-lopenblas", "auto_openblas"
+    if has_blas:
+        return "blas__ldflags=-lblas", "auto_blas"
+    return None, None
+
+
+def _configure_pymc_pytensor_flags() -> tuple[str | None, str | None]:
+    chosen_flags, source = _choose_pymc_pytensor_flags(
+        os.environ.get("PYTENSOR_FLAGS"),
+        has_openblas=ctypes.util.find_library("openblas") is not None,
+        has_blas=ctypes.util.find_library("blas") is not None,
+    )
+    if chosen_flags and not os.environ.get("PYTENSOR_FLAGS"):
+        os.environ["PYTENSOR_FLAGS"] = chosen_flags
+    return chosen_flags, source
+
+
 def _base_doc(*, args: argparse.Namespace, nextstat_version: str, dataset: dict[str, Any], model_type: str, cfg: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema_version": "nextstat.bayesian_benchmark_result.v1",
@@ -238,82 +298,68 @@ def _emit_not_supported(*, out_path: Path, args: argparse.Namespace, nextstat_ve
     return 0
 
 
-def _logistic(z: float) -> float:
-    if z >= 0:
-        ez = math.exp(-z)
-        return 1.0 / (1.0 + ez)
-    ez = math.exp(z)
-    return ez / (1.0 + ez)
+def _extract_histfactory_simple_workspace_components(workspace: dict[str, Any]) -> dict[str, Any]:
+    channels = workspace.get("channels")
+    observations = workspace.get("observations")
+    if not isinstance(channels, list) or len(channels) != 1:
+        raise ValueError("histfactory_simple requires exactly one channel")
+    if not isinstance(observations, list) or len(observations) != 1:
+        raise ValueError("histfactory_simple requires exactly one observation block")
 
+    channel = channels[0]
+    samples = channel.get("samples")
+    if not isinstance(samples, list) or len(samples) != 2:
+        raise ValueError("histfactory_simple requires exactly two samples")
 
-def make_logistic_regression_dataset(*, n: int, p: int, seed: int) -> dict[str, Any]:
-    rng = random.Random(int(seed))
-    beta = [0.6, -1.1, 0.3, 0.0, 0.8][:p]
-    intercept = -0.2
+    signal = next((sample for sample in samples if sample.get("name") == "signal"), None)
+    background = next((sample for sample in samples if sample.get("name") == "background"), None)
+    if signal is None or background is None:
+        raise ValueError("histfactory_simple requires signal and background samples")
 
-    x: list[list[float]] = []
-    y: list[int] = []
-    for _ in range(int(n)):
-        row = [rng.gauss(0.0, 1.0) for _ in range(int(p))]
-        z = intercept + sum(b * v for b, v in zip(beta, row))
-        pr = _logistic(z)
-        yi = 1 if rng.random() < pr else 0
-        x.append(row)
-        y.append(int(yi))
+    signal_bins = [float(x) for x in signal.get("data") or []]
+    background_bins = [float(x) for x in background.get("data") or []]
+    observed_bins = [int(x) for x in observations[0].get("data") or []]
+    if not signal_bins or len(signal_bins) != len(background_bins) or len(signal_bins) != len(observed_bins):
+        raise ValueError("histfactory_simple requires aligned signal/background/observation bins")
 
-    return {
-        "kind": "logistic_regression",
-        "n": int(n),
-        "p": int(p),
-        "seed": int(seed),
-        "beta": beta,
-        "intercept": float(intercept),
-        "x": x,
-        "y": y,
-    }
+    signal_modifiers = signal.get("modifiers")
+    background_modifiers = background.get("modifiers")
+    if not isinstance(signal_modifiers, list) or len(signal_modifiers) != 1:
+        raise ValueError("histfactory_simple requires exactly one signal modifier")
+    if not isinstance(background_modifiers, list) or len(background_modifiers) != 1:
+        raise ValueError("histfactory_simple requires exactly one background modifier")
 
+    mu_modifier = signal_modifiers[0]
+    shapesys_modifier = background_modifiers[0]
+    if mu_modifier.get("type") != "normfactor" or mu_modifier.get("name") != "mu":
+        raise ValueError("histfactory_simple requires signal normfactor mu")
+    if shapesys_modifier.get("type") != "shapesys":
+        raise ValueError("histfactory_simple requires background shapesys modifier")
 
-def make_hier_random_intercept_dataset(*, n_groups: int, n_per_group: int, seed: int) -> dict[str, Any]:
-    rng = random.Random(int(seed))
-    beta = [1.0]  # one feature + intercept in the model
-    intercept = 0.0
-    sigma_alpha = 1.0
+    shapesys_name = str(shapesys_modifier.get("name") or "uncorr_bkguncrt")
+    if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", shapesys_name) is None:
+        raise ValueError("histfactory_simple shapesys modifier name must be a valid identifier")
 
-    group_alpha = [rng.gauss(0.0, sigma_alpha) for _ in range(int(n_groups))]
+    sigma_abs = [float(x) for x in shapesys_modifier.get("data") or []]
+    if len(sigma_abs) != len(background_bins):
+        raise ValueError("histfactory_simple shapesys bins must match background bins")
 
-    x: list[list[float]] = []
-    y: list[int] = []
-    group_idx: list[int] = []
-    for g in range(int(n_groups)):
-        for _ in range(int(n_per_group)):
-            row = [rng.gauss(0.0, 1.0)]
-            z = intercept + group_alpha[g] + beta[0] * row[0]
-            pr = _logistic(z)
-            yi = 1 if rng.random() < pr else 0
-            x.append(row)
-            y.append(int(yi))
-            group_idx.append(int(g))
+    tau = []
+    for nominal, sigma in zip(background_bins, sigma_abs):
+        if nominal <= 0.0 or sigma <= 0.0:
+            raise ValueError("histfactory_simple requires positive background bins and shapesys sigmas")
+        tau.append((nominal / sigma) ** 2)
 
     return {
-        "kind": "hier_logistic_random_intercept",
-        "n_groups": int(n_groups),
-        "n_per_group": int(n_per_group),
-        "seed": int(seed),
-        "beta": beta,
-        "intercept": float(intercept),
-        "sigma_alpha": float(sigma_alpha),
-        "x": x,
-        "y": y,
-        "group_idx": group_idx,
-    }
-
-
-def make_eight_schools_dataset() -> dict[str, Any]:
-    return {
-        "kind": "eight_schools",
-        "J": 8,
-        "y": [28.0, 8.0, -3.0, 7.0, -1.0, 1.0, 18.0, 12.0],
-        "sigma": [15.0, 10.0, 16.0, 11.0, 9.0, 11.0, 10.0, 18.0],
+        "kind": "histfactory_simple",
+        "mu_name": "mu",
+        "mu_bounds": [0.0, 10.0],
+        "shapesys_name": shapesys_name,
+        "signal": signal_bins,
+        "background": background_bins,
+        "observed": observed_bins,
+        "sigma_abs": sigma_abs,
+        "tau": tau,
     }
 
 
@@ -423,6 +469,7 @@ def main() -> int:
         ws_path = Path(__file__).resolve().parent / "datasets" / "simple_workspace.json"
         dataset_sha = sha256_file(ws_path)
         ws = json.loads(ws_path.read_text())
+        generated = _extract_histfactory_simple_workspace_components(ws)
         model_obj = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
         model_type = "HistFactoryModel(simple_workspace.json)"
         dataset = {"id": str(ws_path), "path": str(ws_path), "sha256": dataset_sha}
@@ -564,9 +611,6 @@ def main() -> int:
         _write_json(out_path, doc)
         return 0 if status != "failed" else 2
 
-    if args.model == "histfactory_simple":
-        return _emit_not_supported(out_path=out_path, args=args, nextstat_version=nextstat_version, dataset=dataset, model_type=model_type, cfg=cfg)
-
     if args.backend == "cmdstanpy":
         try:
             import cmdstanpy  # type: ignore
@@ -574,13 +618,69 @@ def main() -> int:
             return _emit_missing_backend(out_path=out_path, args=args, nextstat_version=nextstat_version, dataset=dataset, model_type=model_type, cfg=cfg, backend_name="cmdstanpy", err=e)
 
         backend_meta: dict[str, Any] = {"cmdstanpy_version": str(getattr(cmdstanpy, "__version__", "unknown"))}
+        try:
+            from cmdstanpy import cmdstan_path, set_cmdstan_path  # type: ignore
+            seed_repo_root = Path(__file__).resolve().parents[2]
+            ambient_cmdstan: str | None = None
+            try:
+                ambient_cmdstan = str(cmdstan_path())
+            except Exception:
+                ambient_cmdstan = None
+            chosen_cmdstan, chosen_source = _resolve_cmdstan_home(seed_repo_root, ambient_cmdstan)
+            if chosen_cmdstan is not None:
+                try:
+                    set_cmdstan_path(str(chosen_cmdstan))
+                except Exception:
+                    pass
+                backend_meta["cmdstan_path"] = str(chosen_cmdstan)
+                if chosen_source is not None:
+                    backend_meta["cmdstan_path_source"] = chosen_source
+        except Exception:
+            pass
 
         cache_dir = out_path.parent / "_cmdstan_cache"
         cache_dir.mkdir(parents=True, exist_ok=True)
         stan_dir = cache_dir / "stan"
         stan_dir.mkdir(parents=True, exist_ok=True)
 
-        if args.model == "glm_logistic":
+        stan_init: dict[str, Any] | None = None
+
+        if args.model == "histfactory_simple":
+            assert generated is not None
+            mu_lo, mu_hi = generated["mu_bounds"]
+            shapesys_name = generated["shapesys_name"]
+            tau = [float(x) for x in generated["tau"]]
+            stan_code = f"""
+data {{
+  int<lower=1> B;
+  array[B] int<lower=0> n;
+  vector<lower=0>[B] signal;
+  vector<lower=0>[B] background;
+  vector<lower=0>[B] tau;
+}}
+parameters {{
+  real<lower={mu_lo}, upper={mu_hi}> mu;
+  vector<lower=1e-10>[B] {shapesys_name};
+}}
+model {{
+  for (i in 1:B) {{
+    {shapesys_name}[i] ~ gamma(tau[i] + 1.0, tau[i]);
+    n[i] ~ poisson(mu * signal[i] + background[i] * {shapesys_name}[i]);
+  }}
+}}
+"""
+            stan_data = {
+                "B": int(len(generated["observed"])),
+                "n": generated["observed"],
+                "signal": generated["signal"],
+                "background": generated["background"],
+                "tau": tau,
+            }
+            stan_init = {"mu": 1.0, shapesys_name: [1.0] * int(len(generated["observed"]))}
+            backend_meta["histfactory_mapping"] = "simple_workspace_poisson_gamma_shapesys"
+            backend_meta["histfactory_shapesys_name"] = shapesys_name
+            backend_meta["histfactory_mu_bounds"] = [float(mu_lo), float(mu_hi)]
+        elif args.model == "glm_logistic":
             stan_code = """
 data {
   int<lower=1> N;
@@ -718,6 +818,7 @@ model {
                 seed=int(cfg["seed"]),
                 max_treedepth=int(cfg["max_treedepth"]),
                 adapt_delta=float(cfg["target_accept"]),
+                inits=stan_init,
                 show_progress=False,
                 refresh=1,
             )
@@ -837,20 +938,57 @@ model {
         return 0
 
     if args.backend == "pymc":
+        pytensor_flags, pytensor_flags_source = _configure_pymc_pytensor_flags()
         try:
             import arviz as az  # type: ignore
             import pymc as pm  # type: ignore
+            import pytensor  # type: ignore
         except Exception as e:
             return _emit_missing_backend(out_path=out_path, args=args, nextstat_version=nextstat_version, dataset=dataset, model_type=model_type, cfg=cfg, backend_name="pymc", err=e)
 
         backend_meta: dict[str, Any] = {
             "pymc_version": str(getattr(pm, "__version__", "unknown")),
             "arviz_version": str(getattr(az, "__version__", "unknown")),
+            "pytensor_version": str(getattr(pytensor, "__version__", "unknown")),
+            "pytensor_mode": str(getattr(pytensor.config, "mode", "unknown")),
+            "pytensor_blas__ldflags": str(getattr(pytensor.config, "blas__ldflags", "")),
         }
+        if pytensor_flags is not None:
+            backend_meta["pytensor_flags"] = pytensor_flags
+        if pytensor_flags_source is not None:
+            backend_meta["pytensor_flags_source"] = pytensor_flags_source
 
         import numpy as np  # type: ignore
 
-        if args.model == "glm_logistic":
+        if args.model == "histfactory_simple":
+            assert generated is not None
+            signal = np.asarray(generated["signal"], dtype=float)
+            background = np.asarray(generated["background"], dtype=float)
+            observed = np.asarray(generated["observed"], dtype=int)
+            tau = np.asarray(generated["tau"], dtype=float)
+            mu_lo, mu_hi = generated["mu_bounds"]
+            shapesys_name = str(generated["shapesys_name"])
+            backend_meta["histfactory_mapping"] = "simple_workspace_poisson_gamma_shapesys"
+            backend_meta["histfactory_shapesys_name"] = shapesys_name
+            backend_meta["histfactory_mu_bounds"] = [float(mu_lo), float(mu_hi)]
+            with pm.Model():
+                mu = pm.Uniform("mu", lower=float(mu_lo), upper=float(mu_hi))
+                shapesys = pm.Gamma(shapesys_name, alpha=tau + 1.0, beta=tau, shape=(int(len(observed)),))
+                pm.Poisson("n", mu=mu * signal + background * shapesys, observed=observed)
+                t0 = time.perf_counter()
+                idata = pm.sample(
+                    draws=int(cfg["n_samples"]),
+                    tune=int(cfg["n_warmup"]),
+                    chains=int(cfg["n_chains"]),
+                    cores=max(1, int(cfg["n_chains"])),
+                    random_seed=int(cfg["seed"]),
+                    target_accept=float(cfg["target_accept"]),
+                    nuts={"max_treedepth": int(cfg["max_treedepth"])},
+                    initvals={"mu": 1.0, shapesys_name: np.ones(int(len(observed)), dtype=float)},
+                    progressbar=False,
+                )
+                wall = time.perf_counter() - t0
+        elif args.model == "glm_logistic":
             assert generated is not None
             x = np.asarray(generated["x"], dtype=float)
             y = np.asarray(generated["y"], dtype=int)
@@ -998,6 +1136,15 @@ model {
         return 0
 
     if args.backend == "numpyro":
+        if args.model == "histfactory_simple":
+            return _emit_not_supported(
+                out_path=out_path,
+                args=args,
+                nextstat_version=nextstat_version,
+                dataset=dataset,
+                model_type=model_type,
+                cfg=cfg,
+            )
         try:
             import arviz as az  # type: ignore
             import jax  # type: ignore

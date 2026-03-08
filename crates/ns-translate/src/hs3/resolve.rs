@@ -395,6 +395,15 @@ fn resolve_modifier(m: &Hs3Modifier) -> Result<Option<ResolvedModifier>, Hs3Reso
         }
         Hs3Modifier::ShapeSys { parameters, data, .. } => {
             let uncertainties = data.as_ref().map(|d| d.vals.clone()).unwrap_or_default();
+            // Skip shapesys with all-zero uncertainties (e.g. HS3 template morphing
+            // formula vars exported as shapesys with no actual uncertainty data).
+            if uncertainties.iter().all(|&v| v == 0.0) {
+                eprintln!(
+                    "WARNING: skipping shapesys modifier with all-zero uncertainties \
+                     (likely a template morphing formula lost during HS3 export)"
+                );
+                return Ok(None);
+            }
             Ok(Some(ResolvedModifier::ShapeSys { param_names: parameters.clone(), uncertainties }))
         }
         Hs3Modifier::ShapeFactor { parameters, parameter, .. } => {

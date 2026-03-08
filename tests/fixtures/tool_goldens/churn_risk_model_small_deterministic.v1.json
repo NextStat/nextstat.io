@@ -1,0 +1,58 @@
+{
+  "case_name": "churn_risk_model_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_churn_risk_model": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_churn_risk_model"
+      },
+      "ok": true,
+      "result": {
+        "coefficients": [
+          -1.0622056234349715,
+          -3.247867708755832,
+          -0.8620368825748779,
+          -0.45712330328674466
+        ],
+        "hazard_ratios": [
+          0.34569250137111923,
+          0.03885697394495126,
+          0.4223010280768181,
+          0.6331022716588722
+        ],
+        "hr_ci_lower": [
+          0.0031911341810163187,
+          6.302737520287787e-06,
+          0.027344953035499758,
+          0.049104595334986
+        ],
+        "hr_ci_upper": [
+          37.448536703699986,
+          239.55692574830243,
+          6.521794280766011,
+          8.162545351311541
+        ],
+        "n": 16,
+        "n_events": 11,
+        "names": [
+          "plan_basic",
+          "plan_premium",
+          "usage_score",
+          "support_tickets"
+        ],
+        "nll": 1.8191578691433568,
+        "se": [
+          2.3904384449196128,
+          4.452458745158304,
+          1.3965493441108756,
+          1.3044522114167223
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

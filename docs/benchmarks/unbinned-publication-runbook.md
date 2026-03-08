@@ -115,7 +115,7 @@ Dry-run guarantees:
 
 ### 3.1) Latest smoke snapshot (2026-02-14)
 
-- CUDA preflight smoke on GEX44 (`1x GPU`, explicit single-device override):
+- CUDA preflight smoke on dedicated-bench (`1x GPU`, explicit single-device override):
   - command policy: `PF31_MIN_GPUS=1 PF31_DEVICE_SETS="0" PF31_SMOKE_TOYS=64`
   - artifact root: `benchmarks/unbinned/artifacts/2026-02-14/pf31_preflight_20260214T123651Z/`
   - checks: `cuda1_host_smoke` and `cuda1_device_smoke` both `rc=0`
@@ -128,7 +128,7 @@ Dry-run guarantees:
   - preflight result: `ok=false`, reason `Metal is not available at runtime (no Metal device found)`
   - implication: run Metal runtime matrix only on a host with visible Apple Metal device (outside this sandbox runtime).
 
-### 3.2) Large-case checkpoint (2026-02-14, GEX44)
+### 3.2) Large-case checkpoint (2026-02-14, dedicated-bench)
 
 Case:
 
@@ -179,15 +179,15 @@ Notes:
 - `PF31_THREADS` controls `nextstat --threads` across the matrix (`default=1`).
 - `gauss_exp_2m` case intentionally uses higher shard counts to stay within safe 32-bit toy-offset budget.
 
-### 4.1) PF3.3 gate run (GEX44 / 1 GPU)
+### 4.1) PF3.3 gate run (dedicated-bench / 1 GPU)
 
 ```bash
 PF31_PUBLICATION_MATRIX=benchmarks/unbinned/matrices/pf33_gate_v1.json \
 PF31_DRY_RUN=0 \
-PF31_HOST=88.198.23.172 \
+PF31_HOST=<bench-host-ip> \
 PF31_PORT=22 \
-PF31_USER=root \
-PF31_KEY=~/.ssh/rundesk_hetzner \
+PF31_USER=<bench-user> \
+PF31_KEY=~/.ssh/<bench-key> \
 PF31_REMOTE_REPO=$NEXTSTAT_ROOT \
 PF31_BIN=$NEXTSTAT_BIN \
 PF31_GPU_DEVICE_SETS=0 \

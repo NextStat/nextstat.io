@@ -1,0 +1,483 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/ads_timeseries_benchmark_result_v1.schema.json",
+  "title": "Ads + Time Series Stable Surface Benchmark Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "meta",
+    "protocol",
+    "host",
+    "binary",
+    "python",
+    "results",
+    "derived"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.ads_timeseries_benchmark_result.v1"
+    },
+    "suite": {
+      "const": "ads_timeseries_surface"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "generated_at_utc",
+        "runner",
+        "host_policy",
+        "smoke",
+        "deterministic",
+        "git_commit"
+      ],
+      "properties": {
+        "generated_at_utc": {
+          "type": "string"
+        },
+        "runner": {
+          "type": "string",
+          "const": "scripts/benchmarks/bench_ads_timeseries_surface.py"
+        },
+        "host_policy": {
+          "type": "string",
+          "const": "nextstat-bench"
+        },
+        "smoke": {
+          "type": "boolean"
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "git_commit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runs",
+        "warmups"
+      ],
+      "properties": {
+        "runs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "warmups": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hostname",
+        "platform",
+        "machine",
+        "processor",
+        "cpu_model",
+        "python_version"
+      ],
+      "properties": {
+        "hostname": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "machine": {
+          "type": "string"
+        },
+        "processor": {
+          "type": "string"
+        },
+        "cpu_model": {
+          "type": "string"
+        },
+        "python_version": {
+          "type": "string"
+        }
+      }
+    },
+    "binary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "version",
+        "sha256",
+        "build_profile"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "build_profile": {
+          "type": "string"
+        }
+      }
+    },
+    "python": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "nextstat_version"
+      ],
+      "properties": {
+        "nextstat_version": {
+          "type": "string"
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "case_id",
+          "surface",
+          "status",
+          "min_s",
+          "median_s",
+          "max_s",
+          "samples_s",
+          "details"
+        ],
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "enum": [
+              "python_beta_binomial_fit_from_counts",
+              "python_delay_correction_fit_from_lag_buckets",
+              "python_cuped_adjust",
+              "python_cure_adjust",
+              "python_response_curve_helpers",
+              "python_kalman_local_level_weekly_filter",
+              "python_kalman_local_linear_trend_weekly_filter",
+              "cli_kalman_local_level_weekly_filter",
+              "cli_kalman_local_linear_trend_weekly_filter"
+            ]
+          },
+          "surface": {
+            "type": "string",
+            "enum": [
+              "python",
+              "cli"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "const": "ok"
+          },
+          "min_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "median_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "max_s": {
+            "type": "number",
+            "minimum": 0
+          },
+          "samples_s": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "details": {
+            "type": "object"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "case_id": {
+                  "const": "python_cuped_adjust"
+                }
+              },
+              "required": [
+                "case_id"
+              ]
+            },
+            "then": {
+              "properties": {
+                "surface": {
+                  "const": "python"
+                },
+                "details": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "condition_number",
+                    "covariate_provenance",
+                    "effect",
+                    "effective_sample_multiplier",
+                    "method",
+                    "num_covariates",
+                    "pre_treatment_only",
+                    "provenance_validated",
+                    "r_squared",
+                    "ridge_lambda",
+                    "selected_covariates",
+                    "solver",
+                    "variance_reduction_factor"
+                  ],
+                  "properties": {
+                    "condition_number": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0
+                    },
+                    "covariate_provenance": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 1,
+                      "items": {
+                        "$ref": "#/$defs/covariateProvenance"
+                      }
+                    },
+                    "effect": {
+                      "type": "number"
+                    },
+                    "effective_sample_multiplier": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "method": {
+                      "const": "cuped"
+                    },
+                    "num_covariates": {
+                      "const": 1
+                    },
+                    "pre_treatment_only": {
+                      "const": true
+                    },
+                    "provenance_validated": {
+                      "const": true
+                    },
+                    "r_squared": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "ridge_lambda": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0
+                    },
+                    "selected_covariates": {
+                      "type": "array",
+                      "minItems": 1,
+                      "maxItems": 1,
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "solver": {
+                      "const": "svd"
+                    },
+                    "variance_reduction_factor": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "case_id": {
+                  "const": "python_cure_adjust"
+                }
+              },
+              "required": [
+                "case_id"
+              ]
+            },
+            "then": {
+              "properties": {
+                "surface": {
+                  "const": "python"
+                },
+                "details": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "condition_number",
+                    "covariate_provenance",
+                    "effect",
+                    "effective_sample_multiplier",
+                    "method",
+                    "num_covariates",
+                    "pre_treatment_only",
+                    "provenance_validated",
+                    "r_squared",
+                    "ridge_lambda",
+                    "selected_covariates",
+                    "solver",
+                    "variance_reduction_factor"
+                  ],
+                  "properties": {
+                    "condition_number": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0
+                    },
+                    "covariate_provenance": {
+                      "type": "array",
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "items": {
+                        "$ref": "#/$defs/covariateProvenance"
+                      }
+                    },
+                    "effect": {
+                      "type": "number"
+                    },
+                    "effective_sample_multiplier": {
+                      "type": "number",
+                      "exclusiveMinimum": 0
+                    },
+                    "method": {
+                      "const": "cure"
+                    },
+                    "num_covariates": {
+                      "const": 2
+                    },
+                    "pre_treatment_only": {
+                      "const": true
+                    },
+                    "provenance_validated": {
+                      "const": true
+                    },
+                    "r_squared": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    },
+                    "ridge_lambda": {
+                      "type": [
+                        "number",
+                        "null"
+                      ],
+                      "minimum": 0
+                    },
+                    "selected_covariates": {
+                      "type": "array",
+                      "minItems": 2,
+                      "maxItems": 2,
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "solver": {
+                      "const": "ridge"
+                    },
+                    "variance_reduction_factor": {
+                      "type": "number",
+                      "minimum": 0,
+                      "maximum": 1
+                    }
+                  }
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "derived": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "all_cases_ok",
+        "case_count",
+        "python_case_count",
+        "cli_case_count",
+        "slowest_case_id",
+        "slowest_median_s"
+      ],
+      "properties": {
+        "all_cases_ok": {
+          "type": "boolean"
+        },
+        "case_count": {
+          "const": 9
+        },
+        "python_case_count": {
+          "const": 7
+        },
+        "cli_case_count": {
+          "const": 2
+        },
+        "slowest_case_id": {
+          "type": "string"
+        },
+        "slowest_median_s": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "$defs": {
+    "covariateProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "timing",
+        "source_dataset"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "timing": {
+          "const": "pre_treatment"
+        },
+        "source_dataset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

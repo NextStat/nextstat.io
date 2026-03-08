@@ -1,0 +1,289 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/simplified_likelihood_exporter_stable_evidence_policy_v0.schema.json",
+  "title": "Simplified Likelihood Exporter Stable Evidence Policy v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_id",
+    "status",
+    "support_class",
+    "generated_at_utc",
+    "benchmark_host",
+    "stable_evidence_floor",
+    "admission_policy",
+    "maintenance_cadence",
+    "release_consumers",
+    "source_artifacts",
+    "current_evidence_summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_simplified_likelihood_exporter_stable_evidence_policy_v0"
+    },
+    "policy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "const": "accepted"
+    },
+    "support_class": {
+      "const": "stable"
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "benchmark_host": {
+      "const": "nextstat-bench"
+    },
+    "stable_evidence_floor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min_total_export_matrix_case_count",
+        "min_public_reinterpretation_style_case_count",
+        "min_synthetic_control_net_end_to_end_upper_limit_speedup",
+        "min_public_validation_net_end_to_end_upper_limit_speedup"
+      ],
+      "properties": {
+        "min_total_export_matrix_case_count": {
+          "type": "integer",
+          "minimum": 5
+        },
+        "min_public_reinterpretation_style_case_count": {
+          "type": "integer",
+          "minimum": 3
+        },
+        "min_synthetic_control_net_end_to_end_upper_limit_speedup": {
+          "type": "number",
+          "minimum": 1.25
+        },
+        "min_public_validation_net_end_to_end_upper_limit_speedup": {
+          "type": "number",
+          "minimum": 0.75
+        }
+      }
+    },
+    "admission_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_case_kind",
+        "required_benchmark_host",
+        "required_source_workspace_formats",
+        "required_poi_scope",
+        "required_constraint_covariance_source",
+        "required_source_constraint_families",
+        "required_source_workspace_modifier_types",
+        "require_cases_inside_promoted_stable_runtime_boundary",
+        "allow_source_level_nuisance_identity_claims",
+        "allow_silent_stable_boundary_expansion"
+      ],
+      "properties": {
+        "required_case_kind": {
+          "const": "public_reinterpretation_style"
+        },
+        "required_benchmark_host": {
+          "const": "nextstat-bench"
+        },
+        "required_source_workspace_formats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "contains": {
+            "const": "pyhf"
+          },
+          "minItems": 1
+        },
+        "required_poi_scope": {
+          "const": "single_poi"
+        },
+        "required_constraint_covariance_source": {
+          "const": "source_model_constraints"
+        },
+        "required_source_constraint_families": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "contains": {
+            "const": "gaussian"
+          },
+          "minItems": 1
+        },
+        "required_source_workspace_modifier_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "require_cases_inside_promoted_stable_runtime_boundary": {
+          "const": true
+        },
+        "allow_source_level_nuisance_identity_claims": {
+          "const": false
+        },
+        "allow_silent_stable_boundary_expansion": {
+          "const": false
+        }
+      }
+    },
+    "maintenance_cadence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "refresh_cadence",
+        "required_refresh_triggers",
+        "required_refresh_scope",
+        "no_silent_boundary_expansion"
+      ],
+      "properties": {
+        "refresh_cadence": {
+          "const": "on_every_exporter_release_pr_or_public_case_admission"
+        },
+        "required_refresh_triggers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 4
+        },
+        "required_refresh_scope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 4
+        },
+        "no_silent_boundary_expansion": {
+          "const": true
+        }
+      }
+    },
+    "release_consumers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflow_paths",
+        "doc_paths",
+        "required_release_artifacts"
+      ],
+      "properties": {
+        "workflow_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2
+        },
+        "doc_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 4
+        },
+        "required_release_artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "contains": {
+            "const": "stable_evidence_policy.json"
+          },
+          "minItems": 3
+        }
+      }
+    },
+    "source_artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "benchmark_artifact_path",
+        "public_validation_report_path",
+        "stable_promotion_decision_path"
+      ],
+      "properties": {
+        "benchmark_artifact_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "public_validation_report_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stable_promotion_decision_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "current_evidence_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "export_matrix_case_count",
+        "public_case_count",
+        "public_case_names",
+        "synthetic_min_net_end_to_end_upper_limit_speedup",
+        "public_min_net_end_to_end_upper_limit_speedup",
+        "max_abs_q_mu_diff",
+        "max_upper_limit_ratio_deviation",
+        "cases_outside_promoted_stable_runtime_boundary",
+        "observed_constraint_covariance_sources"
+      ],
+      "properties": {
+        "export_matrix_case_count": {
+          "type": "integer",
+          "minimum": 5
+        },
+        "public_case_count": {
+          "type": "integer",
+          "minimum": 3
+        },
+        "public_case_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 3
+        },
+        "synthetic_min_net_end_to_end_upper_limit_speedup": {
+          "type": "number",
+          "minimum": 1.25
+        },
+        "public_min_net_end_to_end_upper_limit_speedup": {
+          "type": "number",
+          "minimum": 0.75
+        },
+        "max_abs_q_mu_diff": {
+          "type": "number",
+          "maximum": 0.1
+        },
+        "max_upper_limit_ratio_deviation": {
+          "type": "number",
+          "maximum": 0.05
+        },
+        "cases_outside_promoted_stable_runtime_boundary": {
+          "type": "integer",
+          "const": 0
+        },
+        "observed_constraint_covariance_sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "contains": {
+            "const": "source_model_constraints"
+          },
+          "minItems": 1
+        }
+      }
+    }
+  }
+}

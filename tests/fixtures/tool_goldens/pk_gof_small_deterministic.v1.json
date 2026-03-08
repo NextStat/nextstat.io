@@ -1,0 +1,96 @@
+{
+  "case_name": "pk_gof_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_pk_gof": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_pk_gof"
+      },
+      "ok": true,
+      "result": {
+        "model": "1cpt_oral",
+        "n_records": 8,
+        "n_subjects": 2,
+        "records": [
+          {
+            "cwres": -8.081165603376343,
+            "dv": 1.2,
+            "ipred": 6.4075249671117485,
+            "iwres": -8.127201991159916,
+            "pred": 6.253796586675207,
+            "subject": 0,
+            "time": 0.5
+          },
+          {
+            "cwres": -7.665143954969803,
+            "dv": 2.3,
+            "ipred": 10.033742354920708,
+            "iwres": -7.707734643124413,
+            "pred": 9.850714372286939,
+            "subject": 0,
+            "time": 1.0
+          },
+          {
+            "cwres": -8.47894062243248,
+            "dv": 1.9,
+            "ipred": 12.569010928620996,
+            "iwres": -8.488345653615834,
+            "pred": 12.491294081092901,
+            "subject": 0,
+            "time": 2.0
+          },
+          {
+            "cwres": -9.265725875746616,
+            "dv": 0.8,
+            "ipred": 10.681569435074577,
+            "iwres": -9.251046388957526,
+            "pred": 10.895113603702809,
+            "subject": 0,
+            "time": 4.0
+          },
+          {
+            "cwres": -8.400971336146954,
+            "dv": 1.0,
+            "ipred": 5.992450391907779,
+            "iwres": -8.331233577919306,
+            "pred": 6.253796586675207,
+            "subject": 1,
+            "time": 0.5
+          },
+          {
+            "cwres": -7.868174915407212,
+            "dv": 2.1,
+            "ipred": 9.507776525460082,
+            "iwres": -7.791281700430605,
+            "pred": 9.850714372286939,
+            "subject": 1,
+            "time": 1.0
+          },
+          {
+            "cwres": -8.63905213586064,
+            "dv": 1.7,
+            "ipred": 12.230610456271942,
+            "iwres": -8.610044849291862,
+            "pred": 12.491294081092901,
+            "subject": 1,
+            "time": 2.0
+          },
+          {
+            "cwres": -9.357510141278292,
+            "dv": 0.7,
+            "ipred": 10.971957317418251,
+            "iwres": -9.36200991331899,
+            "pred": 10.895113603702809,
+            "subject": 1,
+            "time": 4.0
+          }
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

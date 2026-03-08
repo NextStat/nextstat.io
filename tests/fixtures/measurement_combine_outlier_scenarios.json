@@ -1,0 +1,32 @@
+{
+  "schema_version": "nextstat_measurement_combination_scenarios_v0",
+  "scenarios": [
+    {
+      "name": "new_0p1",
+      "error_on_error": [
+        {
+          "systematic": "new",
+          "value": 0.1
+        }
+      ]
+    },
+    {
+      "name": "new_0p3",
+      "error_on_error": [
+        {
+          "systematic": "new",
+          "value": 0.3
+        }
+      ]
+    },
+    {
+      "name": "new_0p5",
+      "error_on_error": [
+        {
+          "systematic": "new",
+          "value": 0.5
+        }
+      ]
+    }
+  ]
+}

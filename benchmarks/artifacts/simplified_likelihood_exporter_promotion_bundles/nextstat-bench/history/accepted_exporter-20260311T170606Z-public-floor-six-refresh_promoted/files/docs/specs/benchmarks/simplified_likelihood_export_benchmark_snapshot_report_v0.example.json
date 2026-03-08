@@ -1,0 +1,53 @@
+{
+  "actions": {
+    "archived_persisted_snapshot": true,
+    "archived_persisted_snapshot_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/history/snapshot_20260311T170606Z_persisted",
+    "archived_previous_current": true,
+    "archived_previous_current_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/history/current_20260310T000000Z_previous",
+    "current_snapshot_index_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/snapshot_index.json",
+    "current_snapshot_index_written": true,
+    "current_updated": true
+  },
+  "benchmark_artifact_source_path": "tmp/apex2_simplified_likelihood_20260311T170606Z/nextstat-bench/apex2_simplified_likelihood_report.json",
+  "current_benchmark_artifact_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
+  "current_dir": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current",
+  "current_report_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_benchmark_snapshot_report.json",
+  "current_snapshot_index_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/snapshot_index.json",
+  "dry_run": false,
+  "generated_at_utc": "1970-01-01T00:00:00Z",
+  "history_dir": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/history",
+  "persisted": true,
+  "schema_version": "nextstat_simplified_likelihood_export_benchmark_snapshot_report_v0",
+  "snapshot_id": "export-20260311T170606Z-public-floor-six",
+  "source_summary": {
+    "all_fidelity_gates_pass": true,
+    "all_performance_gates_pass": true,
+    "all_schema_valid": true,
+    "benchmark_host": "nextstat-bench",
+    "case_count": 2,
+    "export_matrix_case_count": 8,
+    "export_matrix_case_kinds": [
+      "public_reinterpretation_style",
+      "synthetic"
+    ],
+    "export_matrix_included": true,
+    "export_matrix_min_net_end_to_end_upper_limit_speedup": 0.9434751728263177,
+    "export_matrix_public_reinterpretation_style_case_count": 6,
+    "export_matrix_public_reinterpretation_style_min_net_end_to_end_upper_limit_speedup": 0.9434751728263177,
+    "export_matrix_status": "ok",
+    "export_matrix_summary_all_fidelity_gates_pass": true,
+    "export_matrix_summary_all_performance_gates_pass": true,
+    "export_matrix_summary_all_schema_valid": true,
+    "export_matrix_summary_status": "ok",
+    "export_matrix_synthetic_min_net_end_to_end_upper_limit_speedup": 2.0581999472135606,
+    "public_fixture_matrix_included": true,
+    "public_fixture_matrix_status": "ok",
+    "schema_version": "nextstat_apex2_simplified_likelihood_report_v0",
+    "status": "ok"
+  },
+  "status": "persisted",
+  "summary": {
+    "top_level_errors": []
+  },
+  "surface": "simplified_likelihood_export_benchmark"
+}

@@ -1,3 +1,9 @@
+# Compiler crash dumps
+rustc-ice-*.txt
+
+# Stray image assets (hero images etc.)
+ads-hero-fixed.png
+
 # Rust
 /target/
 **/target/
@@ -122,6 +128,8 @@ bench_results/**/churn_data.json
 bench_results/**/raw_runs.json
 bench_results/**/summary.md
 bench_results/**/unbinned_spec_summary_ci.json
+bench_results/**/gate_report.json
+bench_results/*.json
 # nextstat-public-benchmarks contains both source (tracked) and generated outputs.
 # Do NOT ignore the whole tree, otherwise new benchmark code can be silently hidden.
 benchmarks/nextstat-public-benchmarks/artifacts/
@@ -129,7 +137,11 @@ benchmarks/nextstat-public-benchmarks/manifests/snapshots/
 benchmarks/nextstat-public-benchmarks/.venv/
 benchmarks/nextstat-public-benchmarks/out/
 benchmarks/nextstat-public-benchmarks/tmp/
-benchmarks/artifacts/
+benchmarks/artifacts/*
+!benchmarks/artifacts/*_baselines/
+!benchmarks/artifacts/*_baselines/**
+!benchmarks/artifacts/simplified_likelihood_*/
+!benchmarks/artifacts/simplified_likelihood_*/**
 
 # Documentation
 target/doc/

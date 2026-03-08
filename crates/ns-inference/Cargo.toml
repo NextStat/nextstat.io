@@ -28,7 +28,9 @@ rand.workspace = true
 rand_distr.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml_ng.workspace = true
 statrs.workspace = true
+csv.workspace = true
 
 [features]
 default = ["root-io"]
@@ -76,4 +78,8 @@ harness = false
 
 [[bench]]
 name = "em_benchmark"
+harness = false
+
+[[bench]]
+name = "measurement_combine_benchmark"
 harness = false

@@ -5,6 +5,11 @@
 use serde_json::{Value, json};
 
 pub fn openapi_spec() -> Value {
+    let server_tool_schema_example: Value = serde_json::from_str(include_str!(
+        "../../../docs/specs/nextstat_tool_schema_server_v1.example.json"
+    ))
+    .expect("server tool schema example must parse");
+
     json!({
         "openapi": "3.1.0",
         "info": {
@@ -41,9 +46,13 @@ pub fn openapi_spec() -> Value {
                 },
                 "FitRequest": {
                     "type": "object",
-                    "required": ["workspace"],
+                    "description": "Provide either `workspace` (full workspace JSON) or `model_id` (cached model key).",
+                    "anyOf": [
+                        { "required": ["workspace"] },
+                        { "required": ["model_id"] }
+                    ],
                     "properties": {
-                        "workspace": { "type": "object", "description": "pyhf or HS3 workspace JSON" },
+                        "workspace": { "type": "object", "description": "pyhf, HS3, or simplified-likelihood workspace JSON" },
                         "model_id": { "type": "string", "description": "Cached model ID (SHA-256)" },
                         "gpu": { "$ref": "#/components/schemas/GpuSelector" }
                     }
@@ -117,6 +126,168 @@ pub fn openapi_spec() -> Value {
                     "type": "object",
                     "properties": {
                         "error": { "type": "string" }
+                    }
+                },
+                "RateLimitError": {
+                    "type": "object",
+                    "required": ["error", "retry_after_s"],
+                    "properties": {
+                        "error": { "type": "string" },
+                        "retry_after_s": { "type": "integer" }
+                    }
+                },
+                "ToolDefinition": {
+                    "type": "object",
+                    "required": ["type", "function"],
+                    "properties": {
+                        "type": { "const": "function" },
+                        "function": {
+                            "type": "object",
+                            "required": ["name", "description", "parameters"],
+                            "properties": {
+                                "name": { "type": "string" },
+                                "description": { "type": "string" },
+                                "parameters": { "type": "object" }
+                            },
+                            "additionalProperties": true
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "ToolPolicy": {
+                    "type": "object",
+                    "required": ["availability", "reason_code", "reason"],
+                    "properties": {
+                        "availability": { "type": "string", "enum": ["exposed", "local_only"] },
+                        "reason_code": { "type": "string" },
+                        "reason": { "type": "string" }
+                    }
+                },
+                "ToolCapability": {
+                    "type": "object",
+                    "required": ["name", "local_available", "server_available", "server_policy"],
+                    "properties": {
+                        "name": { "type": "string" },
+                        "local_available": { "type": "boolean" },
+                        "server_available": { "type": "boolean" },
+                        "server_policy": { "$ref": "#/components/schemas/ToolPolicy" }
+                    }
+                },
+                "ToolGuidanceRecipe": {
+                    "type": "object",
+                    "required": ["id", "transport", "title", "summary", "prompt", "tools", "docs"],
+                    "properties": {
+                        "id": { "type": "string" },
+                        "transport": { "type": "string", "enum": ["server"] },
+                        "title": { "type": "string" },
+                        "summary": { "type": "string" },
+                        "prompt": { "type": "string" },
+                        "tools": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                        },
+                        "docs": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                        }
+                    }
+                },
+                "ToolGuidance": {
+                    "type": "object",
+                    "required": ["hints", "recipes"],
+                    "properties": {
+                        "hints": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                        },
+                        "recipes": {
+                            "type": "array",
+                            "items": { "$ref": "#/components/schemas/ToolGuidanceRecipe" }
+                        }
+                    }
+                },
+                "ToolSchemaResponse": {
+                    "type": "object",
+                    "required": ["schema_version", "transport", "tools", "capabilities", "guidance"],
+                    "properties": {
+                        "schema_version": { "const": "nextstat.tool_schema.v1" },
+                        "transport": { "type": "string", "enum": ["server"] },
+                        "tools": {
+                            "type": "array",
+                            "items": { "$ref": "#/components/schemas/ToolDefinition" }
+                        },
+                        "capabilities": {
+                            "type": "array",
+                            "items": { "$ref": "#/components/schemas/ToolCapability" }
+                        },
+                        "guidance": {
+                            "$ref": "#/components/schemas/ToolGuidance"
+                        }
+                    }
+                },
+                "ToolExecuteRequest": {
+                    "type": "object",
+                    "required": ["name", "arguments"],
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Server-safe tool name returned by GET /v1/tools/schema."
+                        },
+                        "arguments": {
+                            "type": "object",
+                            "description": "Arguments object matching the selected tool's JSON schema.",
+                            "additionalProperties": true
+                        }
+                    }
+                },
+                "ToolError": {
+                    "type": "object",
+                    "required": ["type", "message"],
+                    "properties": {
+                        "type": { "type": "string" },
+                        "message": { "type": "string" }
+                    },
+                    "additionalProperties": true
+                },
+                "ToolMeta": {
+                    "type": "object",
+                    "required": [
+                        "tool_name",
+                        "nextstat_version",
+                        "deterministic",
+                        "eval_mode",
+                        "threads_requested"
+                    ],
+                    "properties": {
+                        "tool_name": { "type": "string" },
+                        "nextstat_version": { "type": ["string", "null"] },
+                        "deterministic": { "type": "boolean" },
+                        "eval_mode": { "type": "string" },
+                        "threads_requested": { "type": ["integer", "null"] },
+                        "threads_applied": { "type": ["integer", "null"] },
+                        "device": { "type": ["string", "null"] },
+                        "warnings": {
+                            "type": "array",
+                            "items": { "type": "string" }
+                        }
+                    },
+                    "additionalProperties": true
+                },
+                "ToolResultEnvelope": {
+                    "type": "object",
+                    "description": "Stable tool result envelope. Tool-level failures still return HTTP 200 with ok=false inside this payload.",
+                    "required": ["schema_version", "ok", "result", "error", "meta"],
+                    "properties": {
+                        "schema_version": { "const": "nextstat.tool_result.v1" },
+                        "ok": { "type": "boolean" },
+                        "result": {},
+                        "error": {
+                            "anyOf": [
+                                { "type": "null" },
+                                { "$ref": "#/components/schemas/ToolError" }
+                            ]
+                        },
+                        "meta": { "$ref": "#/components/schemas/ToolMeta" }
                     }
                 }
             }
@@ -223,14 +394,90 @@ pub fn openapi_spec() -> Value {
                 "get": {
                     "summary": "OpenAI function-calling tool schema",
                     "tags": ["Tools"],
-                    "responses": { "200": { "description": "JSON schema for all supported tools" } }
+                    "responses": {
+                        "200": {
+                            "description": "JSON schema for all supported tools plus capability/policy metadata",
+                            "content": {
+                                "application/json": {
+                                    "schema": { "$ref": "#/components/schemas/ToolSchemaResponse" },
+                                    "example": server_tool_schema_example
+                                }
+                            }
+                        },
+                        "401": {
+                            "description": "Unauthorized",
+                            "content": {
+                                "application/json": {
+                                    "schema": { "$ref": "#/components/schemas/Error" }
+                                }
+                            }
+                        },
+                        "429": {
+                            "description": "Rate limited",
+                            "content": {
+                                "application/json": {
+                                    "schema": { "$ref": "#/components/schemas/RateLimitError" }
+                                }
+                            }
+                        }
+                    }
                 }
             },
             "/v1/tools/execute": {
                 "post": {
                     "summary": "Execute a tool (OpenAI function-calling)",
                     "tags": ["Tools"],
-                    "responses": { "200": { "description": "Tool execution result" } }
+                    "description": "Executes one server-safe tool. Tool-level validation and domain failures return HTTP 200 with ok=false in the response envelope; auth and rate-limit failures use HTTP errors.",
+                    "requestBody": {
+                        "required": true,
+                        "content": {
+                            "application/json": {
+                                "schema": { "$ref": "#/components/schemas/ToolExecuteRequest" }
+                            }
+                        }
+                    },
+                    "responses": {
+                        "400": {
+                            "description": "Malformed JSON body or invalid request shape",
+                            "content": {
+                                "application/json": {
+                                    "schema": { "$ref": "#/components/schemas/Error" }
+                                }
+                            }
+                        },
+                        "415": {
+                            "description": "Unsupported media type; request body must use Content-Type: application/json",
+                            "content": {
+                                "application/json": {
+                                    "schema": { "$ref": "#/components/schemas/Error" }
+                                }
+                            }
+                        },
+                        "200": {
+                            "description": "Tool execution result envelope",
+                            "content": {
+                                "application/json": {
+                                    "schema": { "$ref": "#/components/schemas/ToolResultEnvelope" }
+                                }
+                            }
+                        },
+                        "401": {
+                            "description": "Unauthorized",
+                            "content": {
+                                "application/json": {
+                                    "schema": { "$ref": "#/components/schemas/Error" }
+                                }
+                            }
+                        },
+                        "429": {
+                            "description": "Rate limited",
+                            "content": {
+                                "application/json": {
+                                    "schema": { "$ref": "#/components/schemas/RateLimitError" }
+                                }
+                            }
+                        }
+                    }
                 }
             },
             "/v1/models": {
@@ -265,8 +512,25 @@ pub fn openapi_spec() -> Value {
                 "get": {
                     "summary": "OpenAPI specification",
                     "tags": ["Admin"],
-                    "security": [],
-                    "responses": { "200": { "description": "This document" } }
+                    "responses": {
+                        "200": { "description": "This document" },
+                        "401": {
+                            "description": "Unauthorized",
+                            "content": {
+                                "application/json": {
+                                    "schema": { "$ref": "#/components/schemas/Error" }
+                                }
+                            }
+                        },
+                        "429": {
+                            "description": "Rate limited",
+                            "content": {
+                                "application/json": {
+                                    "schema": { "$ref": "#/components/schemas/RateLimitError" }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

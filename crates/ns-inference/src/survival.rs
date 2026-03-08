@@ -1755,6 +1755,50 @@ impl IntervalCensoredWeibullAftModel {
     fn log_lambda(&self, i: usize, beta: &[f64]) -> f64 {
         row_dot(self.row(i), beta)
     }
+
+    pub(crate) fn n_obs(&self) -> usize {
+        self.n_obs
+    }
+
+    pub(crate) fn n_covariates(&self) -> usize {
+        self.n_cov
+    }
+
+    /// Export the centered covariate design in column-major form plus the
+    /// interval-censoring payload expected by the internal CUDA evaluator.
+    pub(crate) fn cuda_weibull_aft_design_colmajor(
+        &self,
+    ) -> (Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>, Vec<u8>, usize, usize, usize) {
+        let mut x_col = vec![0.0; self.n_obs * self.n_cov];
+        for i in 0..self.n_obs {
+            for j in 0..self.n_cov {
+                x_col[j * self.n_obs + i] = self.x[i * self.n_cov + j];
+            }
+        }
+
+        let censor_codes = self
+            .censor_type
+            .iter()
+            .map(|c| match c {
+                CensoringType::Exact => 0u8,
+                CensoringType::Right => 1u8,
+                CensoringType::Left => 2u8,
+                CensoringType::Interval => 3u8,
+            })
+            .collect::<Vec<_>>();
+
+        (
+            x_col,
+            self.time_lower.clone(),
+            self.time_upper.clone(),
+            self.ln_time_lower.clone(),
+            self.ln_time_upper.clone(),
+            censor_codes,
+            self.n_obs,
+            self.n_cov,
+            1 + self.n_cov,
+        )
+    }
 }
 
 impl LogDensityModel for IntervalCensoredWeibullAftModel {
@@ -2890,5 +2934,31 @@ mod tests {
         assert_eq!(model.dim(), 3);
         assert_eq!(model.parameter_names(), vec!["log_k", "beta1", "beta2"]);
         assert_eq!(model.parameter_bounds().len(), 3);
+    }
+
+    #[test]
+    fn ic_weibull_aft_cuda_export_preserves_colmajor_and_censor_codes() {
+        let tl = vec![0.0, 0.5, 1.0];
+        let tu = vec![1.0, 0.5, 2.0];
+        let ct = vec![CensoringType::Interval, CensoringType::Exact, CensoringType::Right];
+        let x = vec![
+            1.0, 2.0, //
+            3.0, 4.0, //
+            5.0, 6.0,
+        ];
+        let model = IntervalCensoredWeibullAftModel::new(tl.clone(), tu.clone(), ct, x, 2).unwrap();
+        let (x_col, tl_out, tu_out, ln_tl, ln_tu, codes, n_obs, n_cov, param_dim) =
+            model.cuda_weibull_aft_design_colmajor();
+
+        assert_eq!(n_obs, 3);
+        assert_eq!(n_cov, 2);
+        assert_eq!(param_dim, 3);
+        assert_eq!(tl_out, tl);
+        assert_eq!(tu_out, tu);
+        assert_eq!(codes, vec![3, 0, 1]);
+        assert_eq!(x_col, vec![-2.0, 0.0, 2.0, -2.0, 0.0, 2.0]);
+        assert!(ln_tl[0].is_infinite() && ln_tl[0].is_sign_negative());
+        assert!((ln_tl[1] - 0.5f64.ln()).abs() < 1e-12);
+        assert!((ln_tu[2] - 2.0f64.ln()).abs() < 1e-12);
     }
 }

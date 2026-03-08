@@ -1,0 +1,169 @@
+{
+  "aggregate": {
+    "bartlett_improves_mean_q_fraction": 1.0,
+    "max_abs_mean_sigma_star_to_sigma_ratio_delta_from_reference": 0.018785824706768928,
+    "max_mean_sigma": 0.13205176386828832,
+    "max_mean_sigma_star": 0.13533865474940845,
+    "max_mean_sigma_star_to_sigma_ratio": 1.0255053743103602,
+    "max_sigma_star_ge_sigma_fraction": 1.0,
+    "mean_of_mean_q": 11.220268028192166,
+    "mean_of_mean_q_star": 9.235687954598133,
+    "mean_of_mean_sigma": 0.13160304994376107,
+    "mean_of_mean_sigma_star": 0.13488937700781875,
+    "min_mean_sigma": 0.13075242135732698,
+    "min_mean_sigma_star": 0.13408731080603153,
+    "min_mean_sigma_star_to_sigma_ratio": 1.0245233266189548,
+    "min_sigma_star_ge_sigma_fraction": 1.0,
+    "n_runs": 3,
+    "toy_generation_method": "measurement_side_gvm_unbiased_sigma2_star_normalized_spec_original_theta"
+  },
+  "ci_level": 0.68,
+  "n_toys": 16,
+  "per_seed": [
+    {
+      "seed": 123,
+      "summary": {
+        "bartlett_improves_mean_q": true,
+        "df": 2,
+        "mean_q": 11.665146456830396,
+        "mean_q_abs_error_to_df": 9.665146456830396,
+        "mean_q_star": 9.597677444518459,
+        "mean_q_star_abs_error_to_df": 7.5976774445184585,
+        "mean_sigma": 0.13205176386828832,
+        "mean_sigma_star": 0.13533865474940845,
+        "mean_sigma_star_to_sigma_ratio": 1.024890927503237,
+        "sd_q": 11.886511595120764,
+        "sd_q_star": 9.368109752792195,
+        "sem_q": 2.971627898780191,
+        "sem_q_star": 2.342027438198049,
+        "sigma_star_ge_sigma_fraction": 1.0,
+        "toy_generation_method": "measurement_side_gvm_unbiased_sigma2_star_normalized_spec_original_theta"
+      }
+    },
+    {
+      "seed": 124,
+      "summary": {
+        "bartlett_improves_mean_q": true,
+        "df": 2,
+        "mean_q": 10.044046200755131,
+        "mean_q_abs_error_to_df": 8.044046200755131,
+        "mean_q_star": 8.305970424639737,
+        "mean_q_star_abs_error_to_df": 6.305970424639737,
+        "mean_sigma": 0.13075242135732698,
+        "mean_sigma_star": 0.13408731080603153,
+        "mean_sigma_star_to_sigma_ratio": 1.0255053743103602,
+        "sd_q": 11.491729242386674,
+        "sd_q_star": 9.085568691094096,
+        "sem_q": 2.8729323105966684,
+        "sem_q_star": 2.271392172773524,
+        "sigma_star_ge_sigma_fraction": 1.0,
+        "toy_generation_method": "measurement_side_gvm_unbiased_sigma2_star_normalized_spec_original_theta"
+      }
+    },
+    {
+      "seed": 125,
+      "summary": {
+        "bartlett_improves_mean_q": true,
+        "df": 2,
+        "mean_q": 11.951611426990969,
+        "mean_q_abs_error_to_df": 9.951611426990969,
+        "mean_q_star": 9.803415994636202,
+        "mean_q_star_abs_error_to_df": 7.803415994636202,
+        "mean_sigma": 0.1320049646056679,
+        "mean_sigma_star": 0.13524216546801626,
+        "mean_sigma_star_to_sigma_ratio": 1.0245233266189548,
+        "sd_q": 12.233232091210999,
+        "sd_q_star": 9.595233296073538,
+        "sem_q": 3.0583080228027497,
+        "sem_q_star": 2.3988083240183844,
+        "sigma_star_ge_sigma_fraction": 1.0,
+        "toy_generation_method": "measurement_side_gvm_unbiased_sigma2_star_normalized_spec_original_theta"
+      }
+    }
+  ],
+  "poi": "mu",
+  "reference": {
+    "confidence_interval": {
+      "ci_level": 0.68,
+      "lower": -0.033688465504309796,
+      "sigma": 0.1420263928287512,
+      "upper": 0.2503643201531926
+    },
+    "converged": true,
+    "diagnostics": {
+      "bartlett": {
+        "b_mu": 0.013484251554057414,
+        "b_mu_theta": 0.7623673977235339,
+        "b_q": 0.587632602276466,
+        "b_tilde_theta": 0.7488831461694765,
+        "method": "lawley_order_eps2_general",
+        "p_value_star": 8.053652906792053e-7,
+        "q_scale": 1.293816301138233,
+        "q_star": 28.063939770289686,
+        "sigma2_unbiased_estimates": [
+          28.882176571214554
+        ],
+        "sigma_scale": 1.0067195496035912,
+        "sigma_star": 0.14298074622038315,
+        "supported": true,
+        "supported_systematics": [
+          "new"
+        ],
+        "unsupported_reason": null,
+        "w_mu_scale": 1.0134842515540574
+      },
+      "corr_regularization_deltas": [
+        0.0
+      ],
+      "effective_solver": "numerical-paper",
+      "input_schema_version": "nextstat_measurement_combination_v0",
+      "n_measurements": 3,
+      "n_systematics": 1,
+      "perturbative_validity": {
+        "condition_values": [
+          34.65569462830073
+        ],
+        "systematic_names": [
+          "new"
+        ],
+        "threshold": 1.0,
+        "within_threshold": [
+          false
+        ]
+      },
+      "profiled_variance_scales": [
+        23.802399107445122
+      ],
+      "requested_error_on_error": true,
+      "requested_solver": "auto",
+      "supports_error_on_error": true,
+      "theta_l2_norms": [
+        13.875576990665756
+      ]
+    },
+    "goodness_of_fit": {
+      "chi2": 36.309582748962356,
+      "df": 2,
+      "method": "profile_penalty_proxy_paper_theta",
+      "p_value": 1.3045907243380839e-8
+    },
+    "mu_hat": 0.10829486729121182,
+    "optimizer": {
+      "message": "Solver converged",
+      "method": "numerical_profile_gvm_original_theta",
+      "n_fev": 13,
+      "n_gev": 21,
+      "n_iter": 8
+    },
+    "poi": "mu",
+    "schema_version": "nextstat_measurement_combination_result_v0",
+    "stability": "stable"
+  },
+  "schema_version": "nextstat_measurement_combination_calibration_study_v0",
+  "seeds": [
+    123,
+    124,
+    125
+  ],
+  "stability": "stable"
+}

@@ -1,0 +1,163 @@
+{
+  "type": "ads_statistical_artifact",
+  "version": "1.0.0",
+  "decision": "stop_winner",
+  "result": {
+    "effect_estimate": 0.12,
+    "sampling_uncertainty": {
+      "lo": -0.04,
+      "hi": 0.04
+    },
+    "measurement_uncertainty": {
+      "lo": -0.08,
+      "hi": 0.08
+    },
+    "causal_uncertainty": {
+      "status": "separate",
+      "diagnostics": [
+        "no_pretrend_violation",
+        "no_major_overlap_warning"
+      ]
+    },
+    "total_uncertainty": {
+      "status": "not_combinable"
+    },
+    "cls": {
+      "enabled": true,
+      "value": 0.023,
+      "expected_sensitivity_sigma": 3.2,
+      "claim_status": "claimable_win"
+    },
+    "claim_status": "claimable_win",
+    "practical_significance": {
+      "threshold_status": "exceeds_win_threshold",
+      "delta_win": 0.05,
+      "delta_equiv": 0.02,
+      "decision_loss": {
+        "scale": 1200.0,
+        "hold": 4200.0,
+        "revert": 8500.0
+      }
+    }
+  },
+  "diagnostics": {
+    "fit_quality": "good",
+    "convergence": true,
+    "gof_pvalue": 0.28,
+    "dominant_systematic": "conversion_lag_curve",
+    "warnings": []
+  },
+  "guardrails": {
+    "minimum_events": 100,
+    "actual_events": {
+      "control": 134,
+      "variant": 157
+    },
+    "power_at_mde": 0.87,
+    "sequential_looks_used": 2,
+    "sequential_looks_planned": 5,
+    "alpha_spent": 0.012,
+    "alpha_remaining": 0.038
+  },
+  "assumptions": [
+    {
+      "key": "attribution_window",
+      "value": "7d_click"
+    },
+    {
+      "key": "fraud_policy",
+      "value": "iab_conservative_10pct"
+    }
+  ],
+  "systematics_profile": {
+    "registry_version": "v1",
+    "entries": [
+      {
+        "code": "S1",
+        "systematic_id": "conversion_lag_curve",
+        "enabled": true,
+        "uncertainty_layer": "measurement",
+        "kind": "histo_sys",
+        "source_class": "data_estimated",
+        "combination_policy": "profile_likelihood",
+        "nominal": "account-specific lag baseline",
+        "sigma": "per-bin historical standard error",
+        "constraint": "mass-preserving redistribution across approved lag bins"
+      },
+      {
+        "code": "S2",
+        "systematic_id": "viewability_baseline",
+        "enabled": true,
+        "uncertainty_layer": "measurement",
+        "kind": "norm_sys",
+        "source_class": "hybrid_api_plus_benchmark",
+        "combination_policy": "profile_likelihood",
+        "nominal": "Active View baseline",
+        "sigma": "max(observed spread, benchmark 0.15)",
+        "constraint": "[0.30, 1.00]"
+      },
+      {
+        "code": "S3",
+        "systematic_id": "cross_device_partial_rate",
+        "enabled": true,
+        "uncertainty_layer": "measurement",
+        "kind": "norm_sys",
+        "source_class": "hybrid_api_plus_prior",
+        "combination_policy": "profile_likelihood",
+        "nominal": "observed cross-device share",
+        "sigma": "benchmark gap for non-logged-in users",
+        "constraint": "[0.80, 1.40]"
+      },
+      {
+        "code": "S4",
+        "systematic_id": "residual_fraud_rate",
+        "enabled": true,
+        "uncertainty_layer": "measurement",
+        "kind": "norm_sys",
+        "source_class": "policy_default_or_vendor_calibrated",
+        "combination_policy": "sensitivity_first_then_profile",
+        "nominal": "0.10",
+        "sigma": "0.05",
+        "constraint": "[0.00, 0.30]"
+      },
+      {
+        "code": "S5",
+        "systematic_id": "organic_cannibalization",
+        "enabled": true,
+        "uncertainty_layer": "causal",
+        "kind": "norm_sys",
+        "source_class": "policy_default_or_incrementality_calibrated",
+        "combination_policy": "sensitivity_only",
+        "nominal": "0.00",
+        "sigma": "0.15",
+        "constraint": "[0.00, 0.50]"
+      },
+      {
+        "code": "S6",
+        "systematic_id": "experiment_interference",
+        "enabled": true,
+        "uncertainty_layer": "causal",
+        "kind": "norm_sys",
+        "source_class": "internal_nextstat_diagnostic",
+        "combination_policy": "sensitivity_only",
+        "nominal": "0.00",
+        "sigma": "diagnostic-derived",
+        "constraint": "[0.00, 0.30]"
+      }
+    ]
+  },
+  "rigor": {
+    "passed": true,
+    "artifacts_complete": true,
+    "claim_valid": true,
+    "leakage_clean": true,
+    "claim_violations": [],
+    "leakage_indicators": []
+  },
+  "metadata": {
+    "data_hash": "sha256:abc123",
+    "engine_version": "ns-inference-0.9.9",
+    "model_version": "ads-histfactory-v1",
+    "created_at": "2026-03-09T11:00:00Z"
+  }
+}

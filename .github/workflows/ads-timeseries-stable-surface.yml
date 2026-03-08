@@ -1,0 +1,137 @@
+name: Ads + Time Series Stable Surface
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - "crates/ns-inference/src/ads.rs"
+      - "crates/ns-inference/src/lib.rs"
+      - "crates/ns-inference/src/timeseries/kalman.rs"
+      - "crates/ns-cli/src/main.rs"
+      - "crates/ns-cli/tests/cli_timeseries.rs"
+      - "bindings/ns-py/src/lib.rs"
+      - "bindings/ns-py/python/nextstat/__init__.py"
+      - "bindings/ns-py/python/nextstat/ads.py"
+      - "bindings/ns-py/python/nextstat/timeseries.py"
+      - "bindings/ns-py/python/nextstat/_core.pyi"
+      - "tests/python/test_ads.py"
+      - "tests/python/test_timeseries_kalman.py"
+      - "tests/python/test_ads_timeseries_benchmark_smoke.py"
+      - "tests/fixtures/kalman_local_level_weekly.json"
+      - "tests/fixtures/kalman_local_linear_trend_weekly.json"
+      - "docs/references/python-api.md"
+      - "docs/references/rust-api.md"
+      - "docs/references/cli.md"
+      - "docs/benchmarks/ads-timeseries-*"
+      - "benchmarks/artifacts/ads_timeseries_baselines/nextstat-bench/accepted.json"
+      - "docs/schemas/benchmarks/ads_timeseries_benchmark_result_v1.schema.json"
+      - "docs/schemas/benchmarks/ads_timeseries_benchmark_compare_report_v1.schema.json"
+      - "docs/schemas/benchmarks/ads_timeseries_benchmark_baseline_promotion_report_v1.schema.json"
+      - "docs/schemas/benchmarks/ads_timeseries_benchmark_gate_report_v1.schema.json"
+      - "docs/specs/benchmarks/ads_timeseries_benchmark_result_v1.example.json"
+      - "docs/specs/benchmarks/ads_timeseries_benchmark_compare_report_v1.example.json"
+      - "docs/specs/benchmarks/ads_timeseries_benchmark_baseline_promotion_report_v1.example.json"
+      - "docs/specs/benchmarks/ads_timeseries_benchmark_gate_report_v1.example.json"
+      - "scripts/benchmarks/bench_ads_timeseries_surface.py"
+      - "scripts/benchmarks/bench_ads_timeseries_surface_remote.sh"
+      - "scripts/benchmarks/compare_ads_timeseries_benchmark.py"
+      - "scripts/benchmarks/promote_ads_timeseries_benchmark_baseline.py"
+      - "scripts/benchmarks/run_ads_timeseries_benchmark_gate.py"
+      - "scripts/benchmarks/ads_timeseries_stable_surface_gate.sh"
+      - "Makefile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - "crates/ns-inference/src/ads.rs"
+      - "crates/ns-inference/src/lib.rs"
+      - "crates/ns-inference/src/timeseries/kalman.rs"
+      - "crates/ns-cli/src/main.rs"
+      - "crates/ns-cli/tests/cli_timeseries.rs"
+      - "bindings/ns-py/src/lib.rs"
+      - "bindings/ns-py/python/nextstat/__init__.py"
+      - "bindings/ns-py/python/nextstat/ads.py"
+      - "bindings/ns-py/python/nextstat/timeseries.py"
+      - "bindings/ns-py/python/nextstat/_core.pyi"
+      - "tests/python/test_ads.py"
+      - "tests/python/test_timeseries_kalman.py"
+      - "tests/python/test_ads_timeseries_benchmark_smoke.py"
+      - "tests/fixtures/kalman_local_level_weekly.json"
+      - "tests/fixtures/kalman_local_linear_trend_weekly.json"
+      - "docs/references/python-api.md"
+      - "docs/references/rust-api.md"
+      - "docs/references/cli.md"
+      - "docs/benchmarks/ads-timeseries-*"
+      - "benchmarks/artifacts/ads_timeseries_baselines/nextstat-bench/accepted.json"
+      - "docs/schemas/benchmarks/ads_timeseries_benchmark_result_v1.schema.json"
+      - "docs/schemas/benchmarks/ads_timeseries_benchmark_compare_report_v1.schema.json"
+      - "docs/schemas/benchmarks/ads_timeseries_benchmark_baseline_promotion_report_v1.schema.json"
+      - "docs/schemas/benchmarks/ads_timeseries_benchmark_gate_report_v1.schema.json"
+      - "docs/specs/benchmarks/ads_timeseries_benchmark_result_v1.example.json"
+      - "docs/specs/benchmarks/ads_timeseries_benchmark_compare_report_v1.example.json"
+      - "docs/specs/benchmarks/ads_timeseries_benchmark_baseline_promotion_report_v1.example.json"
+      - "docs/specs/benchmarks/ads_timeseries_benchmark_gate_report_v1.example.json"
+      - "scripts/benchmarks/bench_ads_timeseries_surface.py"
+      - "scripts/benchmarks/bench_ads_timeseries_surface_remote.sh"
+      - "scripts/benchmarks/compare_ads_timeseries_benchmark.py"
+      - "scripts/benchmarks/promote_ads_timeseries_benchmark_baseline.py"
+      - "scripts/benchmarks/run_ads_timeseries_benchmark_gate.py"
+      - "scripts/benchmarks/ads_timeseries_stable_surface_gate.sh"
+      - "Makefile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+concurrency:
+  group: ads-timeseries-stable-surface-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    name: Stable-Surface Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Create virtualenv
+        run: python -m venv .venv
+
+      - name: Install Python dependencies
+        run: |
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install "maturin>=1.11,<2.0" "pytest>=9.0" "jsonschema>=4.0"
+
+      - name: Shellcheck (bash -n) stable-surface gate
+        run: bash -n scripts/benchmarks/ads_timeseries_stable_surface_gate.sh
+
+      - name: Shellcheck (bash -n) remote benchmark runner
+        run: bash -n scripts/benchmarks/bench_ads_timeseries_surface_remote.sh
+
+      - name: Run ads-timeseries stable-surface gate
+        run: make ads-timeseries-stable-surface-gate
+
+      - name: Upload benchmark-smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ads-timeseries-stable-surface-benchmark
+          path: tmp/ads-timeseries-stable-surface/ads_timeseries_benchmark.json
+          if-no-files-found: error

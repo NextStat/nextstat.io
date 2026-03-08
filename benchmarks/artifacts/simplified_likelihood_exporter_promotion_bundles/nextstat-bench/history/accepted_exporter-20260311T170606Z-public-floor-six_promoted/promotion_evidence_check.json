@@ -1,0 +1,70 @@
+{
+  "bundle_dir": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/.accepted_stage",
+  "bundle_json_path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/.accepted_stage/promotion_evidence.json",
+  "bundle_summary": {
+    "artifact_count": 28,
+    "benchmark_host": "nextstat-bench",
+    "required_artifact_count": 28,
+    "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_bundle_v0",
+    "status": "ok",
+    "support_class": "research-grade",
+    "supports_committed_snapshot": true,
+    "supports_future_stable_review": true
+  },
+  "checked_at_utc": "1970-01-01T00:00:00Z",
+  "checks": {
+    "consistency": {
+      "artifact_count": 28,
+      "errors": [],
+      "expected_summary_status": "ok",
+      "ok": true,
+      "required_artifact_count": 28,
+      "status": "passed"
+    },
+    "inventory": {
+      "artifact_count": 28,
+      "byte_mismatches": [],
+      "byte_size_verified_count": 28,
+      "duplicate_roles": [],
+      "errors": [],
+      "hash_verified_count": 28,
+      "missing_files": [],
+      "missing_roles": [],
+      "ok": true,
+      "sha256_mismatches": [],
+      "status": "passed"
+    },
+    "promotion_readiness": {
+      "actual_benchmark_host": "nextstat-bench",
+      "actual_committed_snapshot_supported": true,
+      "actual_future_stable_review_ready": true,
+      "actual_max_abs_q_mu_diff": 0.09089073579143658,
+      "actual_max_upper_limit_ratio_deviation": 0.0093663653819136,
+      "actual_min_net_end_to_end_upper_limit_speedup": 2.0581999472135606,
+      "actual_overall_min_net_end_to_end_upper_limit_speedup": 0.9434751728263177,
+      "actual_public_reinterpretation_style_min_net_end_to_end_upper_limit_speedup": 0.9434751728263177,
+      "actual_research_grade_acceptance_supported": true,
+      "errors": [],
+      "ok": true,
+      "required_benchmark_host": "nextstat-bench",
+      "required_max_abs_q_mu_diff": 0.1,
+      "required_max_upper_limit_ratio_deviation": 0.05,
+      "required_min_net_end_to_end_upper_limit_speedup": 1.25,
+      "status": "passed"
+    },
+    "schema_validation": {
+      "errors": [],
+      "ok": true,
+      "schema_path": "docs/schemas/benchmarks/simplified_likelihood_exporter_promotion_evidence_bundle_v0.schema.json",
+      "status": "passed"
+    }
+  },
+  "ok": true,
+  "require_promotion_ready": true,
+  "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_check_v0",
+  "status": "passed",
+  "summary": {
+    "top_level_errors": []
+  },
+  "surface": "simplified_likelihood_exporter"
+}

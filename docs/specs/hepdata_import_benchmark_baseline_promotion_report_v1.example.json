@@ -1,0 +1,80 @@
+{
+  "accepted_baseline_path": "/benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+  "actions": {
+    "accepted_updated": false,
+    "archived_previous_baseline": false,
+    "archived_previous_baseline_path": null,
+    "archived_promoted_snapshot": false,
+    "archived_promoted_snapshot_path": null,
+    "history_dir": "/benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/history"
+  },
+  "allow_review": false,
+  "artifacts": {
+    "accepted_after": {
+      "case_ids": [
+        "curated_catalog",
+        "direct_patch_catalog_cached",
+        "curated_materialize_offline",
+        "direct_materialize_network"
+      ],
+      "deterministic": true,
+      "fit_enabled": true,
+      "fit_repeat": 1,
+      "host_policy": "nextstat-bench",
+      "node": "nextstat-bench",
+      "path": "benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+      "repeat": 3,
+      "schema_version": "nextstat.hepdata_import_benchmark_result.v1",
+      "smoke": false,
+      "suite": "hepdata_import"
+    },
+    "accepted_before": {
+      "case_ids": [
+        "curated_catalog",
+        "direct_patch_catalog_cached",
+        "curated_materialize_offline",
+        "direct_materialize_network"
+      ],
+      "deterministic": true,
+      "fit_enabled": true,
+      "fit_repeat": 1,
+      "host_policy": "nextstat-bench",
+      "node": "nextstat-bench",
+      "path": "/benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+      "repeat": 3,
+      "schema_version": "nextstat.hepdata_import_benchmark_result.v1",
+      "smoke": false,
+      "suite": "hepdata_import"
+    },
+    "candidate": {
+      "case_ids": [
+        "curated_catalog",
+        "direct_patch_catalog_cached",
+        "curated_materialize_offline",
+        "direct_materialize_network"
+      ],
+      "deterministic": true,
+      "fit_enabled": true,
+      "fit_repeat": 1,
+      "host_policy": "nextstat-bench",
+      "node": "nextstat-bench",
+      "path": "benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+      "repeat": 3,
+      "schema_version": "nextstat.hepdata_import_benchmark_result.v1",
+      "smoke": false,
+      "suite": "hepdata_import"
+    }
+  },
+  "candidate_path": "benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+  "compare_report_path": "docs/specs/hepdata_import_benchmark_compare_report_v1.example.json",
+  "compare_status": "passed",
+  "dry_run": true,
+  "promoted": false,
+  "schema_version": "nextstat.hepdata_import_benchmark_baseline_promotion_report.v1",
+  "status": "dry_run",
+  "suite": "hepdata_import",
+  "summary": {
+    "top_level_errors": []
+  },
+  "timestamp_utc": "2026-03-08T16:12:10Z"
+}

@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/pharma/normal_normal_design_analysis_v0.schema.json",
+  "title": "Normal-Normal Bayesian Trial Design Analysis v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "stability",
+    "design_id",
+    "look",
+    "observed",
+    "posterior",
+    "decision"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat_normal_normal_design_analysis_v0"
+    },
+    "stability": {
+      "type": "string",
+      "const": "research-grade"
+    },
+    "design_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "look": { "$ref": "#/$defs/look" },
+    "observed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["look_id", "control_sample_mean", "treatment_sample_mean"],
+      "properties": {
+        "look_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "control_sample_mean": { "type": "number" },
+        "treatment_sample_mean": { "type": "number" }
+      }
+    },
+    "posterior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["control", "treatment", "effect_difference"],
+      "properties": {
+        "control": { "$ref": "#/$defs/posterior_summary" },
+        "treatment": { "$ref": "#/$defs/posterior_summary" },
+        "effect_difference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "margin",
+            "posterior_mean",
+            "posterior_sd",
+            "ci_lower",
+            "ci_upper",
+            "posterior_probability_gt_margin"
+          ],
+          "properties": {
+            "margin": { "type": "number" },
+            "posterior_mean": { "type": "number" },
+            "posterior_sd": {
+              "type": "number",
+              "exclusiveMinimum": 0.0
+            },
+            "ci_lower": { "type": "number" },
+            "ci_upper": { "type": "number" },
+            "posterior_probability_gt_margin": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0
+            }
+          }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "success",
+        "futility",
+        "recommended_action",
+        "posterior_probability_gt_margin",
+        "success_threshold",
+        "futility_threshold",
+        "margin"
+      ],
+      "properties": {
+        "success": { "type": "boolean" },
+        "futility": { "type": "boolean" },
+        "recommended_action": {
+          "type": "string",
+          "enum": ["continue", "stop_for_success", "stop_for_futility"]
+        },
+        "posterior_probability_gt_margin": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "success_threshold": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "futility_threshold": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "margin": { "type": "number" }
+      }
+    }
+  },
+  "$defs": {
+    "look": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "n_control", "n_treatment"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "n_control": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n_treatment": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "posterior_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["posterior_mean", "posterior_sd", "ci_lower", "ci_upper"],
+      "properties": {
+        "posterior_mean": { "type": "number" },
+        "posterior_sd": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        },
+        "ci_lower": { "type": "number" },
+        "ci_upper": { "type": "number" }
+      }
+    }
+  }
+}

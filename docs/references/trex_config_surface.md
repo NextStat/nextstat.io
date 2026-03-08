@@ -99,7 +99,7 @@ Plus cosmetic keys: YaxisTitle, Ymin, Ymax, Xmin, Xmax, RatioYmin, RatioYmax, Dr
 
 | Key | Type | Aliases | Used in Build |
 |-----|------|---------|---------------|
-| `Type` | string | — | ✅ DATA/SIGNAL/BACKGROUND |
+| `Type` | string | — | ✅ DATA/SIGNAL/BACKGROUND/GHOST |
 | `File` | path | `Path`, `NtupleFile`, `NtupleFiles` | ✅ ROOT file |
 | `TreeName` | string | `Tree`, `NtupleName` | ✅ TTree override |
 | `Weight` | expr | `MCweight` | ✅ event weight |
@@ -119,6 +119,9 @@ Plus cosmetic keys: YaxisTitle, Ymin, Ymax, Xmin, Xmax, RatioYmin, RatioYmax, Dr
 | `LineColor` | int | `LineColour` | ℹ️ |
 | `SeparateGammas` | bool | — | ℹ️ |
 | `UseSystematic` | list | — | ℹ️ |
+| `Template` | string | — | ✅ `POI:value` anchor for template morphing (ghost samples) |
+| `HistoName` | string | — | ✅ histogram path inside ROOT file (ghost/signal samples) |
+| `HistoFiles` | list | — | ✅ comma-separated ROOT file names (summed for total yield) |
 
 ## Systematic Keys
 
@@ -166,6 +169,56 @@ Plus aliases: TreeNameUp/Down, SampleUp/Down, CombinationType/CombineName, DropS
 | `Expression` | string | ℹ️ derived NormFactor |
 | `Title` | string | ℹ️ |
 | `Category` | string | ℹ️ |
+
+## Template Morphing (Ghost Samples)
+
+TRExFitter uses **ghost samples** to define per-bin polynomial morphing, where
+signal yield depends on a parameter of interest (e.g. `Ytsq`). NextStat fully
+supports this mechanism in HIST mode.
+
+### How it works
+
+Ghost samples (`Type: GHOST`) carry a `Template: POI:value` key that specifies
+an anchor point for polynomial interpolation. For example, 4 samples define a
+cubic polynomial:
+
+```
+Sample: "Ghost_ttbar_yt_0"
+  Type: GHOST
+  Template: Ytsq:0
+  HistoName: yt_weights_0
+  HistoFiles: ttbar_bb4l_mc20a,ttbar_bb4l_mc20d,ttbar_bb4l_mc20e
+
+Sample: "signal_ttbar_yt_1"
+  Type: SIGNAL
+  Template: Ytsq:1
+  HistoName: yt_weights_1
+
+Sample: "Ghost_ttbar_yt_2"
+  Type: GHOST
+  Template: Ytsq:4
+  HistoName: yt_weights_2
+
+Sample: "Ghost_ttbar_yt_3"
+  Type: GHOST
+  Template: Ytsq:9
+  HistoName: yt_weights_3
+```
+
+NextStat:
+1. Groups ghost + signal samples by their `Template` parameter name
+2. Reads histograms from ROOT files and sums across `HistoFiles`
+3. Computes Lagrange interpolation coefficients per bin
+4. Attaches a `TemplateMorphing` modifier to the signal sample
+
+At each NLL evaluation, the signal nominal is replaced by the polynomial
+evaluated at the current POI value: `signal_bin[b] = Σ_k c[b][k] · POI^k`.
+
+### Requirements
+
+- HIST mode only (ghost samples reference ROOT histograms, not ntuples)
+- At least 2 anchor points (ghost + signal with `Template:` keys)
+- ROOT files must be accessible at `{HistoPath}/{HistoFiles}.root`
 
 ## Coverage Report
 

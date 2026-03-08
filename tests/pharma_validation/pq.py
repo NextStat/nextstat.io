@@ -850,6 +850,53 @@ def _pq_ref_010() -> dict[str, Any]:
     )
 
 
+def _pq_ref_011() -> dict[str, Any]:
+    """Warfarin SAEM -- acceptance envelope (cross-platform release gate).
+
+    SAEM is stochastic — exact cross-platform snapshot parity is NOT a valid
+    release criterion.  This test validates the scientific acceptance envelope
+    via the shared helper ``assert_pharma_saem_acceptance_envelope``.
+    """
+    from tests._tool_contract_helpers import assert_pharma_saem_acceptance_envelope
+
+    t0 = time.monotonic()
+    try:
+        from nextstat._core import nlme_saem  # type: ignore[import-untyped]
+
+        data = _parse_warfarin()
+        saem = nlme_saem(
+            data["times"], data["y"], data["subject_idx"], data["n_subjects"],
+            model="1cpt_oral", doses=data["doses"],
+            error_model="proportional", sigma=0.128,
+            theta_init=[0.13, 8.0, 1.5], omega_init=[0.3, 0.2, 0.5],
+            seed=42,
+        )
+        try:
+            assert_pharma_saem_acceptance_envelope(saem)
+            ok = True
+            deviation = None
+        except AssertionError as ae:
+            ok = False
+            deviation = str(ae)
+        observed = {
+            "converged": saem.get("converged"),
+            "ofv": saem.get("ofv"),
+            "theta": list(saem.get("theta", [])),
+            "omega": list(saem.get("omega", [])),
+        }
+    except Exception as exc:
+        ok = False
+        observed = {"error": str(exc)}
+        deviation = f"Exception: {exc}"
+    wall_s = time.monotonic() - t0
+    return _make_result(
+        "PQ-REF-011", "4.3", "Warfarin SAEM -- acceptance envelope",
+        ok, observed,
+        "converged + finite OFV + theta bounded + omega positive/finite + omega_matrix diagonal positive/finite",
+        deviation, wall_s,
+    )
+
+
 # ------------------------------------------------------------------
 # Section 4.5: Reproducibility
 # ------------------------------------------------------------------
@@ -1331,7 +1378,7 @@ def run_pq_tests() -> list[dict[str, Any]]:
     """Run all PQ performance qualification tests."""
     results: list[dict[str, Any]] = []
 
-    # Section 4.3: Reference Dataset Tests (10 tests)
+    # Section 4.3: Reference Dataset Tests (11 tests)
     results.append(_pq_ref_001())
     results.append(_pq_ref_002())
     results.append(_pq_ref_003())
@@ -1342,6 +1389,7 @@ def run_pq_tests() -> list[dict[str, Any]]:
     results.append(_pq_ref_008())
     results.append(_pq_ref_009())
     results.append(_pq_ref_010())
+    results.append(_pq_ref_011())
 
     # Section 4.5: Reproducibility (4 tests)
     results.append(_pq_repr_001())

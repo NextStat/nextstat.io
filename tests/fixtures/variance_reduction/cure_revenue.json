@@ -1,0 +1,56 @@
+{
+  "schema_version": "nextstat.variance_reduction_fixture.v1",
+  "scenario": "continuous revenue metric with pre-spend and pre-click covariates",
+  "metric_type": "revenue",
+  "method": "cure",
+  "control_outcomes": [102.0, 125.0, 118.0, 140.0, 155.0, 149.0, 171.0, 183.0],
+  "variant_outcomes": [116.0, 138.0, 132.0, 154.0, 171.0, 166.0, 188.0, 201.0],
+  "control_covariates": [
+    [80.0, 400.0],
+    [95.0, 430.0],
+    [90.0, 420.0],
+    [110.0, 460.0],
+    [120.0, 500.0],
+    [118.0, 490.0],
+    [132.0, 530.0],
+    [145.0, 560.0]
+  ],
+  "variant_covariates": [
+    [82.0, 404.0],
+    [97.0, 434.0],
+    [92.0, 424.0],
+    [112.0, 464.0],
+    [122.0, 504.0],
+    [120.0, 494.0],
+    [134.0, 534.0],
+    [147.0, 564.0]
+  ],
+  "selected_covariates": ["pre_spend", "pre_clicks"],
+  "covariate_provenance": [
+    {
+      "name": "pre_spend",
+      "timing": "pre_treatment",
+      "source_dataset": "account_history_revenue"
+    },
+    {
+      "name": "pre_clicks",
+      "timing": "pre_treatment",
+      "source_dataset": "account_history_revenue"
+    }
+  ],
+  "pre_treatment_only": true,
+  "expected": {
+    "method": "cure",
+    "adjusted_mean_control": 144.17983537877228,
+    "adjusted_mean_variant": 156.94516462122772,
+    "effect": 12.765329242455437,
+    "theta": [1.3658662410986435, -0.030515431163181173],
+    "r_squared": 0.9400652258731964,
+    "variance_reduction_factor": 0.05993477412680359,
+    "effective_sample_multiplier": 16.684804682575543,
+    "solver": "svd",
+    "regression_rank": 2,
+    "condition_number": 32.32457002638403,
+    "ridge_lambda": null
+  }
+}

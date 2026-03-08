@@ -1,0 +1,448 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/hepdata_import_benchmark_gate_report_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HEPData Import Benchmark Gate Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "timestamp_utc",
+    "status",
+    "ok",
+    "requires_review",
+    "promotion_mode",
+    "allow_review",
+    "accepted_baseline_path",
+    "current_artifact_path",
+    "compare_report_path",
+    "promotion_report_path",
+    "steps",
+    "artifacts",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.hepdata_import_benchmark_gate_report.v1"
+    },
+    "suite": {
+      "const": "hepdata_import"
+    },
+    "timestamp_utc": {
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "review",
+        "failed"
+      ]
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "requires_review": {
+      "type": "boolean"
+    },
+    "promotion_mode": {
+      "enum": [
+        "none",
+        "dry_run",
+        "apply"
+      ]
+    },
+    "allow_review": {
+      "type": "boolean"
+    },
+    "accepted_baseline_path": {
+      "type": "string"
+    },
+    "current_artifact_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "compare_report_path": {
+      "type": "string"
+    },
+    "promotion_report_path": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "steps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "benchmark",
+        "compare",
+        "promotion"
+      ],
+      "properties": {
+        "benchmark": {
+          "$ref": "#/$defs/benchmark_step"
+        },
+        "compare": {
+          "$ref": "#/$defs/compare_step"
+        },
+        "promotion": {
+          "$ref": "#/$defs/promotion_step"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "accepted_before",
+        "current",
+        "accepted_after"
+      ],
+      "properties": {
+        "accepted_before": {
+          "$ref": "#/$defs/artifact"
+        },
+        "current": {
+          "$ref": "#/$defs/artifact"
+        },
+        "accepted_after": {
+          "$ref": "#/$defs/artifact"
+        }
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema_version",
+        "suite",
+        "deterministic",
+        "host_policy",
+        "node",
+        "smoke",
+        "fit_enabled",
+        "repeat",
+        "fit_repeat",
+        "case_ids"
+      ],
+      "properties": {
+        "path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "schema_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suite": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "host_policy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "smoke": {
+          "type": "boolean"
+        },
+        "fit_enabled": {
+          "type": "boolean"
+        },
+        "repeat": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "fit_repeat": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "benchmark_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "status",
+        "ok",
+        "exit_code",
+        "command",
+        "artifact_dir",
+        "artifact_path",
+        "message",
+        "errors"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "provided_artifact",
+            "runner"
+          ]
+        },
+        "status": {
+          "enum": [
+            "skipped",
+            "passed",
+            "failed"
+          ]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "artifact_dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifact_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "compare_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "ok",
+        "exit_code",
+        "command",
+        "report_path",
+        "compare_status",
+        "message",
+        "errors"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "passed",
+            "failed"
+          ]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "report_path": {
+          "type": "string"
+        },
+        "compare_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "passed",
+            "review",
+            "failed",
+            null
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "promotion_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "status",
+        "ok",
+        "exit_code",
+        "command",
+        "report_path",
+        "promotion_status",
+        "message",
+        "errors"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "none",
+            "dry_run",
+            "apply"
+          ]
+        },
+        "status": {
+          "enum": [
+            "skipped",
+            "passed",
+            "failed"
+          ]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "exit_code": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "report_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "promotion_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "dry_run",
+            "promoted",
+            "failed",
+            null
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "benchmark_status",
+        "compare_status",
+        "promotion_status",
+        "top_level_errors"
+      ],
+      "properties": {
+        "benchmark_status": {
+          "enum": [
+            "skipped",
+            "passed",
+            "failed"
+          ]
+        },
+        "compare_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "passed",
+            "review",
+            "failed",
+            null
+          ]
+        },
+        "promotion_status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "dry_run",
+            "promoted",
+            "failed",
+            null
+          ]
+        },
+        "top_level_errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

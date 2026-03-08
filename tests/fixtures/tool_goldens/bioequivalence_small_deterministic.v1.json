@@ -1,0 +1,30 @@
+{
+  "case_name": "bioequivalence_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_bioequivalence": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_bioequivalence"
+      },
+      "ok": true,
+      "result": {
+        "ci_lower": 0.980198673306755,
+        "ci_upper": 0.980198673306756,
+        "conclusion": "Bioequivalent",
+        "df": 3.0,
+        "geometric_mean_ratio": 0.9801986733067555,
+        "p_lower": 0.0,
+        "p_upper": 8.397947587409273e-46,
+        "pe_log": -0.019999999999999796,
+        "se_log": 2.220446049250313e-16,
+        "t_lower": 914877222001395.0,
+        "t_upper": -1095021207096213.2
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

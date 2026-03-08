@@ -1,0 +1,70 @@
+{
+  "case_name": "meta_analysis_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_meta_analysis": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_meta_analysis"
+      },
+      "ok": true,
+      "result": {
+        "ci_lower": 0.00597926058309986,
+        "ci_upper": 0.41206451823994794,
+        "conf_level": 0.95,
+        "estimate": 0.2090218894115239,
+        "forest": [
+          {
+            "ci_lower": 0.004003601545994606,
+            "ci_upper": 0.3959963984540054,
+            "estimate": 0.2,
+            "label": "Study 1",
+            "se": 0.1,
+            "weight": 0.3181072600785373
+          },
+          {
+            "ci_lower": 0.10800720309198919,
+            "ci_upper": 0.8919927969080108,
+            "estimate": 0.5,
+            "label": "Study 2",
+            "se": 0.2,
+            "weight": 0.16837887034937596
+          },
+          {
+            "ci_lower": -0.3939945976810081,
+            "ci_upper": 0.19399459768100805,
+            "estimate": -0.1,
+            "label": "Study 3",
+            "se": 0.15,
+            "weight": 0.23210789662624398
+          },
+          {
+            "ci_lower": 0.06480432185519353,
+            "ci_upper": 0.5351956781448064,
+            "estimate": 0.3,
+            "label": "Study 4",
+            "se": 0.12,
+            "weight": 0.28140597294584285
+          }
+        ],
+        "heterogeneity": {
+          "df": 3,
+          "h_squared": 2.313092161929371,
+          "i_squared": 56.767827220256926,
+          "p_value": 0.07385862947178734,
+          "q": 6.939276485788112,
+          "tau_squared": 0.02373686259244842
+        },
+        "k": 4,
+        "method": "random",
+        "p_value": 0.04362443283688955,
+        "se": 0.10359508155761964,
+        "z": 2.0176815951949014
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

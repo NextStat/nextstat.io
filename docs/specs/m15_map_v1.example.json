@@ -1,0 +1,91 @@
+{
+  "context_of_use": "Support model-informed dose selection and simulation-backed regulatory briefing materials for adults with moderate renal impairment.",
+  "document_status": "frozen",
+  "generated_at": null,
+  "governance": {
+    "approvers": [
+      "Priya Nair"
+    ],
+    "authors": [
+      "Elena Voss",
+      "Martin Hale"
+    ],
+    "reviewers": [
+      "Martin Hale"
+    ]
+  },
+  "jurisdiction_profile": "ich_core",
+  "linked_artifacts": {
+    "assessment_table_ref": "m15_assessment_table.json",
+    "validation_report_ref": "validation_report.json"
+  },
+  "methods": [
+    {
+      "description": "Population PK base model with covariate evaluation and exposure simulation for the renal impairment subgroup.",
+      "method_id": "AM-001",
+      "software_ref": "nextstat m15 assessment-table / validation-report"
+    }
+  ],
+  "planned_datasets": [
+    {
+      "dataset_id": "DS-001",
+      "description": "Population PK analysis dataset and workspace fingerprint.",
+      "purpose": "Primary estimation dataset for subgroup dose evaluation."
+    },
+    {
+      "dataset_id": "DS-002",
+      "description": "Validation evidence pack including unified validation report and pharma IQ/OQ/PQ output.",
+      "purpose": "Qualification evidence for regulated reporting."
+    }
+  ],
+  "profile_requirements": {
+    "canonical_reference": "ICH M15 core cross-jurisdiction framing for model-informed drug development reporting.",
+    "framing_heading": "ICH Core Planning Framing",
+    "framing_text": "Frame the MAP as a frozen, cross-jurisdiction analysis plan with explicit technical criteria and governance.",
+    "mandatory_sections": [
+      "Questions",
+      "Planned Datasets",
+      "Methods",
+      "Technical Acceptance Criteria",
+      "Governance"
+    ],
+    "profile_label": "ICH Core"
+  },
+  "questions": [
+    {
+      "question_id": "QOI-001",
+      "question_of_interest": "Can the population PK model support dose adjustment recommendations for adults with moderate renal impairment?"
+    },
+    {
+      "question_id": "QOI-002",
+      "question_of_interest": "Can exposure simulations justify that a reduced maintenance dose preserves target exposure in the evaluated subgroup?"
+    }
+  ],
+  "schema_version": "m15_map_v1",
+  "signoff": {
+    "approver": "Priya Nair",
+    "primary_author": "Elena Voss",
+    "qa_reviewer": "Martin Hale",
+    "status": "reviewed"
+  },
+  "technical_acceptance_criteria": [
+    {
+      "acceptance_rule": "pharma_validation.status == ok",
+      "applies_to_question_ids": [
+        "QOI-001",
+        "QOI-002"
+      ],
+      "criterion_id": "TC-001",
+      "description": "All required pharma IQ/OQ/PQ suites must pass without unresolved failures. Rationale: Operational evidence must confirm validated model execution for regulated reporting. Source: regulatory."
+    },
+    {
+      "acceptance_rule": "validation_report.apex2_summary.overall == pass",
+      "applies_to_question_ids": [
+        "QOI-001",
+        "QOI-002"
+      ],
+      "criterion_id": "TC-002",
+      "description": "Unified validation report must remain deterministic and pass all configured suite checks. Rationale: Traceable, reproducible evidence is mandatory for review readiness. Source: operational."
+    }
+  ]
+}

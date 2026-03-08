@@ -293,8 +293,12 @@ impl Canvas {
         }
 
         // Background (white)
-        writeln!(out, r#"<rect width="{}" height="{}" fill="white" />"#, self.width, self.height)
-            .unwrap();
+        writeln!(
+            out,
+            r#"<rect x="0" y="0" width="{}" height="{}" fill="white" />"#,
+            self.width, self.height
+        )
+        .unwrap();
 
         // Elements
         for elem in &self.elements {

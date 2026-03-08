@@ -1,0 +1,110 @@
+{
+  "case_name": "churn_cohort_matrix_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_churn_cohort_matrix": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_churn_cohort_matrix"
+      },
+      "ok": true,
+      "result": {
+        "cohorts": [
+          {
+            "cohort": 0,
+            "n_events": 2,
+            "n_total": 4,
+            "periods": [
+              {
+                "cumulative_retention": 0.75,
+                "n_at_risk": 4,
+                "n_censored": 0,
+                "n_events": 1,
+                "retention_rate": 0.75
+              },
+              {
+                "cumulative_retention": 0.5,
+                "n_at_risk": 3,
+                "n_censored": 1,
+                "n_events": 1,
+                "retention_rate": 0.6666666666666667
+              },
+              {
+                "cumulative_retention": 0.5,
+                "n_at_risk": 1,
+                "n_censored": 1,
+                "n_events": 0,
+                "retention_rate": 1.0
+              }
+            ]
+          },
+          {
+            "cohort": 1,
+            "n_events": 2,
+            "n_total": 4,
+            "periods": [
+              {
+                "cumulative_retention": 1.0,
+                "n_at_risk": 4,
+                "n_censored": 1,
+                "n_events": 0,
+                "retention_rate": 1.0
+              },
+              {
+                "cumulative_retention": 0.6666666666666667,
+                "n_at_risk": 3,
+                "n_censored": 0,
+                "n_events": 1,
+                "retention_rate": 0.6666666666666667
+              },
+              {
+                "cumulative_retention": 0.33333333333333337,
+                "n_at_risk": 2,
+                "n_censored": 1,
+                "n_events": 1,
+                "retention_rate": 0.5
+              }
+            ]
+          }
+        ],
+        "overall": {
+          "cohort": -1,
+          "n_events": 4,
+          "n_total": 8,
+          "periods": [
+            {
+              "cumulative_retention": 0.875,
+              "n_at_risk": 8,
+              "n_censored": 1,
+              "n_events": 1,
+              "retention_rate": 0.875
+            },
+            {
+              "cumulative_retention": 0.5833333333333334,
+              "n_at_risk": 6,
+              "n_censored": 1,
+              "n_events": 2,
+              "retention_rate": 0.6666666666666667
+            },
+            {
+              "cumulative_retention": 0.38888888888888895,
+              "n_at_risk": 3,
+              "n_censored": 2,
+              "n_events": 1,
+              "retention_rate": 0.6666666666666667
+            }
+          ]
+        },
+        "period_boundaries": [
+          30.0,
+          60.0,
+          90.0
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "artifacts": [
+    {
+      "bytes": 48300,
+      "path": "apex2_simplified_likelihood_report.json",
+      "sha256": "9fb22fd9466cd61f7b5d7ee2aaa65257355fdd9f2d4916168e215a59377f3c86"
+    },
+    {
+      "bytes": 3255,
+      "path": "export_benchmark_snapshot_report.json",
+      "sha256": "f1274f87e17b4c3ca2cc53c6457dd4ad0fb53115a48808477b72e63afdd0aa9c"
+    },
+    {
+      "bytes": 11370,
+      "path": "export_public_validation_report.json",
+      "sha256": "735e09928e77b7855aaf2969a897f248410af227be9346c9b9112f6cd2c86b34"
+    }
+  ],
+  "generated_at": "2026-03-10T00:39:12.969250Z",
+  "git": {
+    "ref": "",
+    "repository": "",
+    "sha": ""
+  },
+  "schema_version": "nextstat.snapshot_index.v1",
+  "snapshot_id": "export-20260310T001421Z-public-floor-five",
+  "suite": "simplified_likelihood_export_benchmark_snapshot",
+  "workflow": {}
+}

@@ -1,0 +1,311 @@
+{
+  "schema_version": "nextstat.hepdata_import_benchmark_result.v1",
+  "suite": "hepdata_import",
+  "deterministic": true,
+  "environment": {
+    "node": "nextstat-bench",
+    "python_version": "3.12.2",
+    "rustc": "rustc 1.86.0"
+  },
+  "meta": {
+    "host_policy": "nextstat-bench",
+    "nextstat_command": [
+      "/opt/nextstat/bin/nextstat"
+    ],
+    "repeat": 3,
+    "fit_repeat": 1,
+    "smoke": false,
+    "fit_enabled": true,
+    "out": "bench_results/hepdata_import_benchmark/summary.json",
+    "work_root": "bench_results/hepdata_import_benchmark/work"
+  },
+  "cases": [
+    {
+      "id": "curated_catalog",
+      "status": "ok",
+      "command": [
+        "/opt/nextstat/bin/nextstat",
+        "import",
+        "hepdata",
+        "--list"
+      ],
+      "summary_mode": "catalog",
+      "source_mode": "curated",
+      "timing": {
+        "repeat": 3,
+        "policy": "min",
+        "per_run_s": [
+          0.41,
+          0.39,
+          0.4
+        ],
+        "best_s": 0.39
+      },
+      "stages": {
+        "discovery_s": 0.39,
+        "download_s": 0.0,
+        "extract_s": 0.0,
+        "materialize_s": 0.0,
+        "fit_s": null,
+        "import_total_s": 0.39
+      },
+      "dataset": {
+        "id": "hepdata.90607.v3.r3",
+        "doi": "https://doi.org/10.17182/hepdata.90607.v3/r3",
+        "source_mode": "curated"
+      },
+      "validation": {
+        "schema_version": "nextstat.hepdata_import.v1",
+        "dataset_count": 2,
+        "workspace_count": 0,
+        "download_mode": null,
+        "lockfile_written": false,
+        "available_patch_names": []
+      },
+      "artifacts": {
+        "lockfile": null,
+        "workspaces": []
+      }
+    },
+    {
+      "id": "direct_patch_catalog_cached",
+      "status": "ok",
+      "command": [
+        "/opt/nextstat/bin/nextstat",
+        "import",
+        "hepdata",
+        "--list-patches",
+        "--doi",
+        "https://doi.org/10.17182/hepdata.90607.v3/r3",
+        "--dataset-id",
+        "custom.hepdata.90607.v3.r3.example",
+        "--bkgonly-filename",
+        "BkgOnly.json",
+        "--patchset-filename",
+        "patchset.json",
+        "--cache-dir",
+        "bench_results/hepdata_import_benchmark/work/direct_patch_catalog_cached/seed/cache",
+        "--offline"
+      ],
+      "summary_mode": "catalog",
+      "source_mode": "direct_doi",
+      "timing": {
+        "repeat": 3,
+        "policy": "min",
+        "per_run_s": [
+          0.31,
+          0.3,
+          0.33
+        ],
+        "best_s": 0.3
+      },
+      "stages": {
+        "discovery_s": 0.02,
+        "download_s": 0.0,
+        "extract_s": 0.11,
+        "materialize_s": 0.0,
+        "fit_s": null,
+        "import_total_s": 0.3
+      },
+      "dataset": {
+        "id": "custom.hepdata.90607.v3.r3.example",
+        "doi": "https://doi.org/10.17182/hepdata.90607.v3/r3",
+        "source_mode": "direct_doi"
+      },
+      "validation": {
+        "schema_version": "nextstat.hepdata_import.v1",
+        "dataset_count": 1,
+        "workspace_count": 0,
+        "download_mode": "cached",
+        "lockfile_written": false,
+        "available_patch_names": [
+          "C1N2_Wh_hbb_1000_0",
+          "C1N2_Wh_hbb_175_25"
+        ]
+      },
+      "artifacts": {
+        "lockfile": null,
+        "workspaces": []
+      }
+    },
+    {
+      "id": "curated_materialize_offline",
+      "status": "ok",
+      "command": [
+        "/opt/nextstat/bin/nextstat",
+        "import",
+        "hepdata",
+        "--dataset",
+        "hepdata.90607.v3.r3",
+        "--cache-dir",
+        "bench_results/hepdata_import_benchmark/work/curated_materialize_offline/run_3/cache",
+        "--out-dir",
+        "bench_results/hepdata_import_benchmark/work/curated_materialize_offline/run_3/out",
+        "--lock",
+        "bench_results/hepdata_import_benchmark/work/curated_materialize_offline/run_3/workspaces.lock.json",
+        "--offline"
+      ],
+      "summary_mode": "materialize",
+      "source_mode": "curated",
+      "timing": {
+        "repeat": 3,
+        "policy": "min",
+        "per_run_s": [
+          0.9,
+          0.88,
+          0.91
+        ],
+        "best_s": 0.88
+      },
+      "stages": {
+        "discovery_s": 0.02,
+        "download_s": 0.0,
+        "extract_s": 0.11,
+        "materialize_s": 0.05,
+        "fit_s": 0.62,
+        "import_total_s": 0.88
+      },
+      "dataset": {
+        "id": "hepdata.90607.v3.r3",
+        "doi": "https://doi.org/10.17182/hepdata.90607.v3/r3",
+        "source_mode": "curated"
+      },
+      "validation": {
+        "schema_version": "nextstat.hepdata_import.v1",
+        "dataset_count": 1,
+        "workspace_count": 2,
+        "download_mode": "cached",
+        "lockfile_written": true,
+        "available_patch_names": [
+          "C1N2_Wh_hbb_1000_0",
+          "C1N2_Wh_hbb_175_25"
+        ]
+      },
+      "artifacts": {
+        "lockfile": "workspaces.lock.json",
+        "workspaces": [
+          "hepdata.90607.v3.r3/BkgOnly.json",
+          "hepdata.90607.v3.r3/patched__first_patch.json"
+        ]
+      },
+      "fit": {
+        "status": "ok",
+        "workspace_kind": "patched",
+        "timing": {
+          "repeat": 1,
+          "policy": "min",
+          "per_run_s": [
+            0.62
+          ],
+          "best_s": 0.62
+        },
+        "command": [
+          "/opt/nextstat/bin/nextstat",
+          "fit",
+          "--input",
+          "bench_results/hepdata_import_benchmark/work/curated_materialize_offline/run_3/out/hepdata.90607.v3.r3/patched__first_patch.json",
+          "--threads",
+          "1"
+        ],
+        "result": {
+          "converged": true,
+          "bestfit_len": 16
+        }
+      }
+    },
+    {
+      "id": "direct_materialize_network",
+      "status": "ok",
+      "command": [
+        "/opt/nextstat/bin/nextstat",
+        "import",
+        "hepdata",
+        "--doi",
+        "http://127.0.0.1:39001/download",
+        "--dataset-id",
+        "custom.hepdata.90607.v3.r3.example",
+        "--display-name",
+        "ATLAS 1Lbb Custom Example",
+        "--bkgonly-filename",
+        "BkgOnly.json",
+        "--patchset-filename",
+        "patchset.json",
+        "--patch",
+        "benchmark=C1N2_Wh_hbb_175_25",
+        "--cache-dir",
+        "bench_results/hepdata_import_benchmark/work/direct_materialize_network/run_3/cache",
+        "--out-dir",
+        "bench_results/hepdata_import_benchmark/work/direct_materialize_network/run_3/out",
+        "--lock",
+        "bench_results/hepdata_import_benchmark/work/direct_materialize_network/run_3/workspaces.lock.json"
+      ],
+      "summary_mode": "materialize",
+      "source_mode": "direct_doi",
+      "timing": {
+        "repeat": 3,
+        "policy": "min",
+        "per_run_s": [
+          1.02,
+          0.99,
+          1.01
+        ],
+        "best_s": 0.99
+      },
+      "stages": {
+        "discovery_s": 0.04,
+        "download_s": 0.17,
+        "extract_s": 0.22,
+        "materialize_s": 0.05,
+        "fit_s": 0.65,
+        "import_total_s": 0.99
+      },
+      "dataset": {
+        "id": "custom.hepdata.90607.v3.r3.example",
+        "doi": "https://doi.org/10.17182/hepdata.90607.v3/r3",
+        "source_mode": "direct_doi"
+      },
+      "validation": {
+        "schema_version": "nextstat.hepdata_import.v1",
+        "dataset_count": 1,
+        "workspace_count": 2,
+        "download_mode": "network",
+        "lockfile_written": true,
+        "available_patch_names": [
+          "C1N2_Wh_hbb_1000_0",
+          "C1N2_Wh_hbb_175_25"
+        ]
+      },
+      "artifacts": {
+        "lockfile": "workspaces.lock.json",
+        "workspaces": [
+          "custom.hepdata.90607.v3.r3.example/BkgOnly.json",
+          "custom.hepdata.90607.v3.r3.example/patched__benchmark.json"
+        ]
+      },
+      "fit": {
+        "status": "ok",
+        "workspace_kind": "patched",
+        "timing": {
+          "repeat": 1,
+          "policy": "min",
+          "per_run_s": [
+            0.65
+          ],
+          "best_s": 0.65
+        },
+        "command": [
+          "/opt/nextstat/bin/nextstat",
+          "fit",
+          "--input",
+          "bench_results/hepdata_import_benchmark/work/direct_materialize_network/run_3/out/custom.hepdata.90607.v3.r3.example/patched__benchmark.json",
+          "--threads",
+          "1"
+        ],
+        "result": {
+          "converged": true,
+          "bestfit_len": 16
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,258 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/simplified_likelihood_exporter_stable_candidate_review_packet_v0.schema.json",
+  "title": "NextStat Simplified Likelihood Exporter Stable Candidate Review Packet v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "surface",
+    "support_class",
+    "automatic_stable_promotion",
+    "generated_at_utc",
+    "bundle_dir",
+    "source_artifacts",
+    "review_documents",
+    "packet_validity",
+    "evidence_snapshot",
+    "review_packet",
+    "remaining_blockers",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_simplified_likelihood_exporter_stable_candidate_review_packet_v0"
+    },
+    "surface": {
+      "const": "simplified_likelihood_exporter"
+    },
+    "support_class": {
+      "type": "string",
+      "enum": ["research-grade", "stable"]
+    },
+    "automatic_stable_promotion": {
+      "type": "boolean"
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bundle_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promotion_evidence",
+        "promotion_evidence_check",
+        "promotion_report",
+        "stable_review_assessment",
+        "stable_candidate_blocker_matrix",
+        "stable_source_semantics_boundary",
+        "stable_promotion_decision",
+        "benchmark_artifact"
+      ],
+      "properties": {
+        "promotion_evidence": { "$ref": "#/$defs/sourceArtifact" },
+        "promotion_evidence_check": { "$ref": "#/$defs/sourceArtifact" },
+        "promotion_report": { "$ref": "#/$defs/sourceArtifact" },
+        "stable_review_assessment": { "$ref": "#/$defs/sourceArtifact" },
+        "stable_candidate_blocker_matrix": { "$ref": "#/$defs/sourceArtifact" },
+        "stable_source_semantics_boundary": { "$ref": "#/$defs/sourceArtifact" },
+        "stable_promotion_decision": { "$ref": "#/$defs/sourceArtifact" },
+        "benchmark_artifact": { "$ref": "#/$defs/sourceArtifact" }
+      }
+    },
+    "review_documents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "review_packet_doc",
+        "acceptance_doc",
+        "runtime_gate_doc",
+        "promotion_runbook_doc",
+        "stable_review_checklist_doc",
+        "blocker_matrix_doc",
+        "stable_source_semantics_boundary_doc",
+        "stable_promotion_decision_doc",
+        "stable_promotion_release_pr_checklist_doc",
+        "artifact_reference_doc"
+      ],
+      "properties": {
+        "review_packet_doc": { "type": "string", "minLength": 1 },
+        "acceptance_doc": { "type": "string", "minLength": 1 },
+        "runtime_gate_doc": { "type": "string", "minLength": 1 },
+        "promotion_runbook_doc": { "type": "string", "minLength": 1 },
+        "stable_review_checklist_doc": { "type": "string", "minLength": 1 },
+        "blocker_matrix_doc": { "type": "string", "minLength": 1 },
+        "stable_source_semantics_boundary_doc": { "type": "string", "minLength": 1 },
+        "stable_promotion_decision_doc": { "type": "string", "minLength": 1 },
+        "stable_promotion_release_pr_checklist_doc": { "type": "string", "minLength": 1 },
+        "artifact_reference_doc": { "type": "string", "minLength": 1 }
+      }
+    },
+    "packet_validity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "status", "failures", "warnings"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["passed", "failed"] },
+        "failures": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reasonObject" }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reasonObject" }
+        }
+      }
+    },
+    "evidence_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "benchmark_host",
+        "future_stable_review_ready",
+        "stable_review_status",
+        "stable_candidate_status",
+        "public_reinterpretation_style_case_count",
+        "max_abs_q_mu_diff",
+        "max_upper_limit_ratio_deviation",
+        "min_net_end_to_end_upper_limit_speedup"
+      ],
+      "properties": {
+        "benchmark_host": { "type": ["string", "null"] },
+        "future_stable_review_ready": { "type": "boolean" },
+        "stable_review_status": { "type": ["string", "null"] },
+        "stable_candidate_status": { "type": ["string", "null"] },
+        "public_reinterpretation_style_case_count": { "type": "integer", "minimum": 0 },
+        "max_abs_q_mu_diff": { "type": ["number", "null"] },
+        "max_upper_limit_ratio_deviation": { "type": ["number", "null"] },
+        "min_net_end_to_end_upper_limit_speedup": { "type": ["number", "null"] }
+      }
+    },
+    "review_packet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ready",
+        "status",
+        "recommendation_status",
+        "recommended_support_class",
+        "target_support_class",
+        "open_blocker_count",
+        "resolved_blocker_count",
+        "next_action",
+        "maintainer_recommendation"
+      ],
+      "properties": {
+        "ready": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["ready", "incomplete"] },
+        "recommendation_status": {
+          "type": "string",
+          "enum": [
+            "hold_research_grade",
+            "stable_promotion_candidate",
+            "stable_promoted",
+            "insufficient_evidence"
+          ]
+        },
+        "recommended_support_class": { "type": "string", "minLength": 1 },
+        "target_support_class": { "type": "string", "minLength": 1 },
+        "open_blocker_count": { "type": "integer", "minimum": 0 },
+        "resolved_blocker_count": { "type": "integer", "minimum": 0 },
+        "next_action": { "type": "string", "minLength": 1 },
+        "maintainer_recommendation": { "type": "string", "minLength": 1 }
+      }
+    },
+    "remaining_blockers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/blocker" }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "benchmark_host",
+        "review_packet_ready",
+        "recommendation_status",
+        "open_blocker_count",
+        "next_action"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["ready", "incomplete"] },
+        "benchmark_host": { "type": ["string", "null"] },
+        "review_packet_ready": { "type": "boolean" },
+        "recommendation_status": {
+          "type": "string",
+          "enum": [
+            "hold_research_grade",
+            "stable_promotion_candidate",
+            "stable_promoted",
+            "insufficient_evidence"
+          ]
+        },
+        "open_blocker_count": { "type": "integer", "minimum": 0 },
+        "next_action": { "type": "string", "minLength": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "sourceArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "exists", "sha256", "schema_version", "status"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "exists": { "type": "boolean" },
+        "sha256": { "type": ["string", "null"] },
+        "schema_version": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] }
+      }
+    },
+    "reasonObject": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["reason"],
+      "properties": {
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "blocker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "blocker_id",
+        "title",
+        "category",
+        "status",
+        "blocking",
+        "current_state",
+        "why_blocking_stable",
+        "exit_criteria",
+        "evidence_refs"
+      ],
+      "properties": {
+        "blocker_id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "category": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["open", "resolved"] },
+        "blocking": { "type": "boolean" },
+        "current_state": { "type": "string", "minLength": 1 },
+        "why_blocking_stable": { "type": "string", "minLength": 1 },
+        "exit_criteria": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

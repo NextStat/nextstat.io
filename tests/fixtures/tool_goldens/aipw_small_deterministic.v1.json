@@ -1,0 +1,23 @@
+{
+  "case_name": "aipw_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_aipw": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_aipw"
+      },
+      "ok": true,
+      "result": {
+        "estimand": "ate",
+        "estimate": 0.17043993885393793,
+        "n_obs": 8,
+        "standard_error": 0.30397440122083075
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

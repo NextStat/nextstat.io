@@ -1,0 +1,119 @@
+{
+  "artifacts": [
+    {
+      "bytes": 17285,
+      "path": "files/benchmark/apex2_simplified_likelihood_report.json",
+      "sha256": "d088cee3b3c7a474267fd933e8e5246aa1ee5f003a3e7a660752f7a715db3af8"
+    },
+    {
+      "bytes": 4243,
+      "path": "files/docs/benchmarks/simplified-likelihood-benchmark-snapshot-2026-03-08.md",
+      "sha256": "b94ce60878e13eb231fc6e980b89caf3b712a9e0c8ad8fc73486502f1dd40bef"
+    },
+    {
+      "bytes": 6464,
+      "path": "files/docs/benchmarks/simplified-likelihood-promotion-runbook-2026-03-08.md",
+      "sha256": "221d5037259818b20b0f425a41c5ed39e318deea2a1a50e6a0998cbffe902aba"
+    },
+    {
+      "bytes": 5319,
+      "path": "files/docs/benchmarks/simplified-likelihood-release-notes-2026-03-08.md",
+      "sha256": "bc958eb4436ffb969540fd372fcc1202427c5d887a9e78e814730fade9b01822"
+    },
+    {
+      "bytes": 3822,
+      "path": "files/docs/benchmarks/simplified-likelihood-release-pr-checklist-2026-03-08.md",
+      "sha256": "07f7f3f73ecd57dabf59ce2da44aeab3eb7dca40fb4bfd0502808da3661613ac"
+    },
+    {
+      "bytes": 5450,
+      "path": "files/docs/benchmarks/simplified-likelihood-stable-surface-acceptance-2026-03-08.md",
+      "sha256": "083a462b3b22663755739d76ea4b0ef3a577f93bb1804c24d5c438a088cec535"
+    },
+    {
+      "bytes": 7423,
+      "path": "files/docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08.md",
+      "sha256": "21a713ad5520e4f58b002a6c50841a49830e926c8e707e4fbc01a3b3522f94c7"
+    },
+    {
+      "bytes": 10492,
+      "path": "files/docs/references/simplified-likelihood-artifacts.md",
+      "sha256": "4638c06ff743c6af5638b9a4edc9079db929179fcdd280e9e43e4084fdd1ce95"
+    },
+    {
+      "bytes": 2844,
+      "path": "files/docs/schemas/apex2/simplified_likelihood_public_fixture_catalog_v0.schema.json",
+      "sha256": "d53a55fe369c46f5e3e98a3228bd90f78dff5e12f372a72d24e41b61e21460dc"
+    },
+    {
+      "bytes": 18942,
+      "path": "files/docs/schemas/apex2/simplified_likelihood_report_v0.schema.json",
+      "sha256": "43e336abb7b478de0b061b5db97df4e2ab089a6ee9a3f781686c489f6c631e1d"
+    },
+    {
+      "bytes": 4994,
+      "path": "files/docs/schemas/hep/simplified_likelihood_audit_v0.schema.json",
+      "sha256": "48a8f904c8f6c90d6ca7f9cedbaf4fdaed7a3b3164c5a2ca8f057fcc667f455a"
+    },
+    {
+      "bytes": 9596,
+      "path": "files/docs/schemas/hep/simplified_likelihood_v0.schema.json",
+      "sha256": "4ff181c8c2c2e1db8fd8855f2d501bafb634beb48828636793055141b3175fc3"
+    },
+    {
+      "bytes": 2861,
+      "path": "files/docs/specs/apex2_simplified_likelihood_public_fixture_catalog_v0.example.json",
+      "sha256": "57ace6b517b5d225782fc58a2f864b93b9b5edee51aa69438abe9b867dca7c2b"
+    },
+    {
+      "bytes": 1146,
+      "path": "files/docs/specs/hep/simplified_likelihood_audit_v0.example.json",
+      "sha256": "7f0caed99a3aab73cdc23be6698c3167edb6181f1becf832f13f1e7372a08106"
+    },
+    {
+      "bytes": 992,
+      "path": "files/docs/specs/hep/simplified_likelihood_covariance_public_v0.example.json",
+      "sha256": "38d032aef458762b394db8bf13d556a79280acae9c6439439bdb0dd00b917b45"
+    },
+    {
+      "bytes": 2148,
+      "path": "files/docs/specs/hep/simplified_likelihood_derived_from_workspace_v0.example.json",
+      "sha256": "35642e1f4cfdfddd0964d9f0ffb0c19d1a5d6121f9a5d47d2252ff38a8243159"
+    },
+    {
+      "bytes": 776,
+      "path": "files/docs/specs/hep/simplified_likelihood_v0.example.json",
+      "sha256": "19a59da133e08564a5d461911d5a3499ff9c7942ab363662caf9a85cd014a719"
+    },
+    {
+      "bytes": 2653,
+      "path": "promotion_bundle_promotion_report.json",
+      "sha256": "8e23439f5e500fa5395e7eeb46569d84a4cc860564b85abe530e4d293e315732"
+    },
+    {
+      "bytes": 8792,
+      "path": "promotion_evidence.json",
+      "sha256": "43bc163199b627bddf24fd80e84a35d77ac4d3f1aa8f880d0cb7f018c9625279"
+    },
+    {
+      "bytes": 2169,
+      "path": "promotion_evidence_check.json",
+      "sha256": "aef9126241637746c08151616b9ec83b2121bd9595baec55c16d946cb4c10ac6"
+    },
+    {
+      "bytes": 4347,
+      "path": "snapshot_index.json",
+      "sha256": "28bb141960147d38f0bb47d16f725cca4265f17052f1c02139503d9c91e6191b"
+    }
+  ],
+  "generated_at": "2026-03-08T20:48:43.355035Z",
+  "git": {
+    "ref": "",
+    "repository": "",
+    "sha": ""
+  },
+  "schema_version": "nextstat.snapshot_index.v1",
+  "snapshot_id": "simplified_likelihood_promotion_bundle-nextstat-bench-20260308T173340Z",
+  "suite": "simplified_likelihood_promotion_bundle",
+  "workflow": {}
+}

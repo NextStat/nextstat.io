@@ -5,9 +5,11 @@ plots into ML-familiar formats (sorted impact tables, DataFrames,
 matplotlib bar charts).
 
 For ML engineers: the "ranking plot" is the HEP equivalent of
-Feature Importance — it shows how much each systematic uncertainty
-(latent variable) affects the parameter of interest (POI / signal
-strength).
+Feature Importance when nuisance parameters still correspond to
+source-level systematics. For simplified-likelihood models, ranking
+acts on reduced nuisance coordinates from the compiled model instead,
+so covariance-form and derived reduced artifacts do not preserve
+original nuisance identities.
 
 Example::
 
@@ -62,10 +64,17 @@ def rank_impact(
         - ``rank`` — 1-based rank (1 = highest impact)
 
     ML translation:
-        - **name** = systematic / latent variable name
+        - **name** = systematic / latent variable name when the model still preserves source-level nuisance identities
         - **total_impact** = feature importance score
         - **pull** = how far the latent variable moved from its prior
         - **constraint** = prior width (analogous to regularisation strength)
+
+    Simplified-likelihood boundary:
+        For simplified-likelihood models, entries rank reduced nuisance
+        coordinates from the compiled model. Covariance-form and
+        ``derived_from_workspace`` artifacts do not preserve original
+        source nuisance names, so this is not a source-level
+        feature-importance breakdown.
 
     Example::
 

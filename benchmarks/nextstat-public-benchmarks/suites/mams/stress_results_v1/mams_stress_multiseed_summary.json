@@ -1,0 +1,804 @@
+{
+  "backends": "nextstat_mams,nextstat_nuts",
+  "case_catalog": [
+    {
+      "case": "neal_funnel_10d_centered",
+      "case_tier": "pathological_control",
+      "description": "Centered 10D funnel hard-geometry control.",
+      "parity_scope": "informational"
+    },
+    {
+      "case": "neal_funnel_ncp_10d",
+      "case_tier": "supported",
+      "description": "Non-centered 10D funnel supported repeatability case.",
+      "parity_scope": "required"
+    },
+    {
+      "case": "hier_random_intercept_non_centered",
+      "case_tier": "supported",
+      "description": "Hierarchical logistic random intercept stress case.",
+      "parity_scope": "required"
+    }
+  ],
+  "cases": [
+    {
+      "accept_rate": [
+        0.9808796345326126,
+        0.980660144016012,
+        0.9801267108820219
+      ],
+      "backend": "nextstat_mams",
+      "case": "hier_random_intercept_non_centered",
+      "case_tier": "supported",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": 20,
+          "n_per_group": 20,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 42,
+          "target_accept": 0.985
+        },
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": 20,
+          "n_per_group": 20,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 0,
+          "target_accept": 0.985
+        },
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": 20,
+          "n_per_group": 20,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 123,
+          "target_accept": 0.985
+        }
+      ],
+      "ess_per_grad": [
+        0.049825570813902945,
+        0.0555136677117567,
+        0.05103195687506208
+      ],
+      "ess_per_sec": [
+        819.7153776679663,
+        868.017685277954,
+        709.6651609117806
+      ],
+      "ess_per_sec_warm": [
+        821.4136336735731,
+        869.6343566349366,
+        709.2500258904012
+      ],
+      "max_r_hat": [
+        1.0158000312342303,
+        1.0086664092437985,
+        1.010942550327348
+      ],
+      "min_ess_bulk": [
+        2092.6739741839237,
+        2109.5193730467545,
+        2041.2782750024833
+      ],
+      "min_ess_tail": [
+        863.1118969820802,
+        2746.312244371086,
+        1140.1404674100604
+      ],
+      "n_grad_evals": [
+        42000.0,
+        38000.0,
+        40000.0
+      ],
+      "n_integration_steps": [],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        2.5529275541193783,
+        2.43027234217152,
+        2.876396344974637
+      ]
+    },
+    {
+      "accept_rate": [
+        0.9880241318185036,
+        0.9845662065277819,
+        0.9820256109935991
+      ],
+      "backend": "nextstat_nuts",
+      "case": "hier_random_intercept_non_centered",
+      "case_tier": "supported",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": 20,
+          "n_per_group": 20,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 42,
+          "target_accept": 0.985
+        },
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": 20,
+          "n_per_group": 20,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 0,
+          "target_accept": 0.985
+        },
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": 20,
+          "n_per_group": 20,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 123,
+          "target_accept": 0.985
+        }
+      ],
+      "ess_per_grad": [
+        0.015429514944689216,
+        0.015894149227537156,
+        0.019989432990869735
+      ],
+      "ess_per_sec": [
+        473.897068810922,
+        417.79198833656244,
+        480.155764039141
+      ],
+      "ess_per_sec_warm": [
+        461.45350795475116,
+        419.59022865139457,
+        452.42508710933276
+      ],
+      "max_r_hat": [
+        1.001587123720053,
+        1.0030607457873935,
+        1.0019747136602
+      ],
+      "min_ess_bulk": [
+        3639.3905490337347,
+        3258.427744838937,
+        3707.3202002186645
+      ],
+      "min_ess_tail": [
+        3598.955012086808,
+        1779.8022750509544,
+        4603.344035149723
+      ],
+      "n_grad_evals": [
+        235872.0,
+        205008.0,
+        185464.0
+      ],
+      "n_integration_steps": [],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        7.679706815164536,
+        7.799162826966494,
+        7.721078195609152
+      ]
+    },
+    {
+      "accept_rate": [
+        0.9805098311796986,
+        0.9852181924230877,
+        0.9775364380223933
+      ],
+      "backend": "nextstat_mams",
+      "case": "neal_funnel_10d_centered",
+      "case_tier": "pathological_control",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": null,
+          "n_per_group": null,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 42,
+          "target_accept": 0.985
+        },
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": null,
+          "n_per_group": null,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 0,
+          "target_accept": 0.985
+        },
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": null,
+          "n_per_group": null,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 123,
+          "target_accept": 0.985
+        }
+      ],
+      "ess_per_grad": [
+        0.015187544835112803,
+        0.011912703710102453,
+        0.0006802131616393569
+      ],
+      "ess_per_sec": [
+        5293.353552610598,
+        4683.06930332285,
+        706.068010394322
+      ],
+      "ess_per_sec_warm": [
+        5478.470603823906,
+        6146.623020085834,
+        721.7794652755236
+      ],
+      "max_r_hat": [
+        1.3540802037395665,
+        1.2983885791038552,
+        1.8610555778144373
+      ],
+      "min_ess_bulk": [
+        2217.3815459264692,
+        1858.3817787759826,
+        1418.9246551796984
+      ],
+      "min_ess_tail": [
+        34.693559116792414,
+        35.82150169577748,
+        116.36611195770408
+      ],
+      "n_grad_evals": [
+        146000.0,
+        156000.0,
+        2086000.0
+      ],
+      "n_integration_steps": [],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        0.4188991957344115,
+        0.39682986913248897,
+        2.009614703245461
+      ]
+    },
+    {
+      "accept_rate": [
+        0.7464596643998018,
+        0.9779275937152518,
+        0.8233974389536541
+      ],
+      "backend": "nextstat_nuts",
+      "case": "neal_funnel_10d_centered",
+      "case_tier": "pathological_control",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": null,
+          "n_per_group": null,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 42,
+          "target_accept": 0.985
+        },
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": null,
+          "n_per_group": null,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 0,
+          "target_accept": 0.985
+        },
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": null,
+          "n_per_group": null,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 123,
+          "target_accept": 0.985
+        }
+      ],
+      "ess_per_grad": [
+        1.4025832431213941e-05,
+        2.3457765213509036e-06,
+        8.304154106928397e-06
+      ],
+      "ess_per_sec": [
+        9.146015990749232,
+        1.9330130643803873,
+        7.449413366787632
+      ],
+      "ess_per_sec_warm": [
+        7.008593664625897,
+        1.7220040212028558,
+        5.979771185441238
+      ],
+      "max_r_hat": [
+        1.2874443365813615,
+        2.046269539369432,
+        1.2359242696006392
+      ],
+      "min_ess_bulk": [
+        14.421248699114724,
+        5.690586422273858,
+        16.103241256919304
+      ],
+      "min_ess_tail": [
+        17.577531534747667,
+        28.72842500368092,
+        19.73705153206876
+      ],
+      "n_grad_evals": [
+        1028192.0,
+        2425886.0,
+        1939179.0
+      ],
+      "n_integration_steps": [],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        1.5767793008126318,
+        2.943894444964826,
+        2.1616791100241244
+      ]
+    },
+    {
+      "accept_rate": [
+        0.9821581139015924,
+        0.9815496173518312,
+        0.9817660584831296
+      ],
+      "backend": "nextstat_mams",
+      "case": "neal_funnel_ncp_10d",
+      "case_tier": "supported",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": null,
+          "n_per_group": null,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 42,
+          "target_accept": 0.985
+        },
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": null,
+          "n_per_group": null,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 0,
+          "target_accept": 0.985
+        },
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": null,
+          "n_per_group": null,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 123,
+          "target_accept": 0.985
+        }
+      ],
+      "ess_per_grad": [
+        0.29673423519838205,
+        0.26393974705018824,
+        0.28630801544436313
+      ],
+      "ess_per_sec": [
+        71457.30768617328,
+        58032.23365880338,
+        56539.5226715023
+      ],
+      "ess_per_sec_warm": [
+        106002.80864377748,
+        88913.06933650798,
+        97778.29091087225
+      ],
+      "max_r_hat": [
+        1.005591092223184,
+        1.006634429836915,
+        1.0065794335428042
+      ],
+      "min_ess_bulk": [
+        7121.62164476117,
+        6334.553929204518,
+        6871.392370664716
+      ],
+      "min_ess_tail": [
+        6114.30516395658,
+        5967.699099141655,
+        6052.6785705833645
+      ],
+      "n_grad_evals": [
+        24000.0,
+        24000.0,
+        24000.0
+      ],
+      "n_integration_steps": [],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        0.09966260800138116,
+        0.10915578342974186,
+        0.12153255008161068
+      ]
+    },
+    {
+      "accept_rate": [
+        0.9830127150017173,
+        0.9837237868084425,
+        0.9810475430359423
+      ],
+      "backend": "nextstat_nuts",
+      "case": "neal_funnel_ncp_10d",
+      "case_tier": "supported",
+      "configs": [
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": null,
+          "n_per_group": null,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 42,
+          "target_accept": 0.985
+        },
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": null,
+          "n_per_group": null,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 0,
+          "target_accept": 0.985
+        },
+        {
+          "dataset_seed": 12345,
+          "n_chains": 4,
+          "n_groups": null,
+          "n_per_group": null,
+          "n_samples": 2000,
+          "n_warmup": 3500,
+          "seed": 123,
+          "target_accept": 0.985
+        }
+      ],
+      "ess_per_grad": [
+        0.0698909700866648,
+        0.06911805363560962,
+        0.07161528270132847
+      ],
+      "ess_per_sec": [
+        34279.17155119483,
+        37122.511816609,
+        32202.23209728204
+      ],
+      "ess_per_sec_warm": [
+        46355.96801408455,
+        45509.68067285436,
+        43102.60834184027
+      ],
+      "max_r_hat": [
+        1.0012319054310461,
+        1.0021770041921432,
+        1.0018690233234668
+      ],
+      "min_ess_bulk": [
+        8000.0,
+        8000.0,
+        8000.0
+      ],
+      "min_ess_tail": [
+        4875.586813127103,
+        5039.514596511728,
+        5208.195456909919
+      ],
+      "n_grad_evals": [
+        114464.0,
+        115744.0,
+        111708.0
+      ],
+      "n_integration_steps": [],
+      "statuses": [
+        "ok",
+        "ok",
+        "ok"
+      ],
+      "wall_time_s": [
+        0.23337786877527833,
+        0.2155026588588953,
+        0.24842998385429382
+      ]
+    }
+  ],
+  "config": {
+    "dataset_seed": 12345,
+    "deterministic": true,
+    "n_chains": 4,
+    "n_groups": 20,
+    "n_per_group": 20,
+    "n_samples": 2000,
+    "n_warmup": 3500,
+    "parity_fail_z": 12.0,
+    "parity_warn_z": 8.0,
+    "run_timeout_s": 300.0,
+    "target_accept": 0.985
+  },
+  "generated_at": "2026-03-09T18:40:26Z",
+  "parity": {
+    "fail_z": 12.0,
+    "method": "mean_zscore",
+    "note": "Compares NextStat MAMS vs NextStat NUTS posterior means per case/seed; supported cases require parity, pathological controls are informational only.",
+    "rows": [
+      {
+        "case": "hier_random_intercept_non_centered",
+        "case_tier": "supported",
+        "max_z": [
+          3.505237584734605,
+          3.796513685865133,
+          4.089853468089003
+        ],
+        "parity_scope": "required",
+        "seed_rows": [
+          {
+            "max_z": 3.505237584734605,
+            "seed": 42,
+            "status": "ok",
+            "worst": [
+              {
+                "param": "sigma_alpha",
+                "z": 3.505237584734605
+              },
+              {
+                "param": "z_alpha10",
+                "z": 1.5027706853357203
+              },
+              {
+                "param": "beta1",
+                "z": 1.4314572825724552
+              }
+            ]
+          },
+          {
+            "max_z": 3.796513685865133,
+            "seed": 0,
+            "status": "ok",
+            "worst": [
+              {
+                "param": "sigma_alpha",
+                "z": 3.796513685865133
+              },
+              {
+                "param": "z_alpha12",
+                "z": 2.1976077440307464
+              },
+              {
+                "param": "z_alpha1",
+                "z": 2.133547547595611
+              }
+            ]
+          },
+          {
+            "max_z": 4.089853468089003,
+            "seed": 123,
+            "status": "ok",
+            "worst": [
+              {
+                "param": "sigma_alpha",
+                "z": 4.089853468089003
+              },
+              {
+                "param": "z_alpha8",
+                "z": 1.718585920964439
+              },
+              {
+                "param": "z_alpha9",
+                "z": 1.6581677091698563
+              }
+            ]
+          }
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ]
+      },
+      {
+        "case": "neal_funnel_10d_centered",
+        "case_tier": "pathological_control",
+        "max_z": [
+          5.176594441219025,
+          2.6015667692304625,
+          4.771648398515896
+        ],
+        "parity_scope": "informational",
+        "seed_rows": [
+          {
+            "max_z": 5.176594441219025,
+            "seed": 42,
+            "status": "ok",
+            "worst": [
+              {
+                "param": "y",
+                "z": 5.176594441219025
+              },
+              {
+                "param": "x[9]",
+                "z": 2.680535397858223
+              },
+              {
+                "param": "x[5]",
+                "z": 2.5283767533210413
+              }
+            ]
+          },
+          {
+            "max_z": 2.6015667692304625,
+            "seed": 0,
+            "status": "ok",
+            "worst": [
+              {
+                "param": "y",
+                "z": 2.6015667692304625
+              },
+              {
+                "param": "x[2]",
+                "z": 0.9433171698809051
+              },
+              {
+                "param": "x[8]",
+                "z": 0.7636122319695998
+              }
+            ]
+          },
+          {
+            "max_z": 4.771648398515896,
+            "seed": 123,
+            "status": "ok",
+            "worst": [
+              {
+                "param": "y",
+                "z": 4.771648398515896
+              },
+              {
+                "param": "x[2]",
+                "z": 1.3772362050563576
+              },
+              {
+                "param": "x[6]",
+                "z": 1.216025731603856
+              }
+            ]
+          }
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ]
+      },
+      {
+        "case": "neal_funnel_ncp_10d",
+        "case_tier": "supported",
+        "max_z": [
+          1.2717084660494444,
+          1.0487415569155383,
+          1.109269949237256
+        ],
+        "parity_scope": "required",
+        "seed_rows": [
+          {
+            "max_z": 1.2717084660494444,
+            "seed": 42,
+            "status": "ok",
+            "worst": [
+              {
+                "param": "z[8]",
+                "z": 1.2717084660494444
+              },
+              {
+                "param": "z[7]",
+                "z": 1.1713103226675248
+              },
+              {
+                "param": "v",
+                "z": 0.7846994452475983
+              }
+            ]
+          },
+          {
+            "max_z": 1.0487415569155383,
+            "seed": 0,
+            "status": "ok",
+            "worst": [
+              {
+                "param": "z[7]",
+                "z": 1.0487415569155383
+              },
+              {
+                "param": "z[8]",
+                "z": 0.5244346219744298
+              },
+              {
+                "param": "z[6]",
+                "z": 0.509943431049295
+              }
+            ]
+          },
+          {
+            "max_z": 1.109269949237256,
+            "seed": 123,
+            "status": "ok",
+            "worst": [
+              {
+                "param": "z[9]",
+                "z": 1.109269949237256
+              },
+              {
+                "param": "z[1]",
+                "z": 0.886388559963785
+              },
+              {
+                "param": "v",
+                "z": 0.7935362386576172
+              }
+            ]
+          }
+        ],
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ]
+      }
+    ],
+    "warn_z": 8.0
+  },
+  "schema_version": "nextstat.mams_stress_multiseed_summary.v1",
+  "seeds": [
+    42,
+    0,
+    123
+  ],
+  "suite": "mams_stress"
+}

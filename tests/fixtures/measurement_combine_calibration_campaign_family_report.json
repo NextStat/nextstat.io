@@ -1,0 +1,69 @@
+{
+  "aggregate": {
+    "families_with_mixed_pois": [
+      "cross_fixture"
+    ],
+    "families_with_near_neutral_calibration": [
+      "cross_fixture",
+      "topmass_only"
+    ],
+    "family_labels": [
+      "cross_fixture",
+      "topmass_only"
+    ],
+    "family_with_highest_calibration_inflation": "cross_fixture",
+    "family_with_highest_fit_inflation": "cross_fixture",
+    "n_families": 2,
+    "n_total_artifacts": 3
+  },
+  "families": [
+    {
+      "artifact_labels": [
+        "outlier",
+        "topmass_full"
+      ],
+      "has_mixed_pois": true,
+      "highest_calibration_inflation_artifact": "topmass_full",
+      "highest_calibration_inflation_value": 1.1413389897265351,
+      "highest_fit_inflation_artifact": "topmass_full",
+      "highest_fit_inflation_value": 457.6276341964417,
+      "label": "cross_fixture",
+      "labels_with_near_neutral_calibration": [
+        "topmass_full"
+      ],
+      "n_artifacts": 2,
+      "pois": [
+        "m_top",
+        "mu"
+      ],
+      "shared_poi": null
+    },
+    {
+      "artifact_labels": [
+        "topmass_full"
+      ],
+      "has_mixed_pois": false,
+      "highest_calibration_inflation_artifact": "topmass_full",
+      "highest_calibration_inflation_value": 1.1413389897265351,
+      "highest_fit_inflation_artifact": "topmass_full",
+      "highest_fit_inflation_value": 457.6276341964417,
+      "label": "topmass_only",
+      "labels_with_near_neutral_calibration": [
+        "topmass_full"
+      ],
+      "n_artifacts": 1,
+      "pois": [
+        "m_top"
+      ],
+      "shared_poi": "m_top"
+    }
+  ],
+  "pois": [
+    "m_top",
+    "mu"
+  ],
+  "schema_version": "nextstat_measurement_combination_calibration_campaign_family_report_v0",
+  "shared_poi": null,
+  "source_schema_version": "nextstat_measurement_combination_calibration_campaign_brief_v0",
+  "stability": "research-grade"
+}

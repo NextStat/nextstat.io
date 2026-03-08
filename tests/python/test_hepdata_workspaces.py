@@ -3,7 +3,10 @@
 These tests are skipped unless the user downloads and materializes the external
 workspaces via:
 
-  python3 tests/hepdata/fetch_workspaces.py
+  cargo run -p ns-cli -- import hepdata \
+    --out-dir tests/hepdata/workspaces \
+    --cache-dir tests/hepdata/_cache \
+    --lock tests/hepdata/workspaces.lock.json
 
 The resulting JSONs are written under `tests/hepdata/workspaces/` and are not
 committed to git.
@@ -72,7 +75,7 @@ def _shift_params(params, bounds, shift: float = 0.123) -> list[float]:
 def _workspace_cases() -> list[tuple[str, dict[str, Any]]]:
     if not HEPDATA_WORKSPACES_DIR.exists():
         pytest.skip(
-            "HEPData workspaces not downloaded. Run: python3 tests/hepdata/fetch_workspaces.py",
+            "HEPData workspaces not downloaded. Run: cargo run -p ns-cli -- import hepdata --out-dir tests/hepdata/workspaces --cache-dir tests/hepdata/_cache --lock tests/hepdata/workspaces.lock.json",
             allow_module_level=True,
         )
 

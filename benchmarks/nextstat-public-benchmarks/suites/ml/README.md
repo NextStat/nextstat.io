@@ -4,7 +4,7 @@ This directory is reserved for the **ML benchmark suite** in the standalone publ
 
 Canonical methodology + runbook lives in the main docs site:
 
-- `/Users/andresvlc/WebDev/nextstat.io/docs/benchmarks/suites/ml.md`
+- `docs/benchmarks/suites/ml.md`
 
 Planned measurements (publishable snapshots):
 

@@ -1,0 +1,104 @@
+{
+  "accepted_baseline_path": "benchmarks/artifacts/ads_variance_reduction_baselines/nextstat-bench/accepted.json",
+  "actions": {
+    "accepted_updated": true,
+    "archived_previous_baseline": true,
+    "archived_previous_baseline_path": "benchmarks/artifacts/ads_variance_reduction_baselines/nextstat-bench/history/accepted_before_20260308T232532Z.json",
+    "archived_promoted_snapshot": true,
+    "archived_promoted_snapshot_path": "benchmarks/artifacts/ads_variance_reduction_baselines/nextstat-bench/history/accepted_after_20260308T232532Z.json",
+    "history_dir": "benchmarks/artifacts/ads_variance_reduction_baselines/nextstat-bench/history"
+  },
+  "allow_review": true,
+  "artifacts": {
+    "accepted_after": {
+      "build_profile": "release",
+      "case_ids": [
+        "python_revenue_dense_signal_naive",
+        "python_revenue_dense_signal_cuped",
+        "python_revenue_dense_signal_cure",
+        "python_ratio_style_efficiency_naive",
+        "python_ratio_style_efficiency_cuped",
+        "python_ratio_style_efficiency_cure",
+        "python_sparse_new_user_conversion_naive",
+        "python_sparse_new_user_conversion_cuped",
+        "python_sparse_new_user_conversion_cure",
+        "python_collinear_account_history_naive",
+        "python_collinear_account_history_cuped",
+        "python_collinear_account_history_cure"
+      ],
+      "deterministic": true,
+      "host_policy": "nextstat-bench",
+      "hostname": "nextstat-bench",
+      "path": "benchmarks/artifacts/ads_variance_reduction_baselines/nextstat-bench/accepted.json",
+      "runs": 5,
+      "schema_version": "nextstat.ads_variance_reduction_benchmark_result.v1",
+      "smoke": false,
+      "suite": "ads_variance_reduction_matrix",
+      "warmups": 1
+    },
+    "accepted_before": {
+      "build_profile": "release",
+      "case_ids": [
+        "python_revenue_dense_signal_naive",
+        "python_revenue_dense_signal_cuped",
+        "python_revenue_dense_signal_cure",
+        "python_ratio_style_efficiency_naive",
+        "python_ratio_style_efficiency_cuped",
+        "python_ratio_style_efficiency_cure",
+        "python_sparse_new_user_conversion_naive",
+        "python_sparse_new_user_conversion_cuped",
+        "python_sparse_new_user_conversion_cure",
+        "python_collinear_account_history_naive",
+        "python_collinear_account_history_cuped",
+        "python_collinear_account_history_cure"
+      ],
+      "deterministic": true,
+      "host_policy": "nextstat-bench",
+      "hostname": "nextstat-bench",
+      "path": "benchmarks/artifacts/ads_variance_reduction_baselines/nextstat-bench/accepted.json",
+      "runs": 5,
+      "schema_version": "nextstat.ads_variance_reduction_benchmark_result.v1",
+      "smoke": false,
+      "suite": "ads_variance_reduction_matrix",
+      "warmups": 1
+    },
+    "candidate": {
+      "build_profile": "release",
+      "case_ids": [
+        "python_revenue_dense_signal_naive",
+        "python_revenue_dense_signal_cuped",
+        "python_revenue_dense_signal_cure",
+        "python_ratio_style_efficiency_naive",
+        "python_ratio_style_efficiency_cuped",
+        "python_ratio_style_efficiency_cure",
+        "python_sparse_new_user_conversion_naive",
+        "python_sparse_new_user_conversion_cuped",
+        "python_sparse_new_user_conversion_cure",
+        "python_collinear_account_history_naive",
+        "python_collinear_account_history_cuped",
+        "python_collinear_account_history_cure"
+      ],
+      "deterministic": true,
+      "host_policy": "nextstat-bench",
+      "hostname": "nextstat-bench",
+      "path": "tmp/ads_variance_reduction_benchmark_20260308T232335Z/nextstat-bench/ads_variance_reduction_benchmark.json",
+      "runs": 5,
+      "schema_version": "nextstat.ads_variance_reduction_benchmark_result.v1",
+      "smoke": false,
+      "suite": "ads_variance_reduction_matrix",
+      "warmups": 1
+    }
+  },
+  "candidate_path": "tmp/ads_variance_reduction_benchmark_20260308T232335Z/nextstat-bench/ads_variance_reduction_benchmark.json",
+  "compare_report_path": "tmp/ads_variance_reduction_benchmark_20260308T232335Z/nextstat-bench/compare_report.json",
+  "compare_status": "review",
+  "dry_run": false,
+  "promoted": true,
+  "schema_version": "nextstat.ads_variance_reduction_benchmark_baseline_promotion_report.v1",
+  "status": "promoted",
+  "suite": "ads_variance_reduction_matrix",
+  "summary": {
+    "top_level_errors": []
+  },
+  "timestamp_utc": "2026-03-08T23:25:32Z"
+}

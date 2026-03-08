@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/apex2/simplified_likelihood_export_public_case_catalog_v0.schema.json",
+  "title": "Simplified Likelihood Export Public Case Catalog v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "stability", "cases"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat_simplified_likelihood_export_public_case_catalog_v0"
+    },
+    "stability": {
+      "type": "string",
+      "const": "apex2"
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    }
+  },
+  "$defs": {
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channels", "bins"],
+      "properties": {
+        "channels": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "bins": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "title",
+        "case_kind",
+        "experiment",
+        "analysis_id",
+        "source_workspace_format",
+        "source_workspace_schema_version",
+        "poi_name",
+        "workspace_json_path",
+        "reference",
+        "selection",
+        "output_uncertainty_model",
+        "basis_method",
+        "explained_variance_target",
+        "constraint_covariance_source",
+        "split_stat_covariance"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "case_kind": {
+          "type": "string",
+          "const": "public_reinterpretation_style"
+        },
+        "experiment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analysis_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_workspace_format": {
+          "type": "string",
+          "const": "pyhf"
+        },
+        "source_workspace_schema_version": {
+          "type": "string",
+          "const": "pyhf_workspace_v1"
+        },
+        "poi_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "workspace_json_path": {
+          "type": "string",
+          "pattern": ".*\\.json$"
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "selection": {
+          "$ref": "#/$defs/selection"
+        },
+        "output_uncertainty_model": {
+          "type": "string",
+          "const": "basis"
+        },
+        "basis_method": {
+          "type": "string",
+          "const": "eigen"
+        },
+        "explained_variance_target": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "constraint_covariance_source": {
+          "type": "string",
+          "const": "source_model_constraints"
+        },
+        "max_components": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "split_stat_covariance": {
+          "type": "boolean"
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

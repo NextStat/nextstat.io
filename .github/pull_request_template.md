@@ -77,6 +77,20 @@ cargo test --workspace
 - [ ] I have updated CHANGELOG.md (for significant changes)
 - [ ] I have updated README.md (if needed)
 
+### Regulated / M15 (if applicable)
+
+- [ ] If this PR changes the M15 surface (`crates/ns-cli/src/m15.rs`, `docs/schemas/validation/m15_*`, `validation-pack/render_validation_pack.sh`, `.github/workflows/python-tests.yml`, `.github/workflows/release.yml`, or `docs/references/m15-reporting.md`), I ran the targeted M15 checks from `CONTRIBUTING.md`
+- [ ] I verified deterministic rerender remains intact and I did not introduce hidden execution into the M15 render/bundle path
+- [ ] I updated the public M15 contract/docs surface (`docs/references/m15-reporting.md`, schemas, examples) when behavior changed
+
+### Bayesian Design Stable Surface (if applicable)
+
+- [ ] If this PR changes the Bayesian design stable surface (`crates/ns-inference/src/bayes_design.rs`, `bindings/ns-py/src/lib.rs`, `bindings/ns-py/python/nextstat/bayes_design.py`, `docs/schemas/pharma/*design*`, `docs/schemas/pharma/bayesian_*`, `docs/specs/pharma/*design*`, `docs/specs/pharma/bayesian_*`, `docs/benchmarks/bayesian-design-*`, or `docs/references/bayesian-trial-design-artifacts.md`), I ran the targeted Bayesian checks from `CONTRIBUTING.md`
+- [ ] I verified backward-compatible ingress remains intact and I did not introduce hidden execution into the frozen Bayesian report render/bundle path, the frozen prior conflict diagnostic path, the frozen historical-control borrowing review path, the frozen robust-mixture prior review path, the frozen regulatory appendix path, the frozen regulatory appendix render path, or the validation-pack appendix path
+- [ ] I verified backward-compatible ingress and seeded determinism remain intact for the published borrowing and robust-mixture extension operating-characteristics wrappers
+- [ ] I updated the public Bayesian contract/docs surface (`docs/references/bayesian-trial-design-artifacts.md`, `docs/references/validation-report.md`, schemas, examples, acceptance docs, release checklist) when behavior changed
+- [ ] If this PR changes the published bundle runtime behavior or performance wording, I linked the current `nextstat-bench` packaging gate evidence from the canonical `nextstat-bench packaging gate`
+
 ### Git Hygiene
 
 - [ ] **All commits are signed off with DCO** (`git commit -s`)

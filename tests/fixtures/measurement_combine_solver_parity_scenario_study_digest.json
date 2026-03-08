@@ -1,0 +1,46 @@
+{
+  "aggregate": {
+    "max_mu_abs_diff": 0.005697092810805771,
+    "max_q_star_abs_diff": 333.7482528347566,
+    "max_sigma_rel_diff": 0.009982408573757031,
+    "n_perturbative_overlap_failure_scenarios": 0,
+    "n_scenarios": 1,
+    "n_supported_systematics_mismatch_scenarios": 0,
+    "perturbative_overlap_failure_scenarios": [],
+    "supported_systematics_mismatch_scenarios": []
+  },
+  "baseline": {
+    "chi2_abs_diff": 0.0,
+    "lhs_optimizer_method": "closed_form_blue",
+    "mu_abs_diff": 0.0,
+    "q_star_abs_diff": null,
+    "rhs_optimizer_method": "closed_form_blue",
+    "sigma_abs_diff": 0.0,
+    "sigma_rel_diff": 0.0
+  },
+  "ci_level": 0.68,
+  "dominant_mu_gap_scenario": "bjes_0p05",
+  "dominant_q_star_gap_scenario": "bjes_0p05",
+  "dominant_sigma_gap_scenario": "bjes_0p05",
+  "lhs_solver": "numerical-paper",
+  "poi": "m_top",
+  "rhs_solver": "analytic-perturbative",
+  "scenarios": [
+    {
+      "both_perturbative_within_threshold": true,
+      "label": "dominant-gap",
+      "mu_abs_diff": 0.005697092810805771,
+      "mu_gap_rank": 1,
+      "n_assignments": 1,
+      "name": "bjes_0p05",
+      "q_star_abs_diff": 333.7482528347566,
+      "q_star_gap_rank": 1,
+      "same_supported_systematics": true,
+      "sigma_gap_rank": 1,
+      "sigma_rel_diff": 0.009982408573757031
+    }
+  ],
+  "schema_version": "nextstat_measurement_combination_scenario_study_solver_parity_digest_v0",
+  "source_schema_version": "nextstat_measurement_combination_scenario_study_solver_parity_v0",
+  "stability": "research-grade"
+}

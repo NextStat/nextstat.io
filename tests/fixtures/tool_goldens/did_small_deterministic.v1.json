@@ -1,0 +1,29 @@
+{
+  "case_name": "did_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_did": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_did"
+      },
+      "ok": true,
+      "result": {
+        "att": -0.050000000000000155,
+        "att_se": 0.06900655593423545,
+        "cluster": "two_way",
+        "coef": [
+          -0.050000000000000155
+        ],
+        "n_obs": 8,
+        "standard_errors": [
+          0.06900655593423545
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

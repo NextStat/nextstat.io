@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/hep/simplified_likelihood_derive_v0.schema.json",
+  "title": "NextStat Simplified Likelihood Derive v0",
+  "description": "Research-grade contract for deriving a simplified-likelihood artifact from a fitted full workspace.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "source_workspace",
+    "fit_result",
+    "selection",
+    "reduction",
+    "jacobian",
+    "fidelity_smoke",
+    "output_contract"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_simplified_likelihood_derive_v0"
+    },
+    "source_workspace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "poi_name"],
+      "properties": {
+        "format": {
+          "type": "string",
+          "enum": ["pyhf", "hs3"]
+        },
+        "schema_version": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "poi_name": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "fit_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "background_state"],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "background_state": {
+          "type": "string",
+          "const": "postfit_background"
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channels"],
+      "properties": {
+        "channels": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "bins": {
+          "type": ["array", "null"],
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "reduction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "output_uncertainty_model",
+        "basis_method",
+        "explained_variance_target",
+        "constraint_covariance_source",
+        "split_stat_covariance"
+      ],
+      "properties": {
+        "output_uncertainty_model": {
+          "type": "string",
+          "const": "basis"
+        },
+        "basis_method": {
+          "type": "string",
+          "const": "eigen"
+        },
+        "explained_variance_target": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "maximum": 1.0
+        },
+        "constraint_covariance_source": {
+          "type": "string",
+          "enum": ["source_model_constraints", "aligned_fit_covariance"]
+        },
+        "max_components": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "split_stat_covariance": {
+          "type": "boolean"
+        }
+      }
+    },
+    "jacobian": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "relative_step", "absolute_step_floor"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "const": "finite_difference"
+        },
+        "relative_step": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        },
+        "absolute_step_floor": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        }
+      }
+    },
+    "fidelity_smoke": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["random_draws", "qmu_test_mu", "upper_limit_cl"],
+      "properties": {
+        "random_draws": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "qmu_test_mu": {
+          "type": "number"
+        },
+        "upper_limit_cl": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "exclusiveMaximum": 1.0
+        }
+      }
+    },
+    "output_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "require_factorization_diagnostics",
+        "require_fidelity_diagnostics"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "nextstat_simplified_likelihood_v0"
+        },
+        "require_factorization_diagnostics": {
+          "const": true
+        },
+        "require_fidelity_diagnostics": {
+          "const": true
+        }
+      }
+    },
+    "unsupported_semantics": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

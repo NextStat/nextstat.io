@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/bayesian_derived_metrics_v2.schema.json",
+  "title": "NextStat Bayesian Derived Metrics v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "created_at", "source", "ess_per_leapfrog"],
+  "properties": {
+    "schema_version": { "const": "nextstat.bayesian_derived_metrics.v2" },
+    "created_at": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "minLength": 1 },
+    "ess_per_leapfrog": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["config", "ess_method", "seeds", "cases"],
+      "properties": {
+        "config": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dataset_seed", "init_jitter_rel", "max_treedepth", "metric", "n_chains", "n_samples", "n_warmup", "target_accept"],
+          "properties": {
+            "dataset_seed": { "type": ["integer", "null"], "minimum": 0 },
+            "init_jitter_rel": { "type": ["number", "null"], "minimum": 0 },
+            "max_treedepth": { "type": ["integer", "null"], "minimum": 1 },
+            "metric": { "type": ["string", "null"] },
+            "n_chains": { "type": ["integer", "null"], "minimum": 1 },
+            "n_samples": { "type": ["integer", "null"], "minimum": 1 },
+            "n_warmup": { "type": ["integer", "null"], "minimum": 0 },
+            "target_accept": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+          }
+        },
+        "ess_method": { "type": "string", "minLength": 1 },
+        "seeds": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+        "cases": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["by_seed"],
+            "properties": {
+              "by_seed": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "nextstat": { "$ref": "#/$defs/seedMetric" },
+                    "cmdstan": { "$ref": "#/$defs/seedMetric" },
+                    "pymc": { "$ref": "#/$defs/seedMetric" }
+                  }
+                }
+              },
+              "nextstat": { "$ref": "#/$defs/backendSummary" },
+              "cmdstan": { "$ref": "#/$defs/backendSummary" },
+              "pymc": { "$ref": "#/$defs/backendSummary" },
+              "ratio": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "seedMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ess_per_leapfrog", "min_ess_bulk", "total_leapfrog"],
+      "properties": {
+        "ess_per_leapfrog": { "type": "number", "minimum": 0 },
+        "min_ess_bulk": { "type": "number", "minimum": 0 },
+        "total_leapfrog": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "backendSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mean", "std"],
+      "properties": {
+        "mean": { "type": "number", "minimum": 0 },
+        "std": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}

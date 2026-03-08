@@ -1,7 +1,7 @@
 {
   "title": "NextStat Public Benchmarks: Snapshot (Template)",
   "upload_type": "software",
-  "description": "Immutable benchmark snapshot for NextStat public benchmarks. Includes baseline_manifest.json, raw suite outputs, and a README snippet. Optionally may include snapshot_index.json (hash inventory) and nextstat_wheel.whl (self-contained exact build).",
+  "description": "Immutable benchmark snapshot for NextStat public benchmarks. Includes baseline_manifest.json, raw suite outputs, and a README snippet. Optionally may include snapshot_index.json (hash inventory plus suite-level health verdicts), snapshot_registry.json for collection-style releases, and nextstat_wheel.whl (self-contained exact build).",
   "creators": [
     {
       "name": "NextStat Contributors"

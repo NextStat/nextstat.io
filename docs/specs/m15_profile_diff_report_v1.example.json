@@ -1,0 +1,353 @@
+{
+  "compared_profiles": [
+    "ich_core",
+    "ema_step5_2026",
+    "fda_draft_2024"
+  ],
+  "deterministic": true,
+  "documents": [
+    {
+      "common_sections": [
+        "Questions of Interest",
+        "Mandatory Sections",
+        "Evidence Refs"
+      ],
+      "document_kind": "assessment_table",
+      "profile_views": [
+        {
+          "canonical_reference": "ICH M15 core cross-jurisdiction framing for model-informed drug development reporting.",
+          "framing_heading": "ICH Core Assessment Framing",
+          "framing_text": "Use cross-jurisdiction ICH wording for the question of interest, context of use, model influence, and consequence framing.",
+          "jurisdiction_profile": "ich_core",
+          "mandatory_sections": [
+            "Questions of Interest",
+            "Mandatory Sections",
+            "ICH Core Assessment Framing",
+            "Evidence Refs"
+          ],
+          "missing_sections_vs_union": [
+            "EMA Step 5 Assessment Framing",
+            "FDA Draft Guidance Assessment Framing"
+          ],
+          "profile_label": "ICH Core",
+          "profile_only_sections": [
+            "ICH Core Assessment Framing"
+          ]
+        },
+        {
+          "canonical_reference": "EMA Step 5 alignment for the ICH M15 guideline effective in the EU from July 23, 2026.",
+          "framing_heading": "EMA Step 5 Assessment Framing",
+          "framing_text": "Emphasize EU reviewer-readiness, context of use in the clinical pharmacology dossier, and explicit traceability for Step 5 review.",
+          "jurisdiction_profile": "ema_step5_2026",
+          "mandatory_sections": [
+            "Questions of Interest",
+            "Mandatory Sections",
+            "EMA Step 5 Assessment Framing",
+            "Evidence Refs"
+          ],
+          "missing_sections_vs_union": [
+            "ICH Core Assessment Framing",
+            "FDA Draft Guidance Assessment Framing"
+          ],
+          "profile_label": "EMA Step 5 (2026)",
+          "profile_only_sections": [
+            "EMA Step 5 Assessment Framing"
+          ]
+        },
+        {
+          "canonical_reference": "FDA draft guidance framing for M15 general principles for model-informed drug development.",
+          "framing_heading": "FDA Draft Guidance Assessment Framing",
+          "framing_text": "Emphasize draft-guidance framing, decision consequence, and explicit qualification boundaries for FDA-facing evidence narratives.",
+          "jurisdiction_profile": "fda_draft_2024",
+          "mandatory_sections": [
+            "Questions of Interest",
+            "Mandatory Sections",
+            "FDA Draft Guidance Assessment Framing",
+            "Evidence Refs"
+          ],
+          "missing_sections_vs_union": [
+            "ICH Core Assessment Framing",
+            "EMA Step 5 Assessment Framing"
+          ],
+          "profile_label": "FDA Draft Guidance (2024)",
+          "profile_only_sections": [
+            "FDA Draft Guidance Assessment Framing"
+          ]
+        }
+      ],
+      "section_presence": [
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Questions of Interest"
+        },
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Mandatory Sections"
+        },
+        {
+          "present_in_all_profiles": false,
+          "present_in_profiles": [
+            "ich_core"
+          ],
+          "section_name": "ICH Core Assessment Framing"
+        },
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Evidence Refs"
+        },
+        {
+          "present_in_all_profiles": false,
+          "present_in_profiles": [
+            "ema_step5_2026"
+          ],
+          "section_name": "EMA Step 5 Assessment Framing"
+        },
+        {
+          "present_in_all_profiles": false,
+          "present_in_profiles": [
+            "fda_draft_2024"
+          ],
+          "section_name": "FDA Draft Guidance Assessment Framing"
+        }
+      ]
+    },
+    {
+      "common_sections": [
+        "Questions",
+        "Planned Datasets",
+        "Methods",
+        "Technical Acceptance Criteria",
+        "Governance"
+      ],
+      "document_kind": "map",
+      "profile_views": [
+        {
+          "canonical_reference": "ICH M15 core cross-jurisdiction framing for model-informed drug development reporting.",
+          "framing_heading": "ICH Core Planning Framing",
+          "framing_text": "Frame the MAP as a frozen, cross-jurisdiction analysis plan with explicit technical criteria and governance.",
+          "jurisdiction_profile": "ich_core",
+          "mandatory_sections": [
+            "Questions",
+            "Planned Datasets",
+            "Methods",
+            "Technical Acceptance Criteria",
+            "Governance"
+          ],
+          "missing_sections_vs_union": [],
+          "profile_label": "ICH Core",
+          "profile_only_sections": []
+        },
+        {
+          "canonical_reference": "EMA Step 5 alignment for the ICH M15 guideline effective in the EU from July 23, 2026.",
+          "framing_heading": "EMA Step 5 Planning Framing",
+          "framing_text": "Emphasize planned evidence, governance, and dossier-oriented wording consistent with EMA Step 5 positioning.",
+          "jurisdiction_profile": "ema_step5_2026",
+          "mandatory_sections": [
+            "Questions",
+            "Planned Datasets",
+            "Methods",
+            "Technical Acceptance Criteria",
+            "Governance"
+          ],
+          "missing_sections_vs_union": [],
+          "profile_label": "EMA Step 5 (2026)",
+          "profile_only_sections": []
+        },
+        {
+          "canonical_reference": "FDA draft guidance framing for M15 general principles for model-informed drug development.",
+          "framing_heading": "FDA Draft Guidance Planning Framing",
+          "framing_text": "Emphasize planning language aligned with FDA draft expectations for context of use, methods, and acceptance criteria.",
+          "jurisdiction_profile": "fda_draft_2024",
+          "mandatory_sections": [
+            "Questions",
+            "Planned Datasets",
+            "Methods",
+            "Technical Acceptance Criteria",
+            "Governance"
+          ],
+          "missing_sections_vs_union": [],
+          "profile_label": "FDA Draft Guidance (2024)",
+          "profile_only_sections": []
+        }
+      ],
+      "section_presence": [
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Questions"
+        },
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Planned Datasets"
+        },
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Methods"
+        },
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Technical Acceptance Criteria"
+        },
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Governance"
+        }
+      ]
+    },
+    {
+      "common_sections": [
+        "Question Conclusions",
+        "Criterion Results",
+        "Deviations",
+        "Governance",
+        "Linked Artifacts"
+      ],
+      "document_kind": "mar",
+      "profile_views": [
+        {
+          "canonical_reference": "ICH M15 core cross-jurisdiction framing for model-informed drug development reporting.",
+          "framing_heading": "ICH Core Results Framing",
+          "framing_text": "Frame results as evidence-based support statements linked back to the frozen MAP and deterministic validation evidence.",
+          "jurisdiction_profile": "ich_core",
+          "mandatory_sections": [
+            "Question Conclusions",
+            "Criterion Results",
+            "Deviations",
+            "Governance",
+            "Linked Artifacts"
+          ],
+          "missing_sections_vs_union": [],
+          "profile_label": "ICH Core",
+          "profile_only_sections": []
+        },
+        {
+          "canonical_reference": "EMA Step 5 alignment for the ICH M15 guideline effective in the EU from July 23, 2026.",
+          "framing_heading": "EMA Step 5 Results Framing",
+          "framing_text": "Emphasize review-ready conclusions, deviations, and limitations suitable for EMA-oriented briefing and dossier assembly.",
+          "jurisdiction_profile": "ema_step5_2026",
+          "mandatory_sections": [
+            "Question Conclusions",
+            "Criterion Results",
+            "Deviations",
+            "Governance",
+            "Linked Artifacts"
+          ],
+          "missing_sections_vs_union": [],
+          "profile_label": "EMA Step 5 (2026)",
+          "profile_only_sections": []
+        },
+        {
+          "canonical_reference": "FDA draft guidance framing for M15 general principles for model-informed drug development.",
+          "framing_heading": "FDA Draft Guidance Results Framing",
+          "framing_text": "Emphasize evidence-bounded conclusions, limitations, and deviations suitable for FDA draft-guidance review expectations.",
+          "jurisdiction_profile": "fda_draft_2024",
+          "mandatory_sections": [
+            "Question Conclusions",
+            "Criterion Results",
+            "Deviations",
+            "Governance",
+            "Linked Artifacts"
+          ],
+          "missing_sections_vs_union": [],
+          "profile_label": "FDA Draft Guidance (2024)",
+          "profile_only_sections": []
+        }
+      ],
+      "section_presence": [
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Question Conclusions"
+        },
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Criterion Results"
+        },
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Deviations"
+        },
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Governance"
+        },
+        {
+          "present_in_all_profiles": true,
+          "present_in_profiles": [
+            "ich_core",
+            "ema_step5_2026",
+            "fda_draft_2024"
+          ],
+          "section_name": "Linked Artifacts"
+        }
+      ]
+    }
+  ],
+  "generated_at": null,
+  "schema_version": "m15_profile_diff_report_v1",
+  "selected_profile": "ich_core",
+  "source_config_sha256": "1f7935940139d0629330a45796457a1c729d5f6abf5508fe0bf155f1a564cc0d",
+  "summary": {
+    "documents_compared": 3,
+    "profiles_compared": 3,
+    "sections_with_profile_specific_diff": 3
+  }
+}

@@ -1,0 +1,200 @@
+{
+  "client": "ollama",
+  "discovery_contract": {
+    "callable_surface": "tools",
+    "descriptor_schema_version": "nextstat.tool_schema.v1",
+    "guidance_surface": "guidance",
+    "policy_surface": "capabilities"
+  },
+  "instructions": [
+    "Do not assume the model can emit perfect function calls; keep a validated manual loop available.",
+    "Use descriptor.capabilities to explain unavailable tools instead of silently substituting local-only functionality.",
+    "For trusted local automation, use the full local descriptor and, if needed, get_mcp_tools() as the MCP-facing mirror.",
+    "Use local transport when the agent or IDE assistant needs the full Python tool registry, including ROOT ingest and non-HEP verticals.",
+    "Call get_toolkit_descriptor(transport=\"local\") first and treat descriptor.tools as the callable contract instead of hard-coding tool names.",
+    "For reproducible reviews, parity checks, and IDE quick-fixes, set execution.deterministic=true explicitly."
+  ],
+  "recipes": [
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/python-api.md",
+        "docs/tutorials/e2e-pipeline.md"
+      ],
+      "id": "local_hep_workspace_inference",
+      "prompt": "Audit this workspace, then fit it and report the POI value and uncertainty, a short asymptotic CLs summary, observed and expected 95% CL upper limit, and a short profile scan summary. If the workspace is pyhf or HS3, also include discovery significance and top nuisance impacts by default. If it is simplified-likelihood, treat audit + fit + asymptotic CLs/upper-limit + scan as the promoted stable subset and use discovery, ranking, or toy CLs only when the user explicitly asks for the compatibility-tested surface. Use deterministic mode.",
+      "summary": "Audit a workspace, fit it, and produce CLs, upper-limit, and scan outputs in-process. For simplified-likelihood inputs, discovery, ranking, and toy CLs remain compatibility-tested rather than promoted stable.",
+      "title": "Local HEP workspace inference",
+      "tools": [
+        "nextstat_workspace_audit",
+        "nextstat_fit",
+        "nextstat_discovery_asymptotic",
+        "nextstat_hypotest",
+        "nextstat_upper_limit",
+        "nextstat_scan",
+        "nextstat_ranking",
+        "nextstat_hypotest_toys"
+      ],
+      "transport": "local"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/demos/physics-assistant.md",
+        "docs/references/python-api.md"
+      ],
+      "id": "local_root_ingest_and_workspace_triage",
+      "prompt": "Read the requested ROOT histograms locally, summarize suspicious bins and under or overflow content, then continue with deterministic workspace validation and fit checks.",
+      "summary": "Read TH1 histograms locally, then use the regular HEP inference tools on the derived workspace.",
+      "title": "Local ROOT ingest and workspace triage",
+      "tools": [
+        "nextstat_read_root_histogram",
+        "nextstat_workspace_audit",
+        "nextstat_fit",
+        "nextstat_scan"
+      ],
+      "transport": "local"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/python-api.md",
+        "docs/tutorials/phase-6-regression.md"
+      ],
+      "id": "local_bayesian_and_glm_analysis",
+      "prompt": "Fit the requested generalized linear model, then if posterior uncertainty is important run Bayesian sampling locally and summarize posterior means plus convergence diagnostics rather than dumping raw chains by default.",
+      "summary": "Use the local Python surface for generalized linear models and Bayesian posterior sampling.",
+      "title": "Local Bayesian and GLM analysis",
+      "tools": [
+        "nextstat_glm_fit",
+        "nextstat_bayesian_sample"
+      ],
+      "transport": "local"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/tutorials/phase-9-survival.md",
+        "docs/tutorials/churn-subscription.md"
+      ],
+      "id": "local_survival_and_risk_analysis",
+      "prompt": "Fit the requested survival or competing-risks model, include Kaplan-Meier or direct log-rank summaries when appropriate, and report synthetic or validated churn datasets, Cox PH churn-risk outputs, bootstrap hazard-ratio uncertainty summaries, retention curves, cohort life-table matrices, trust-gate diagnostics, pairwise churn-comparison outputs, bounded uplift estimates, or survival-native uplift summaries with deterministic settings.",
+      "summary": "Run survival, Kaplan-Meier, direct log-rank, competing-risks, synthetic churn generation, churn-risk modeling, ingest, bootstrap HR, diagnostics, cohort-matrix, and retention/comparison workflows locally through the Python tool registry.",
+      "title": "Local survival and risk analysis",
+      "tools": [
+        "nextstat_survival_fit",
+        "nextstat_kaplan_meier",
+        "nextstat_log_rank_test",
+        "nextstat_competing_risks",
+        "nextstat_churn_generate_data",
+        "nextstat_churn_risk_model",
+        "nextstat_churn_retention",
+        "nextstat_churn_bootstrap_hr",
+        "nextstat_churn_ingest",
+        "nextstat_churn_diagnostics",
+        "nextstat_churn_cohort_matrix",
+        "nextstat_churn_compare",
+        "nextstat_churn_uplift",
+        "nextstat_churn_uplift_survival"
+      ],
+      "transport": "local"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/python-api.md",
+        "docs/benchmarks/ads-variance-reduction-benchmark-2026-03-08.md"
+      ],
+      "id": "local_ads_variance_reduction",
+      "prompt": "Run the requested ads variance-reduction adjustment deterministically, keep covariates strictly pre-treatment, and report adjusted means, treatment effect, variance-reduction diagnostics, selected covariates, provenance validation, and solver metadata.",
+      "summary": "Run deterministic CUPED or CURE adjustment locally through the ads-native Python helpers with provenance-aware leakage validation.",
+      "title": "Local ads variance reduction",
+      "tools": [
+        "nextstat_ads_cuped_adjust",
+        "nextstat_ads_cure_adjust"
+      ],
+      "transport": "local"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/econometrics.md",
+        "docs/tutorials/phase-12-did-event-study.md"
+      ],
+      "id": "local_econometrics_and_time_series",
+      "prompt": "Pick the right econometric tool for the identification strategy, run the model deterministically, and summarize treatment effects, event-study dynamics, volatility behavior, or state-space forecasts as appropriate.",
+      "summary": "Use the local surface for panel, DiD, IV, doubly robust causal inference, event studies, volatility, and Kalman workflows.",
+      "title": "Local econometrics and time-series workflows",
+      "tools": [
+        "nextstat_panel_fe",
+        "nextstat_did",
+        "nextstat_iv_2sls",
+        "nextstat_aipw",
+        "nextstat_event_study",
+        "nextstat_garch_fit",
+        "nextstat_kalman"
+      ],
+      "transport": "local"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/python-api.md"
+      ],
+      "id": "local_meta_insurance_and_reliability",
+      "prompt": "Run the requested meta-analysis, reserving, or fault-tree simulation locally and return the key pooled estimate, reserve view, or rare-event risk metrics with deterministic settings where applicable.",
+      "summary": "Cover meta-analysis, chain-ladder reserving, and reliability or fault-tree Monte Carlo workflows locally.",
+      "title": "Local meta-analysis, reserving, and reliability",
+      "tools": [
+        "nextstat_meta_analysis",
+        "nextstat_chain_ladder",
+        "nextstat_fault_tree_mc",
+        "nextstat_fault_tree_ce_is"
+      ],
+      "transport": "local"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/python-api.md",
+        "docs/tutorials/pharma-pk.md"
+      ],
+      "id": "local_pharma_and_dose_response",
+      "prompt": "Fit the requested population PK or dose-response workflow locally, run the follow-up GOF, NPDE, VPC, simulation, or bioequivalence step when relevant, and summarize the main parameter estimates and diagnostics.",
+      "summary": "Fit PopPK models, run GOF, NPDE, or VPC diagnostics and trial simulations, evaluate bioequivalence, and work with dose-response models locally.",
+      "title": "Local pharma, trial simulation, and dose response",
+      "tools": [
+        "nextstat_pharma_fit",
+        "nextstat_pk_gof",
+        "nextstat_pk_npde",
+        "nextstat_pharma_vpc",
+        "nextstat_trial_simulate",
+        "nextstat_bioequivalence",
+        "nextstat_dose_response"
+      ],
+      "transport": "local"
+    }
+  ],
+  "references": [
+    "docs/references/tool-api.md",
+    "docs/references/server-api.md",
+    "docs/references/python-api.md",
+    "docs/tutorials/e2e-pipeline.md",
+    "docs/demos/physics-assistant.md",
+    "docs/tutorials/phase-6-regression.md",
+    "docs/tutorials/phase-9-survival.md",
+    "docs/tutorials/churn-subscription.md",
+    "docs/benchmarks/ads-variance-reduction-benchmark-2026-03-08.md",
+    "docs/references/econometrics.md",
+    "docs/tutorials/phase-12-did-event-study.md",
+    "docs/tutorials/pharma-pk.md"
+  ],
+  "schema_version": "nextstat.agent_bootstrap_pack.v1",
+  "snippets": {
+    "bootstrap": "descriptor = get_toolkit_descriptor(transport=\"local\")\\nmcp_tools = get_mcp_tools()\\nmanual_loop_contract = descriptor[\"tools\"]",
+    "execution_loop": "If the local model lacks reliable function calling, ask it to choose a tool name plus JSON arguments, validate that pair against descriptor.tools, then execute with nextstat.tools.execute_tool(..., transport=\"local\")."
+  },
+  "summary": "Bootstrap pack for local models that may use MCP or a manual validated tool loop instead of first-class function calling.",
+  "title": "Ollama / local open-weight models (local)",
+  "transport": "local"
+}

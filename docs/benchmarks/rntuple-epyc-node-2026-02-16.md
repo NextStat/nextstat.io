@@ -53,7 +53,7 @@ Relative on this harness:
 To verify large mixed-layout decode support end-to-end, release perf-gate was run with case override:
 
 ```bash
-NS_ROOT_RNTUPLE_PERF_CASES=/Users/andresvlc/WebDev/nextstat.io/tests/fixtures/rntuple_bench_large.root \
+NS_ROOT_RNTUPLE_PERF_CASES=/tests/fixtures/rntuple_bench_large.root \
 NS_ROOT_RNTUPLE_PERF_ITERS=5 \
 NS_ROOT_RNTUPLE_PERF_MAX_AVG_MS=100000 \
 NS_ROOT_RNTUPLE_PERF_MIN_SUITES_PER_SEC=0 \

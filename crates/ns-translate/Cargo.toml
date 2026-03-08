@@ -26,6 +26,7 @@ rayon.workspace = true
 statrs.workspace = true
 json-patch.workspace = true
 sha2.workspace = true
+nalgebra.workspace = true
 arrow = { workspace = true, optional = true }
 # Note: avoid enabling Parquet's `zstd` feature by default.
 # When enabled, this workspace patches `zstd` to a pure-Rust shim backed by `ns-zstd`,

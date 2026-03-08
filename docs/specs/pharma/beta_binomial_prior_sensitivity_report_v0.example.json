@@ -1,0 +1,112 @@
+{
+  "design_id": "binary_superiority_demo",
+  "look": {
+    "id": "interim",
+    "n_control": 20,
+    "n_treatment": 20
+  },
+  "n_replicates": 32,
+  "observed": {
+    "control_successes": 8,
+    "look_id": "interim",
+    "treatment_successes": 9
+  },
+  "schema_version": "nextstat_beta_binomial_prior_sensitivity_report_v0",
+  "seed": 123,
+  "stability": "research-grade",
+  "variants": [
+    {
+      "control_prior": {
+        "alpha": 1.0,
+        "beta": 1.0
+      },
+      "eventual_futility_probability": 0.0625,
+      "eventual_no_decision_probability": 0.8125,
+      "eventual_success_probability": 0.125,
+      "eventual_success_probability_delta_vs_baseline": 0.0,
+      "expected_remaining_sample_size": 40.0,
+      "expected_total_sample_size": 80.0,
+      "expected_total_sample_size_delta_vs_baseline": 0.0,
+      "future_look_summaries": [
+        {
+          "conditional_futility_probability": 0.0625,
+          "conditional_stop_probability": 0.1875,
+          "conditional_success_probability": 0.125,
+          "look_id": "final"
+        }
+      ],
+      "is_baseline": true,
+      "posterior_mean": 0.045454545454545414,
+      "posterior_probability_delta_vs_baseline": 0.0,
+      "posterior_probability_gt_margin": 0.6221311262168687,
+      "recommended_action": "continue",
+      "treatment_prior": {
+        "alpha": 1.0,
+        "beta": 1.0
+      },
+      "variant_id": "baseline"
+    },
+    {
+      "control_prior": {
+        "alpha": 1.0,
+        "beta": 1.0
+      },
+      "eventual_futility_probability": 0.28125,
+      "eventual_no_decision_probability": 0.71875,
+      "eventual_success_probability": 0.0,
+      "eventual_success_probability_delta_vs_baseline": -0.125,
+      "expected_remaining_sample_size": 40.0,
+      "expected_total_sample_size": 80.0,
+      "expected_total_sample_size_delta_vs_baseline": 0.0,
+      "future_look_summaries": [
+        {
+          "conditional_futility_probability": 0.28125,
+          "conditional_stop_probability": 0.28125,
+          "conditional_success_probability": 0.0,
+          "look_id": "final"
+        }
+      ],
+      "is_baseline": false,
+      "posterior_mean": -0.06426332288401254,
+      "posterior_probability_delta_vs_baseline": -0.30386295637778804,
+      "posterior_probability_gt_margin": 0.3182681698390807,
+      "recommended_action": "continue",
+      "treatment_prior": {
+        "alpha": 1.0,
+        "beta": 8.0
+      },
+      "variant_id": "skeptical"
+    },
+    {
+      "control_prior": {
+        "alpha": 1.0,
+        "beta": 1.0
+      },
+      "eventual_futility_probability": 0.0,
+      "eventual_no_decision_probability": 0.46875,
+      "eventual_success_probability": 0.53125,
+      "eventual_success_probability_delta_vs_baseline": 0.40625,
+      "expected_remaining_sample_size": 40.0,
+      "expected_total_sample_size": 80.0,
+      "expected_total_sample_size_delta_vs_baseline": 0.0,
+      "future_look_summaries": [
+        {
+          "conditional_futility_probability": 0.0,
+          "conditional_stop_probability": 0.53125,
+          "conditional_success_probability": 0.53125,
+          "look_id": "final"
+        }
+      ],
+      "is_baseline": false,
+      "posterior_mean": 0.17711598746081497,
+      "posterior_probability_delta_vs_baseline": 0.277540332930438,
+      "posterior_probability_gt_margin": 0.8996714591473067,
+      "recommended_action": "continue",
+      "treatment_prior": {
+        "alpha": 8.0,
+        "beta": 1.0
+      },
+      "variant_id": "enthusiastic"
+    }
+  ]
+}

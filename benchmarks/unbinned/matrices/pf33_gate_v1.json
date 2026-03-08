@@ -3,7 +3,7 @@
   "title": "PF3.3 unbinned gate benchmark matrix (CPU vs CUDA)",
   "notes": [
     "Gate-oriented matrix for choosing CPU vs CUDA execution policy.",
-    "Designed for GEX44-like single-GPU benches; multi-GPU can be enabled via PF31_GPU_DEVICE_SETS.",
+    "Designed for RTX4000-node-like single-GPU benches; multi-GPU can be enabled via PF31_GPU_DEVICE_SETS.",
     "Use PF31_DRY_RUN=1 first to validate command expansion."
   ],
   "cases": [

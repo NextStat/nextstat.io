@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/pharma/beta_binomial_prior_sensitivity_campaign_v0.schema.json",
+  "title": "Beta-Binomial Prior Sensitivity Campaign v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "variants"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat_beta_binomial_prior_sensitivity_campaign_v0"
+    },
+    "variants": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/variant"
+      }
+    }
+  },
+  "$defs": {
+    "prior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alpha", "beta"],
+      "properties": {
+        "alpha": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        },
+        "beta": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        }
+      }
+    },
+    "variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "control_prior", "treatment_prior"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "control_prior": {
+          "$ref": "#/$defs/prior"
+        },
+        "treatment_prior": {
+          "$ref": "#/$defs/prior"
+        }
+      }
+    }
+  }
+}

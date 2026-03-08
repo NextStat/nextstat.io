@@ -869,6 +869,23 @@ impl MaximumLikelihoodEstimator {
     /// # Returns
     /// `RankingEntry` per constrained NP, sorted by |impact| descending.
     pub fn ranking(&self, model: &HistFactoryModel) -> Result<Vec<RankingEntry>> {
+        // Nominal fit WITH Hessian (need uncertainties for constraint = σ̂/σ),
+        // then reuse the same fixed-parameter refit logic as `ranking_with_fit()`.
+        let nominal_result = self.fit_histfactory(model)?;
+        self.ranking_with_fit(model, &nominal_result)
+    }
+
+    /// Ranking using a pre-computed nominal fit result.
+    ///
+    /// Identical to [`ranking()`] but skips the expensive nominal fit — the caller
+    /// provides `parameters` and `uncertainties` obtained from a previous
+    /// `nextstat fit` invocation.  This makes the command orders of magnitude
+    /// faster on large workspaces.
+    pub fn ranking_with_fit(
+        &self,
+        model: &HistFactoryModel,
+        nominal_result: &ns_core::FitResult,
+    ) -> Result<Vec<RankingEntry>> {
         use rayon::prelude::*;
         use std::collections::HashSet;
 
@@ -876,17 +893,52 @@ impl MaximumLikelihoodEstimator {
             .poi_index()
             .ok_or_else(|| ns_core::Error::Validation("No POI defined".to_string()))?;
 
-        // Nominal fit WITH Hessian (need uncertainties for constraint = σ̂/σ).
-        let nominal_result = self.fit_histfactory(model)?;
         let mu_hat = nominal_result.parameters[poi_idx];
         let base_bounds = model.parameter_bounds();
 
-        // Ranking applies to nuisance parameters constrained by either:
-        // - explicit Gaussian constraints (constraint_width.is_some()), OR
-        // - auxiliary Poisson constraints (Barlow–Beeston ShapeSys).
-        //
-        // We intentionally *exclude* unconstrained normfactors/shapefactors: they have
-        // neither a Gaussian width nor an aux-poisson sigma.
+        fn conditioned_warm_start(
+            nominal: &ns_core::FitResult,
+            bounds: &[(f64, f64)],
+            fixed_idx: usize,
+            fixed_value: f64,
+        ) -> Vec<f64> {
+            let mut warm = nominal.parameters.clone();
+            warm[fixed_idx] = fixed_value;
+
+            let Some(cov) = nominal.covariance.as_deref() else { return warm };
+            let n = nominal.parameters.len();
+            if cov.len() != n * n {
+                return warm;
+            }
+
+            let c_ii = cov[fixed_idx * n + fixed_idx];
+            if !(c_ii.is_finite() && c_ii > 0.0) {
+                return warm;
+            }
+
+            let delta = fixed_value - nominal.parameters[fixed_idx];
+            if !delta.is_finite() {
+                return warm;
+            }
+
+            for j in 0..n {
+                if j == fixed_idx {
+                    continue;
+                }
+                let c_ji = cov[j * n + fixed_idx];
+                if !c_ji.is_finite() {
+                    continue;
+                }
+                // Quadratic-approximation optimum:
+                // θ*_j = θ̂_j + C_{j i} / C_{i i} · (θ_fixed - θ̂_i)
+                let v = nominal.parameters[j] + (c_ji / c_ii) * delta;
+                let (lo, hi) = bounds[j];
+                warm[j] = v.clamp(lo, hi);
+            }
+
+            warm
+        }
+
         let poisson_sigmas = model.poisson_constraint_sigmas();
         let mut np_set: HashSet<usize> = model
             .parameters()
@@ -903,10 +955,13 @@ impl MaximumLikelihoodEstimator {
         let mut np_indices: Vec<usize> = np_set.into_iter().collect();
         np_indices.sort_unstable();
 
+        let n_nps = np_indices.len();
+        log::info!("Ranking: {n_nps} nuisance parameters, 2×{n_nps} refits");
+
         let tape_capacity = model.n_params() * 20;
 
-        // Per-NP refits: NLL-only (no Hessian), warm-start, bounds-clamp.
-        // map_init allocates one Tape + NllScratch per Rayon worker thread.
+        let completed = std::sync::atomic::AtomicUsize::new(0);
+
         let entries: Vec<Result<RankingEntry>> = np_indices
             .par_iter()
             .map_init(
@@ -919,13 +974,12 @@ impl MaximumLikelihoodEstimator {
                         .or_else(|| poisson_sigmas.get(&np_idx).copied())
                         .unwrap_or(0.1);
 
-                    // --- +1σ: fix NP via bounds-clamping (no model clone) ---
+                    // --- +1σ ---
                     let (b_lo, b_hi) = base_bounds[np_idx];
                     let val_up = (center + sigma).min(b_hi);
                     let mut bounds_up = base_bounds.clone();
                     bounds_up[np_idx] = (val_up, val_up);
-                    let mut warm = nominal_result.parameters.clone();
-                    warm[np_idx] = val_up;
+                    let warm = conditioned_warm_start(nominal_result, &base_bounds, np_idx, val_up);
 
                     let result_up = self.fit_minimum_histfactory_from_with_bounds_reuse(
                         model, &warm, &bounds_up, tape, scratch,
@@ -936,8 +990,8 @@ impl MaximumLikelihoodEstimator {
                     let val_down = (center - sigma).max(b_lo);
                     let mut bounds_down = base_bounds.clone();
                     bounds_down[np_idx] = (val_down, val_down);
-                    warm = nominal_result.parameters.clone();
-                    warm[np_idx] = val_down;
+                    let warm =
+                        conditioned_warm_start(nominal_result, &base_bounds, np_idx, val_down);
 
                     let result_down = self.fit_minimum_histfactory_from_with_bounds_reuse(
                         model,
@@ -948,12 +1002,14 @@ impl MaximumLikelihoodEstimator {
                     )?;
                     let mu_down = result_down.parameters[poi_idx];
 
-                    // Pull: (θ̂ - θ₀) / σ
                     let theta_hat = nominal_result.parameters[np_idx];
                     let pull = (theta_hat - center) / sigma;
-
-                    // Constraint: σ̂ / σ (should be ≤ 1)
                     let constraint = nominal_result.uncertainties[np_idx] / sigma;
+
+                    let done = completed.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    if done.is_multiple_of(10) || done == n_nps {
+                        log::info!("Ranking: {done}/{n_nps} NPs completed");
+                    }
 
                     Ok(RankingEntry {
                         name: param.name.clone(),
@@ -966,7 +1022,6 @@ impl MaximumLikelihoodEstimator {
             )
             .collect::<Vec<_>>();
 
-        // Collect results; warn about failures instead of silently dropping them.
         let mut ranking: Vec<RankingEntry> = Vec::with_capacity(entries.len());
         let mut n_failed = 0u32;
         for entry in entries {
@@ -990,7 +1045,6 @@ impl MaximumLikelihoodEstimator {
             impact_b
                 .partial_cmp(&impact_a)
                 .unwrap_or(std::cmp::Ordering::Equal)
-                // Tie-break for deterministic ordering (important for ML artifacts/logging).
                 .then_with(|| a.name.cmp(&b.name))
         });
 

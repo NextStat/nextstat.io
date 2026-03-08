@@ -1,0 +1,589 @@
+{
+  "artifacts": {
+    "baseline": {
+      "build_profile": "release",
+      "case_ids": [
+        "m15_assessment_table",
+        "m15_map",
+        "m15_mar",
+        "m15_bundle",
+        "validation_pack_base_json_only",
+        "validation_pack_m15_json_only"
+      ],
+      "deterministic": true,
+      "host_policy": "nextstat-bench",
+      "hostname": "nextstat-bench",
+      "path": "benchmarks/artifacts/m15_reporting_baselines/nextstat-bench/accepted.json",
+      "runs": 5,
+      "schema_version": "nextstat.m15_reporting_benchmark_result.v1",
+      "smoke": false,
+      "suite": "m15_reporting",
+      "version": "nextstat 0.9.9",
+      "warmups": 1
+    },
+    "current": {
+      "build_profile": "release",
+      "case_ids": [
+        "m15_assessment_table",
+        "m15_map",
+        "m15_mar",
+        "m15_bundle",
+        "validation_pack_base_json_only",
+        "validation_pack_m15_json_only"
+      ],
+      "deterministic": true,
+      "host_policy": "nextstat-bench",
+      "hostname": "nextstat-bench",
+      "path": "benchmarks/artifacts/m15_reporting_baselines/nextstat-bench/accepted.json",
+      "runs": 5,
+      "schema_version": "nextstat.m15_reporting_benchmark_result.v1",
+      "smoke": false,
+      "suite": "m15_reporting",
+      "version": "nextstat 0.9.9",
+      "warmups": 1
+    }
+  },
+  "baseline_path": "benchmarks/artifacts/m15_reporting_baselines/nextstat-bench/accepted.json",
+  "cases": [
+    {
+      "baseline": {
+        "max_s": 0.010288,
+        "median_s": 0.008265,
+        "min_s": 0.007844,
+        "runs": 5,
+        "status": "ok",
+        "validated_schema_versions": [
+          "m15_assessment_table_v1"
+        ],
+        "warmups": 1
+      },
+      "category": "cli",
+      "current": {
+        "max_s": 0.010288,
+        "median_s": 0.008265,
+        "min_s": 0.007844,
+        "runs": 5,
+        "status": "ok",
+        "validated_schema_versions": [
+          "m15_assessment_table_v1"
+        ],
+        "warmups": 1
+      },
+      "id": "m15_assessment_table",
+      "identity": {
+        "case_status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "validated_artifact_count": {
+          "baseline": 1,
+          "current": 1,
+          "matches": true
+        },
+        "validated_schema_versions": {
+          "baseline": [
+            "m15_assessment_table_v1"
+          ],
+          "current": [
+            "m15_assessment_table_v1"
+          ],
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.008265,
+          "current_value": 0.008265,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.005,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "ok": true,
+      "reasons": {
+        "errors": [],
+        "warnings": []
+      },
+      "requires_review": false,
+      "status": "passed"
+    },
+    {
+      "baseline": {
+        "max_s": 0.010864,
+        "median_s": 0.008352,
+        "min_s": 0.007707,
+        "runs": 5,
+        "status": "ok",
+        "validated_schema_versions": [
+          "m15_map_v1"
+        ],
+        "warmups": 1
+      },
+      "category": "cli",
+      "current": {
+        "max_s": 0.010864,
+        "median_s": 0.008352,
+        "min_s": 0.007707,
+        "runs": 5,
+        "status": "ok",
+        "validated_schema_versions": [
+          "m15_map_v1"
+        ],
+        "warmups": 1
+      },
+      "id": "m15_map",
+      "identity": {
+        "case_status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "validated_artifact_count": {
+          "baseline": 1,
+          "current": 1,
+          "matches": true
+        },
+        "validated_schema_versions": {
+          "baseline": [
+            "m15_map_v1"
+          ],
+          "current": [
+            "m15_map_v1"
+          ],
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.008352,
+          "current_value": 0.008352,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.005,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "ok": true,
+      "reasons": {
+        "errors": [],
+        "warnings": []
+      },
+      "requires_review": false,
+      "status": "passed"
+    },
+    {
+      "baseline": {
+        "max_s": 0.012531,
+        "median_s": 0.009504,
+        "min_s": 0.007548,
+        "runs": 5,
+        "status": "ok",
+        "validated_schema_versions": [
+          "m15_mar_v1"
+        ],
+        "warmups": 1
+      },
+      "category": "cli",
+      "current": {
+        "max_s": 0.012531,
+        "median_s": 0.009504,
+        "min_s": 0.007548,
+        "runs": 5,
+        "status": "ok",
+        "validated_schema_versions": [
+          "m15_mar_v1"
+        ],
+        "warmups": 1
+      },
+      "id": "m15_mar",
+      "identity": {
+        "case_status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "validated_artifact_count": {
+          "baseline": 1,
+          "current": 1,
+          "matches": true
+        },
+        "validated_schema_versions": {
+          "baseline": [
+            "m15_mar_v1"
+          ],
+          "current": [
+            "m15_mar_v1"
+          ],
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.009504,
+          "current_value": 0.009504,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.005,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "ok": true,
+      "reasons": {
+        "errors": [],
+        "warnings": []
+      },
+      "requires_review": false,
+      "status": "passed"
+    },
+    {
+      "baseline": {
+        "max_s": 0.010839,
+        "median_s": 0.009579,
+        "min_s": 0.008819,
+        "runs": 5,
+        "status": "ok",
+        "validated_schema_versions": [
+          "m15_bundle_manifest_v1"
+        ],
+        "warmups": 1
+      },
+      "category": "cli",
+      "current": {
+        "max_s": 0.010839,
+        "median_s": 0.009579,
+        "min_s": 0.008819,
+        "runs": 5,
+        "status": "ok",
+        "validated_schema_versions": [
+          "m15_bundle_manifest_v1"
+        ],
+        "warmups": 1
+      },
+      "id": "m15_bundle",
+      "identity": {
+        "case_status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "validated_artifact_count": {
+          "baseline": 1,
+          "current": 1,
+          "matches": true
+        },
+        "validated_schema_versions": {
+          "baseline": [
+            "m15_bundle_manifest_v1"
+          ],
+          "current": [
+            "m15_bundle_manifest_v1"
+          ],
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.009579,
+          "current_value": 0.009579,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.005,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "ok": true,
+      "reasons": {
+        "errors": [],
+        "warnings": []
+      },
+      "requires_review": false,
+      "status": "passed"
+    },
+    {
+      "baseline": {
+        "max_s": 0.118657,
+        "median_s": 0.113412,
+        "min_s": 0.112732,
+        "runs": 5,
+        "status": "ok",
+        "validated_schema_versions": [
+          "validation_pack_manifest_v1"
+        ],
+        "warmups": 1
+      },
+      "category": "validation_pack",
+      "current": {
+        "max_s": 0.118657,
+        "median_s": 0.113412,
+        "min_s": 0.112732,
+        "runs": 5,
+        "status": "ok",
+        "validated_schema_versions": [
+          "validation_pack_manifest_v1"
+        ],
+        "warmups": 1
+      },
+      "id": "validation_pack_base_json_only",
+      "identity": {
+        "case_status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "validated_artifact_count": {
+          "baseline": 1,
+          "current": 1,
+          "matches": true
+        },
+        "validated_schema_versions": {
+          "baseline": [
+            "validation_pack_manifest_v1"
+          ],
+          "current": [
+            "validation_pack_manifest_v1"
+          ],
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.113412,
+          "current_value": 0.113412,
+          "fail_ratio": 1.4,
+          "min_baseline_value": 0.05,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.2,
+          "status": "passed"
+        }
+      ],
+      "ok": true,
+      "reasons": {
+        "errors": [],
+        "warnings": []
+      },
+      "requires_review": false,
+      "status": "passed"
+    },
+    {
+      "baseline": {
+        "max_s": 0.176223,
+        "median_s": 0.171531,
+        "min_s": 0.169266,
+        "runs": 5,
+        "status": "ok",
+        "validated_schema_versions": [
+          "validation_pack_manifest_v1",
+          "m15_bundle_manifest_v1"
+        ],
+        "warmups": 1
+      },
+      "category": "validation_pack",
+      "current": {
+        "max_s": 0.176223,
+        "median_s": 0.171531,
+        "min_s": 0.169266,
+        "runs": 5,
+        "status": "ok",
+        "validated_schema_versions": [
+          "validation_pack_manifest_v1",
+          "m15_bundle_manifest_v1"
+        ],
+        "warmups": 1
+      },
+      "id": "validation_pack_m15_json_only",
+      "identity": {
+        "case_status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "validated_artifact_count": {
+          "baseline": 2,
+          "current": 2,
+          "matches": true
+        },
+        "validated_schema_versions": {
+          "baseline": [
+            "validation_pack_manifest_v1",
+            "m15_bundle_manifest_v1"
+          ],
+          "current": [
+            "validation_pack_manifest_v1",
+            "m15_bundle_manifest_v1"
+          ],
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.171531,
+          "current_value": 0.171531,
+          "fail_ratio": 1.4,
+          "min_baseline_value": 0.05,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.2,
+          "status": "passed"
+        }
+      ],
+      "ok": true,
+      "reasons": {
+        "errors": [],
+        "warnings": []
+      },
+      "requires_review": false,
+      "status": "passed"
+    }
+  ],
+  "current_path": "benchmarks/artifacts/m15_reporting_baselines/nextstat-bench/accepted.json",
+  "derived": {
+    "validation_pack_m15_over_base_median_ratio": {
+      "baseline_value": 1.512459,
+      "current_value": 1.512459,
+      "fail_ratio": 1.2,
+      "min_baseline_value": 0.5,
+      "name": "validation_pack_m15_over_base_median_ratio",
+      "ratio": 1.0,
+      "reasons": [],
+      "review_ratio": 1.1,
+      "status": "passed"
+    }
+  },
+  "environment_checks": {
+    "case_set": {
+      "baseline": [
+        "m15_assessment_table",
+        "m15_map",
+        "m15_mar",
+        "m15_bundle",
+        "validation_pack_base_json_only",
+        "validation_pack_m15_json_only"
+      ],
+      "current": [
+        "m15_assessment_table",
+        "m15_map",
+        "m15_mar",
+        "m15_bundle",
+        "validation_pack_base_json_only",
+        "validation_pack_m15_json_only"
+      ],
+      "matches": true,
+      "required": [
+        "m15_assessment_table",
+        "m15_map",
+        "m15_mar",
+        "m15_bundle",
+        "validation_pack_base_json_only",
+        "validation_pack_m15_json_only"
+      ]
+    },
+    "deterministic": {
+      "baseline": true,
+      "current": true,
+      "matches": true,
+      "required": true
+    },
+    "host_policy": {
+      "baseline": "nextstat-bench",
+      "current": "nextstat-bench",
+      "matches": true,
+      "required": "nextstat-bench"
+    },
+    "hostname": {
+      "baseline": "nextstat-bench",
+      "current": "nextstat-bench",
+      "matches": true,
+      "required": "nextstat-bench"
+    },
+    "non_smoke": {
+      "baseline": true,
+      "current": true,
+      "matches": true,
+      "required": true
+    },
+    "release_build": {
+      "baseline": "release",
+      "current": "release",
+      "matches": true,
+      "required": "release"
+    },
+    "runs": {
+      "baseline": 5,
+      "current": 5,
+      "matches": true,
+      "required": 5
+    },
+    "warmups": {
+      "baseline": 1,
+      "current": 1,
+      "matches": true,
+      "required": 1
+    }
+  },
+  "ok": true,
+  "policy": {
+    "case_ids": [
+      "m15_assessment_table",
+      "m15_map",
+      "m15_mar",
+      "m15_bundle",
+      "validation_pack_base_json_only",
+      "validation_pack_m15_json_only"
+    ],
+    "cli_metric": {
+      "fail_ratio": 2.0,
+      "min_baseline_value": 0.005,
+      "review_ratio": 1.5
+    },
+    "derived_ratio_metric": {
+      "fail_ratio": 1.2,
+      "min_baseline_value": 0.5,
+      "review_ratio": 1.1
+    },
+    "require_non_smoke": true,
+    "required_build_profile": "release",
+    "required_host_policy": "nextstat-bench",
+    "required_hostname": "nextstat-bench",
+    "required_runs": 5,
+    "required_warmups": 1,
+    "schema_version": "nextstat.m15_reporting_benchmark_compare_policy.v1",
+    "validation_pack_metric": {
+      "fail_ratio": 1.4,
+      "min_baseline_value": 0.05,
+      "review_ratio": 1.2
+    }
+  },
+  "requires_review": false,
+  "schema_version": "nextstat.m15_reporting_benchmark_compare_report.v1",
+  "status": "passed",
+  "suite": "m15_reporting",
+  "summary": {
+    "failed_cases": 0,
+    "failed_metrics": 0,
+    "metric_count": 7,
+    "passed_cases": 6,
+    "passed_metrics": 7,
+    "review_cases": 0,
+    "review_metrics": 0,
+    "skipped_metrics": 0,
+    "top_level_errors": [],
+    "top_level_warnings": []
+  }
+}

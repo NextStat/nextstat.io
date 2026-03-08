@@ -1,0 +1,196 @@
+{
+  "alignment_documents": {
+    "acceptance_doc": "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md",
+    "artifact_reference_doc": "docs/references/simplified-likelihood-artifacts.md",
+    "boundary_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-source-semantics-boundary-2026-03-09.md",
+    "cli_doc": "docs/references/cli.md",
+    "decision_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-promotion-decision-2026-03-09.md",
+    "example_path": "docs/specs/benchmarks/simplified_likelihood_exporter_stable_promotion_decision_v0.example.json",
+    "policy_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-evidence-policy-2026-03-09.md",
+    "python_api_doc": "docs/references/python-api.md",
+    "release_notes_doc": "docs/benchmarks/simplified-likelihood-release-notes-2026-03-08.md",
+    "release_pr_checklist_doc": "docs/benchmarks/simplified-likelihood-exporter-release-pr-checklist-2026-03-09.md",
+    "release_workflow_path": ".github/workflows/release.yml",
+    "runtime_gate_doc": "docs/benchmarks/simplified-likelihood-exporter-runtime-gate.md",
+    "rust_api_doc": "docs/references/rust-api.md",
+    "schema_path": "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_promotion_decision_v0.schema.json",
+    "server_api_doc": "docs/references/server-api.md",
+    "standalone_workflow_path": ".github/workflows/simplified-likelihood-exporter-surface.yml",
+    "support_matrix_doc": "docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08.md"
+  },
+  "automatic_stable_promotion": false,
+  "bundle_dir": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted",
+  "decision": {
+    "benchmark_host": "nextstat-bench",
+    "decision_status": "accepted",
+    "maintainer_decision": "promote the narrow exporter subset to stable with explicit release-facing governance",
+    "open_blocker_ids_observed": [],
+    "promoted_command_names": [
+      "simplify workspace"
+    ],
+    "promoted_schema_names": [
+      "simplified_likelihood_derive_v0",
+      "simplified_likelihood_export_report_v0",
+      "simplified_likelihood_exporter_stable_evidence_policy_v0",
+      "simplified_likelihood_exporter_stable_evidence_freshness_report_v0",
+      "simplified_likelihood_exporter_stable_promotion_decision_v0"
+    ],
+    "research_grade_exceptions": [
+      {
+        "detail": "constraint_covariance_source=aligned_fit_covariance remains available as a compatibility fallback, but it is outside the future stable exporter claim",
+        "id": "aligned_fit_covariance",
+        "status": "research-grade-only"
+      },
+      {
+        "detail": "the future stable exporter claim does not promise non-Gaussian or unconstrained source nuisances on the source_model_constraints path",
+        "id": "non_gaussian_or_unconstrained_source_nuisances",
+        "status": "explicit_reject_or_research-grade-only"
+      },
+      {
+        "detail": "partial per-channel bin selections stay rejected explicitly instead of silently dropping source-model semantics",
+        "id": "partial_per_channel_bin_selection",
+        "status": "explicit_reject"
+      },
+      {
+        "detail": "multi-POI reduced export remains outside the future stable exporter claim",
+        "id": "multi_poi_export",
+        "status": "explicit_reject_or_out_of_scope"
+      },
+      {
+        "detail": "derived reduced artifacts do not preserve original nuisance identities through reduction",
+        "id": "source_level_nuisance_identity_preservation",
+        "status": "not_promised"
+      },
+      {
+        "detail": "ranking and impact outputs on derived reduced artifacts remain reduced-coordinate diagnostics rather than source-level systematic breakdowns",
+        "id": "source_level_ranking_breakdown",
+        "status": "not_promised"
+      }
+    ],
+    "stable_scope": {
+      "canonical_claims": [
+        "future stable exporter claim remains pyhf-only on the source side",
+        "future stable exporter claim remains single-POI only",
+        "future stable exporter claim only promises constraint_covariance_source=source_model_constraints",
+        "future stable exporter claim only covers Gaussian-constrained source nuisances on that path",
+        "derived artifacts remain reduced-coordinate models rather than source-level nuisance replicas",
+        "ranking and impact views on derived artifacts are not a source-level breakdown"
+      ],
+      "poi_scope": "single_poi",
+      "ranking_source_level_breakdown_supported": false,
+      "required_output_source_format": "derived_from_workspace",
+      "source_level_nuisance_identity_preserved": false,
+      "source_workspace_formats": [
+        "pyhf"
+      ],
+      "supported_constraint_covariance_source": "source_model_constraints",
+      "supported_source_constraint_families": [
+        "gaussian"
+      ]
+    }
+  },
+  "decision_date": "2026-03-09",
+  "generated_at_utc": "1970-01-01T00:00:00Z",
+  "release_consumption": {
+    "release_artifact_filenames": [
+      "apex2_simplified_likelihood_report.json",
+      "export_benchmark_snapshot_report.json",
+      "snapshot_index.json",
+      "promotion_evidence.json",
+      "promotion_evidence_check.json",
+      "promotion_bundle_promotion_report.json",
+      "stable_review_assessment.json",
+      "stable_evidence_policy.json",
+      "stable_evidence_freshness_report.json",
+      "stable_source_semantics_boundary.json",
+      "stable_candidate_blocker_matrix.json",
+      "stable_candidate_review_packet.json",
+      "stable_promotion_decision.json"
+    ],
+    "release_artifact_name": "simplified-likelihood-exporter-surface-report",
+    "release_assets_wired": true,
+    "release_job_name": "Simplified Likelihood Exporter Surface Gate",
+    "release_pr_checklist_path": "docs/benchmarks/simplified-likelihood-exporter-release-pr-checklist-2026-03-09.md",
+    "release_pr_checklist_verified": true,
+    "release_workflow_path": ".github/workflows/release.yml",
+    "standalone_upload_present": true,
+    "standalone_workflow_path": ".github/workflows/simplified-likelihood-exporter-surface.yml"
+  },
+  "schema_version": "nextstat_simplified_likelihood_exporter_stable_promotion_decision_v0",
+  "source_artifacts": {
+    "benchmark_artifact": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
+      "schema_version": "nextstat_apex2_simplified_likelihood_report_v0",
+      "sha256": "a8bf1a8ec09c81edd1fbd060f7d0575ffe81681447f1ebed0647c620a89d8169",
+      "status": null
+    },
+    "promotion_evidence": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_bundle_v0",
+      "sha256": "bbd6905a34b6ab8958cde51aca4fe0e8c7ac53d57b853045e565c23f230c0756",
+      "status": null
+    },
+    "promotion_evidence_check": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence_check.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_check_v0",
+      "sha256": "c4302a3e58b4f7e729997533bb113dd56cc187303589f864298b6047de5ceeac",
+      "status": "passed"
+    },
+    "promotion_report": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_bundle_promotion_report.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_promotion_bundle_promotion_report_v0",
+      "sha256": "b4be70f3baa67858db0c06284cbe748f5369a06f236cdff43994a183b935d722",
+      "status": "promoted"
+    },
+    "stable_candidate_blocker_matrix": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_candidate_blocker_matrix.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0",
+      "sha256": "d48c9e0f6828c8633ffa8c92e478ca0661ce0b9202218258d4d03a209ae87a3f",
+      "status": null
+    },
+    "stable_candidate_review_packet": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_candidate_review_packet.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_stable_candidate_review_packet_v0",
+      "sha256": "b4d9fe6b1164a10b3712749c266df0b73750cdeb85f2c8df0ea56de935f1245e",
+      "status": null
+    },
+    "stable_review_assessment": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_review_assessment.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_stable_review_assessment_v0",
+      "sha256": "47619d0e1ca9ba2dd9230c09a71a07896a0e1d951bbb82ccf20b9092905e5cff",
+      "status": null
+    },
+    "stable_source_semantics_boundary": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_source_semantics_boundary.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_stable_source_semantics_boundary_v0",
+      "sha256": "294d8a6a08148eedf582ddd9a6f0c54c29869f4f428347fea016fb4b5ddedeaa",
+      "status": "published"
+    }
+  },
+  "status": "accepted",
+  "summary": {
+    "automatic_stable_promotion": false,
+    "benchmark_host": "nextstat-bench",
+    "next_action": "preserve the promoted narrow stable exporter subset through release gating and accepted evidence refreshes",
+    "open_blocker_count_observed": 0,
+    "release_assets_wired": true,
+    "stable_scope_promoted": true,
+    "status": "accepted"
+  },
+  "support_class": "stable",
+  "surface": "simplified_likelihood_exporter",
+  "validity": {
+    "failures": [],
+    "passed": true,
+    "status": "passed",
+    "warnings": []
+  }
+}

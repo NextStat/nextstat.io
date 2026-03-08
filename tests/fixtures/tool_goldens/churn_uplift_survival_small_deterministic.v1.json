@@ -1,0 +1,70 @@
+{
+  "case_name": "churn_uplift_survival_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_churn_uplift_survival": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_churn_uplift_survival"
+      },
+      "ok": true,
+      "result": {
+        "arms": [
+          {
+            "arm": "treated",
+            "median": 60.0,
+            "n": 4,
+            "n_events": 3,
+            "rmst": 57.5
+          },
+          {
+            "arm": "control",
+            "median": null,
+            "n": 4,
+            "n_events": 1,
+            "rmst": 52.5
+          }
+        ],
+        "delta_rmst": 5.0,
+        "horizon": 60.0,
+        "ipw_applied": true,
+        "overlap": {
+          "ess_control": 2.4911350027721753,
+          "ess_treated": 3.451718554118759,
+          "max_propensity": 0.941006420122977,
+          "mean_propensity": 0.4999999976860565,
+          "min_propensity": 0.06623683241576055,
+          "n_after_trim": 8,
+          "n_total": 8,
+          "n_trimmed": 0
+        },
+        "rmst_control": 52.5,
+        "rmst_treated": 57.5,
+        "survival_diffs": [
+          {
+            "delta_survival": 0.25,
+            "horizon": 30.0,
+            "survival_control": 0.75,
+            "survival_treated": 1.0
+          },
+          {
+            "delta_survival": -0.25,
+            "horizon": 60.0,
+            "survival_control": 0.75,
+            "survival_treated": 0.5
+          },
+          {
+            "delta_survival": -0.75,
+            "horizon": 90.0,
+            "survival_control": 0.75,
+            "survival_treated": 0.0
+          }
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

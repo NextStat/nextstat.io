@@ -9,8 +9,11 @@ Backends:
 Cases:
 - `std_normal_10d` — N(0, I_10)
 - `neal_funnel_2d`  — Neal's funnel (y~N(0,3), x|y~N(0,e^y))
+- `neal_funnel_10d_centered` — centered 10D funnel pathological control
+- `neal_funnel_ncp_10d` — non-centered 10D funnel supported stress case
 - `eight_schools`   — Non-centered 8-schools hierarchical
 - `glm_logistic`    — Synthetic logistic regression (n=200, p=5)
+- `hier_random_intercept_non_centered` — hierarchical logistic random intercept
 
 Writes a single JSON artifact per invocation.
 """
@@ -29,7 +32,9 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.bench_env import collect_environment
+from _synthetic_datasets import make_hier_random_intercept_dataset
 
 
 def _safe_float(x: Any) -> float | None:
@@ -252,6 +257,16 @@ def _blackjax_log_density(case: str, dataset: dict[str, Any] | None):
             return log_py + log_pz
         return logp, dim
 
+    elif case == "neal_funnel_10d_centered":
+        dim = 10
+        def logp(x):
+            y = x[0]
+            z = x[1:]
+            log_py = -0.5 * y * y / 9.0
+            log_pz = -0.5 * jnp.sum(z * z) * jnp.exp(-y) - 0.5 * (dim - 1) * y
+            return log_py + log_pz
+        return logp, dim
+
     elif case == "eight_schools":
         dim = 10  # mu, log_tau, theta_raw[8]
         y = jnp.array([28.0, 8.0, -3.0, 7.0, -1.0, 1.0, 18.0, 12.0])
@@ -424,6 +439,10 @@ def _build_nextstat_model(case: str, dataset: dict[str, Any] | None):
         return nextstat.StdNormalModel(dim=10)
     elif case == "neal_funnel_2d":
         return nextstat.FunnelModel()
+    elif case == "neal_funnel_10d_centered":
+        return nextstat.FunnelModel(dim=10)
+    elif case == "neal_funnel_ncp_10d":
+        return nextstat.FunnelNcpModel(dim=10)
     elif case == "eight_schools":
         y = [28.0, 8.0, -3.0, 7.0, -1.0, 1.0, 18.0, 12.0]
         sigma = [15.0, 10.0, 16.0, 11.0, 9.0, 11.0, 10.0, 18.0]
@@ -438,6 +457,19 @@ def _build_nextstat_model(case: str, dataset: dict[str, Any] | None):
             coef_prior_sigma=1.0,
         )
         return spec.build()
+    elif case == "hier_random_intercept_non_centered":
+        assert dataset is not None
+        spec = nextstat.data.GlmSpec.logistic_regression(
+            x=dataset["x"],
+            y=dataset["y"],
+            include_intercept=False,
+            group_idx=dataset["group_idx"],
+            n_groups=int(dataset["n_groups"]),
+            coef_prior_mu=0.0,
+            coef_prior_sigma=1.0,
+            random_intercept_non_centered=True,
+        )
+        return spec.build()
     else:
         raise ValueError(f"Unknown case: {case}")
 
@@ -449,33 +481,59 @@ def _build_nextstat_model(case: str, dataset: dict[str, Any] | None):
 def main() -> int:
     ap = argparse.ArgumentParser(description="MAMS benchmark runner")
     ap.add_argument("--case", required=True,
-                    choices=["std_normal_10d", "neal_funnel_2d", "eight_schools", "glm_logistic"])
+                    choices=[
+                        "std_normal_10d",
+                        "neal_funnel_2d",
+                        "neal_funnel_10d_centered",
+                        "neal_funnel_ncp_10d",
+                        "eight_schools",
+                        "glm_logistic",
+                        "hier_random_intercept_non_centered",
+                    ])
     ap.add_argument("--backend", required=True,
                     choices=["nextstat_mams", "nextstat_nuts", "blackjax_mclmc"])
     ap.add_argument("--out", required=True, help="Output JSON path")
     ap.add_argument("--n-chains", type=int, default=4)
-    ap.add_argument("--warmup", type=int, default=1000)
+    ap.add_argument("--warmup", type=int, default=2000)
     ap.add_argument("--samples", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--target-accept", type=float, default=0.9)
+    ap.add_argument("--n-groups", type=int, default=20, help="(hier_random_intercept_non_centered) groups.")
+    ap.add_argument("--n-per-group", type=int, default=20, help="(hier_random_intercept_non_centered) rows per group.")
+    ap.add_argument(
+        "--dataset-seed",
+        type=int,
+        default=None,
+        help="Optional fixed dataset seed for generated fixtures such as glm_logistic (default: use sampler seed).",
+    )
+    ap.add_argument("--target-accept", type=float, default=0.985)
     ap.add_argument("--deterministic", action="store_true")
     args = ap.parse_args()
 
     out_path = Path(args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    dataset_seed = int(args.dataset_seed) if args.dataset_seed is not None else int(args.seed)
     cfg = {
         "n_chains": args.n_chains,
         "n_warmup": args.warmup,
         "n_samples": args.samples,
         "seed": args.seed,
+        "dataset_seed": dataset_seed,
         "target_accept": args.target_accept,
+        "n_groups": int(args.n_groups) if args.case == "hier_random_intercept_non_centered" else None,
+        "n_per_group": int(args.n_per_group) if args.case == "hier_random_intercept_non_centered" else None,
     }
 
-    # Dataset (only for glm_logistic)
+    # Dataset (only for generated cases)
     dataset: dict[str, Any] | None = None
     if args.case == "glm_logistic":
-        dataset = make_logistic_dataset(seed=args.seed)
+        dataset = make_logistic_dataset(seed=dataset_seed)
+    elif args.case == "hier_random_intercept_non_centered":
+        dataset = make_hier_random_intercept_dataset(
+            n_groups=int(args.n_groups),
+            n_per_group=int(args.n_per_group),
+            seed=dataset_seed,
+        )
 
     dataset_sha = sha256_json_obj(dataset) if dataset else sha256_json_obj({"case": args.case})
 
@@ -537,7 +595,14 @@ def main() -> int:
             else:
                 result = _run_nextstat_nuts(model_obj, cfg)
         elif args.backend == "blackjax_mclmc":
-            result = _run_blackjax_mclmc(args.case, cfg, dataset)
+            try:
+                result = _run_blackjax_mclmc(args.case, cfg, dataset)
+            except ValueError as e:
+                result = {
+                    "status": "warn",
+                    "reason": f"backend_not_supported_for_case:blackjax_mclmc:{e}",
+                    "wall_time_s": 0.0,
+                }
         else:
             raise ValueError(f"Unknown backend: {args.backend}")
     except Exception as e:

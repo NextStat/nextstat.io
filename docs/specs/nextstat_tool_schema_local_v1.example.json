@@ -1,0 +1,3772 @@
+{
+  "capabilities": [
+    {
+      "local_available": true,
+      "name": "nextstat_fit",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_hypotest",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_hypotest_toys",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_upper_limit",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_ranking",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_discovery_asymptotic",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_scan",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_workspace_audit",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_read_root_histogram",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_glm_fit",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_bayesian_sample",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_survival_fit",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_kaplan_meier",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_log_rank_test",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_panel_fe",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_did",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_iv_2sls",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_aipw",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_meta_analysis",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_kalman",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_ads_cuped_adjust",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_ads_cure_adjust",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_churn_generate_data",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_churn_risk_model",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_churn_retention",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_churn_compare",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_churn_diagnostics",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_churn_cohort_matrix",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_churn_bootstrap_hr",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_churn_ingest",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_churn_uplift",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_churn_uplift_survival",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_chain_ladder",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_pharma_fit",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_pharma_vpc",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_pk_gof",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_pk_npde",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_trial_simulate",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_bioequivalence",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_fault_tree_mc",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_fault_tree_ce_is",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_dose_response",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_competing_risks",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_event_study",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    },
+    {
+      "local_available": true,
+      "name": "nextstat_garch_fit",
+      "server_available": true,
+      "server_policy": {
+        "availability": "exposed",
+        "reason": "Exposed on the restricted nextstat-server tool surface.",
+        "reason_code": "server_safe_subset"
+      }
+    }
+  ],
+  "guidance": {
+    "hints": [
+      "Use local transport when the agent or IDE assistant needs the full Python tool registry, including ROOT ingest and non-HEP verticals.",
+      "Call get_toolkit_descriptor(transport=\"local\") first and treat descriptor.tools as the callable contract instead of hard-coding tool names.",
+      "For reproducible reviews, parity checks, and IDE quick-fixes, set execution.deterministic=true explicitly."
+    ],
+    "recipes": [
+      {
+        "docs": [
+          "docs/references/tool-api.md",
+          "docs/references/python-api.md",
+          "docs/tutorials/e2e-pipeline.md"
+        ],
+        "id": "local_hep_workspace_inference",
+        "prompt": "Audit this workspace, then fit it and report the POI value and uncertainty, a short asymptotic CLs summary, observed and expected 95% CL upper limit, and a short profile scan summary. If the workspace is pyhf or HS3, also include discovery significance and top nuisance impacts by default. If it is simplified-likelihood, treat audit + fit + asymptotic CLs/upper-limit + scan as the promoted stable subset and use discovery, ranking, or toy CLs only when the user explicitly asks for the compatibility-tested surface. Use deterministic mode.",
+        "summary": "Audit a workspace, fit it, and produce CLs, upper-limit, and scan outputs in-process. For simplified-likelihood inputs, discovery, ranking, and toy CLs remain compatibility-tested rather than promoted stable.",
+        "title": "Local HEP workspace inference",
+        "tools": [
+          "nextstat_workspace_audit",
+          "nextstat_fit",
+          "nextstat_discovery_asymptotic",
+          "nextstat_hypotest",
+          "nextstat_upper_limit",
+          "nextstat_scan",
+          "nextstat_ranking",
+          "nextstat_hypotest_toys"
+        ],
+        "transport": "local"
+      },
+      {
+        "docs": [
+          "docs/references/tool-api.md",
+          "docs/demos/physics-assistant.md",
+          "docs/references/python-api.md"
+        ],
+        "id": "local_root_ingest_and_workspace_triage",
+        "prompt": "Read the requested ROOT histograms locally, summarize suspicious bins and under or overflow content, then continue with deterministic workspace validation and fit checks.",
+        "summary": "Read TH1 histograms locally, then use the regular HEP inference tools on the derived workspace.",
+        "title": "Local ROOT ingest and workspace triage",
+        "tools": [
+          "nextstat_read_root_histogram",
+          "nextstat_workspace_audit",
+          "nextstat_fit",
+          "nextstat_scan"
+        ],
+        "transport": "local"
+      },
+      {
+        "docs": [
+          "docs/references/tool-api.md",
+          "docs/references/python-api.md",
+          "docs/tutorials/phase-6-regression.md"
+        ],
+        "id": "local_bayesian_and_glm_analysis",
+        "prompt": "Fit the requested generalized linear model, then if posterior uncertainty is important run Bayesian sampling locally and summarize posterior means plus convergence diagnostics rather than dumping raw chains by default.",
+        "summary": "Use the local Python surface for generalized linear models and Bayesian posterior sampling.",
+        "title": "Local Bayesian and GLM analysis",
+        "tools": [
+          "nextstat_glm_fit",
+          "nextstat_bayesian_sample"
+        ],
+        "transport": "local"
+      },
+      {
+        "docs": [
+          "docs/references/tool-api.md",
+          "docs/tutorials/phase-9-survival.md",
+          "docs/tutorials/churn-subscription.md"
+        ],
+        "id": "local_survival_and_risk_analysis",
+        "prompt": "Fit the requested survival or competing-risks model, include Kaplan-Meier or direct log-rank summaries when appropriate, and report synthetic or validated churn datasets, Cox PH churn-risk outputs, bootstrap hazard-ratio uncertainty summaries, retention curves, cohort life-table matrices, trust-gate diagnostics, pairwise churn-comparison outputs, bounded uplift estimates, or survival-native uplift summaries with deterministic settings.",
+        "summary": "Run survival, Kaplan-Meier, direct log-rank, competing-risks, synthetic churn generation, churn-risk modeling, ingest, bootstrap HR, diagnostics, cohort-matrix, and retention/comparison workflows locally through the Python tool registry.",
+        "title": "Local survival and risk analysis",
+        "tools": [
+          "nextstat_survival_fit",
+          "nextstat_kaplan_meier",
+          "nextstat_log_rank_test",
+          "nextstat_competing_risks",
+          "nextstat_churn_generate_data",
+          "nextstat_churn_risk_model",
+          "nextstat_churn_retention",
+          "nextstat_churn_bootstrap_hr",
+          "nextstat_churn_ingest",
+          "nextstat_churn_diagnostics",
+          "nextstat_churn_cohort_matrix",
+          "nextstat_churn_compare",
+          "nextstat_churn_uplift",
+          "nextstat_churn_uplift_survival"
+        ],
+        "transport": "local"
+      },
+      {
+        "docs": [
+          "docs/references/tool-api.md",
+          "docs/references/python-api.md",
+          "docs/benchmarks/ads-variance-reduction-benchmark-2026-03-08.md"
+        ],
+        "id": "local_ads_variance_reduction",
+        "prompt": "Run the requested ads variance-reduction adjustment deterministically, keep covariates strictly pre-treatment, and report adjusted means, treatment effect, variance-reduction diagnostics, selected covariates, provenance validation, and solver metadata.",
+        "summary": "Run deterministic CUPED or CURE adjustment locally through the ads-native Python helpers with provenance-aware leakage validation.",
+        "title": "Local ads variance reduction",
+        "tools": [
+          "nextstat_ads_cuped_adjust",
+          "nextstat_ads_cure_adjust"
+        ],
+        "transport": "local"
+      },
+      {
+        "docs": [
+          "docs/references/tool-api.md",
+          "docs/references/econometrics.md",
+          "docs/tutorials/phase-12-did-event-study.md"
+        ],
+        "id": "local_econometrics_and_time_series",
+        "prompt": "Pick the right econometric tool for the identification strategy, run the model deterministically, and summarize treatment effects, event-study dynamics, volatility behavior, or state-space forecasts as appropriate.",
+        "summary": "Use the local surface for panel, DiD, IV, doubly robust causal inference, event studies, volatility, and Kalman workflows.",
+        "title": "Local econometrics and time-series workflows",
+        "tools": [
+          "nextstat_panel_fe",
+          "nextstat_did",
+          "nextstat_iv_2sls",
+          "nextstat_aipw",
+          "nextstat_event_study",
+          "nextstat_garch_fit",
+          "nextstat_kalman"
+        ],
+        "transport": "local"
+      },
+      {
+        "docs": [
+          "docs/references/tool-api.md",
+          "docs/references/python-api.md"
+        ],
+        "id": "local_meta_insurance_and_reliability",
+        "prompt": "Run the requested meta-analysis, reserving, or fault-tree simulation locally and return the key pooled estimate, reserve view, or rare-event risk metrics with deterministic settings where applicable.",
+        "summary": "Cover meta-analysis, chain-ladder reserving, and reliability or fault-tree Monte Carlo workflows locally.",
+        "title": "Local meta-analysis, reserving, and reliability",
+        "tools": [
+          "nextstat_meta_analysis",
+          "nextstat_chain_ladder",
+          "nextstat_fault_tree_mc",
+          "nextstat_fault_tree_ce_is"
+        ],
+        "transport": "local"
+      },
+      {
+        "docs": [
+          "docs/references/tool-api.md",
+          "docs/references/python-api.md",
+          "docs/tutorials/pharma-pk.md"
+        ],
+        "id": "local_pharma_and_dose_response",
+        "prompt": "Fit the requested population PK or dose-response workflow locally, run the follow-up GOF, NPDE, VPC, simulation, or bioequivalence step when relevant, and summarize the main parameter estimates and diagnostics.",
+        "summary": "Fit PopPK models, run GOF, NPDE, or VPC diagnostics and trial simulations, evaluate bioequivalence, and work with dose-response models locally.",
+        "title": "Local pharma, trial simulation, and dose response",
+        "tools": [
+          "nextstat_pharma_fit",
+          "nextstat_pk_gof",
+          "nextstat_pk_npde",
+          "nextstat_pharma_vpc",
+          "nextstat_trial_simulate",
+          "nextstat_bioequivalence",
+          "nextstat_dose_response"
+        ],
+        "transport": "local"
+      }
+    ]
+  },
+  "schema_version": "nextstat.tool_schema.v1",
+  "tools": [
+    {
+      "function": {
+        "description": "Run Maximum Likelihood Estimation (MLE) on a HistFactory statistical model; simplified-likelihood input is inside the promoted March 2026 stable subset. Returns best-fit parameters, uncertainties, NLL at minimum, and convergence info. The workspace_json must be a pyhf-style, HS3-style, or simplified-likelihood JSON workspace string.",
+        "name": "nextstat_fit",
+        "parameters": {
+          "properties": {
+            "execution": {
+              "description": "Optional execution controls. If deterministic=true (default), NextStat will attempt to enforce parity-friendly settings (threads=1, eval_mode='parity') where supported.",
+              "properties": {
+                "deterministic": {
+                  "default": true,
+                  "description": "If true, prefer deterministic parity behavior (default: true).",
+                  "type": "boolean"
+                },
+                "eval_mode": {
+                  "description": "Evaluation mode. 'parity' favors numerical stability; 'fast' may use approximations.",
+                  "enum": [
+                    "parity",
+                    "fast"
+                  ],
+                  "type": "string"
+                },
+                "threads": {
+                  "description": "Requested thread count. If omitted and deterministic=true, defaults to 1. If 0, use library default.",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "workspace_json": {
+              "description": "JSON string of the pyhf, HS3, or simplified-likelihood workspace. Auto-detected.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspace_json"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run an asymptotic CLs hypothesis test at a given signal strength mu (qtilde); simplified-likelihood input is inside the promoted March 2026 stable subset. Returns CLs, CLs+b, and CLb (pyhf/HS3/simplified-likelihood-compatible semantics).",
+        "name": "nextstat_hypotest",
+        "parameters": {
+          "properties": {
+            "execution": {
+              "description": "Optional execution controls. If deterministic=true (default), NextStat will attempt to enforce parity-friendly settings (threads=1, eval_mode='parity') where supported.",
+              "properties": {
+                "deterministic": {
+                  "default": true,
+                  "description": "If true, prefer deterministic parity behavior (default: true).",
+                  "type": "boolean"
+                },
+                "eval_mode": {
+                  "description": "Evaluation mode. 'parity' favors numerical stability; 'fast' may use approximations.",
+                  "enum": [
+                    "parity",
+                    "fast"
+                  ],
+                  "type": "string"
+                },
+                "threads": {
+                  "description": "Requested thread count. If omitted and deterministic=true, defaults to 1. If 0, use library default.",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "mu": {
+              "description": "Signal strength hypothesis to test (e.g. 1.0 for SM).",
+              "type": "number"
+            },
+            "workspace_json": {
+              "description": "JSON string of the pyhf, HS3, or simplified-likelihood workspace.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspace_json",
+            "mu"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run a toy-based CLs hypothesis test at a given signal strength mu (qtilde); simplified-likelihood input is compatibility-tested but outside the promoted March 2026 stable subset. This is stochastic; specify seed for reproducibility.",
+        "name": "nextstat_hypotest_toys",
+        "parameters": {
+          "properties": {
+            "execution": {
+              "description": "Optional execution controls. If deterministic=true (default), NextStat will attempt to enforce parity-friendly settings (threads=1, eval_mode='parity') where supported.",
+              "properties": {
+                "deterministic": {
+                  "default": true,
+                  "description": "If true, prefer deterministic parity behavior (default: true).",
+                  "type": "boolean"
+                },
+                "eval_mode": {
+                  "description": "Evaluation mode. 'parity' favors numerical stability; 'fast' may use approximations.",
+                  "enum": [
+                    "parity",
+                    "fast"
+                  ],
+                  "type": "string"
+                },
+                "threads": {
+                  "description": "Requested thread count. If omitted and deterministic=true, defaults to 1. If 0, use library default.",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "expected_set": {
+              "default": false,
+              "description": "If true, return expected CLs bands (\u00b11\u03c3, \u00b12\u03c3). Default false.",
+              "type": "boolean"
+            },
+            "mu": {
+              "description": "Signal strength hypothesis to test (e.g. 1.0 for SM).",
+              "type": "number"
+            },
+            "n_toys": {
+              "default": 1000,
+              "description": "Number of toy pseudo-experiments. Default 1000.",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "return_meta": {
+              "default": false,
+              "description": "If true, include toy meta/statistics in the result. Default false.",
+              "type": "boolean"
+            },
+            "seed": {
+              "default": 42,
+              "description": "RNG seed. Default 42.",
+              "minimum": 0,
+              "type": "integer"
+            },
+            "workspace_json": {
+              "description": "JSON string of the pyhf, HS3, or simplified-likelihood workspace.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspace_json",
+            "mu"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Compute the 95% CL upper limit on signal strength via CLs; simplified-likelihood input is inside the promoted March 2026 stable subset. Returns observed limit and optionally expected limits (\u00b11\u03c3, \u00b12\u03c3).",
+        "name": "nextstat_upper_limit",
+        "parameters": {
+          "properties": {
+            "alpha": {
+              "default": 0.05,
+              "description": "Confidence level alpha (default 0.05 for 95% CL).",
+              "type": "number"
+            },
+            "execution": {
+              "description": "Optional execution controls. If deterministic=true (default), NextStat will attempt to enforce parity-friendly settings (threads=1, eval_mode='parity') where supported.",
+              "properties": {
+                "deterministic": {
+                  "default": true,
+                  "description": "If true, prefer deterministic parity behavior (default: true).",
+                  "type": "boolean"
+                },
+                "eval_mode": {
+                  "description": "Evaluation mode. 'parity' favors numerical stability; 'fast' may use approximations.",
+                  "enum": [
+                    "parity",
+                    "fast"
+                  ],
+                  "type": "string"
+                },
+                "threads": {
+                  "description": "Requested thread count. If omitted and deterministic=true, defaults to 1. If 0, use library default.",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "expected": {
+              "default": false,
+              "description": "If true, return expected limits with \u00b11\u03c3/\u00b12\u03c3 bands.",
+              "type": "boolean"
+            },
+            "hi": {
+              "default": null,
+              "description": "Upper bracket for root finding (default: POI upper bound or 10.0).",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "lo": {
+              "default": 0.0,
+              "description": "Lower bracket for root finding (default 0.0).",
+              "type": "number"
+            },
+            "max_iter": {
+              "default": 80,
+              "description": "Max root-finding iterations (default 80).",
+              "minimum": 1,
+              "type": "integer"
+            },
+            "rtol": {
+              "default": 0.0001,
+              "description": "Relative tolerance for root finding (default 1e-4).",
+              "type": "number"
+            },
+            "workspace_json": {
+              "description": "JSON string of the pyhf, HS3, or simplified-likelihood workspace.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspace_json"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Compute nuisance parameter ranking (systematic impact on signal strength); simplified-likelihood input is compatibility-tested but outside the promoted March 2026 stable subset. For simplified-likelihood, entries rank reduced nuisance coordinates from the compiled model rather than source-level systematics; covariance-form and derived_from_workspace inputs do not preserve original nuisance identities. Returns a sorted list of impacts (delta_mu_up, delta_mu_down), pull values, and constraints. This is the physics equivalent of Feature Importance only when nuisance names still map to source-level systematics.",
+        "name": "nextstat_ranking",
+        "parameters": {
+          "properties": {
+            "execution": {
+              "description": "Optional execution controls. If deterministic=true (default), NextStat will attempt to enforce parity-friendly settings (threads=1, eval_mode='parity') where supported.",
+              "properties": {
+                "deterministic": {
+                  "default": true,
+                  "description": "If true, prefer deterministic parity behavior (default: true).",
+                  "type": "boolean"
+                },
+                "eval_mode": {
+                  "description": "Evaluation mode. 'parity' favors numerical stability; 'fast' may use approximations.",
+                  "enum": [
+                    "parity",
+                    "fast"
+                  ],
+                  "type": "string"
+                },
+                "threads": {
+                  "description": "Requested thread count. If omitted and deterministic=true, defaults to 1. If 0, use library default.",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "top_n": {
+              "description": "Return only the top N most impactful systematics. Default: all.",
+              "type": "integer"
+            },
+            "workspace_json": {
+              "description": "JSON string of the pyhf, HS3, or simplified-likelihood workspace.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspace_json"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Compute an asymptotic discovery-style statistic at mu=0 from a profiled likelihood scan; simplified-likelihood input is compatibility-tested but outside the promoted March 2026 stable subset. Returns q0, z0, and p0 (one-sided). This is NOT CLs.",
+        "name": "nextstat_discovery_asymptotic",
+        "parameters": {
+          "properties": {
+            "execution": {
+              "description": "Optional execution controls. If deterministic=true (default), NextStat will attempt to enforce parity-friendly settings (threads=1, eval_mode='parity') where supported.",
+              "properties": {
+                "deterministic": {
+                  "default": true,
+                  "description": "If true, prefer deterministic parity behavior (default: true).",
+                  "type": "boolean"
+                },
+                "eval_mode": {
+                  "description": "Evaluation mode. 'parity' favors numerical stability; 'fast' may use approximations.",
+                  "enum": [
+                    "parity",
+                    "fast"
+                  ],
+                  "type": "string"
+                },
+                "threads": {
+                  "description": "Requested thread count. If omitted and deterministic=true, defaults to 1. If 0, use library default.",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "workspace_json": {
+              "description": "JSON string of the pyhf, HS3, or simplified-likelihood workspace.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspace_json"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run a profile likelihood scan over signal strength values; simplified-likelihood input is inside the promoted March 2026 stable subset. Returns (mu, q_mu, 2*delta_NLL) arrays for plotting the likelihood curve.",
+        "name": "nextstat_scan",
+        "parameters": {
+          "properties": {
+            "execution": {
+              "description": "Optional execution controls. If deterministic=true (default), NextStat will attempt to enforce parity-friendly settings (threads=1, eval_mode='parity') where supported.",
+              "properties": {
+                "deterministic": {
+                  "default": true,
+                  "description": "If true, prefer deterministic parity behavior (default: true).",
+                  "type": "boolean"
+                },
+                "eval_mode": {
+                  "description": "Evaluation mode. 'parity' favors numerical stability; 'fast' may use approximations.",
+                  "enum": [
+                    "parity",
+                    "fast"
+                  ],
+                  "type": "string"
+                },
+                "threads": {
+                  "description": "Requested thread count. If omitted and deterministic=true, defaults to 1. If 0, use library default.",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "points": {
+              "default": 21,
+              "description": "Number of scan points. Default 21.",
+              "type": "integer"
+            },
+            "start": {
+              "default": 0.0,
+              "description": "Start of mu scan range. Default 0.0.",
+              "type": "number"
+            },
+            "stop": {
+              "default": 5.0,
+              "description": "End of mu scan range. Default 5.0.",
+              "type": "number"
+            },
+            "workspace_json": {
+              "description": "JSON string of the pyhf, HS3, or simplified-likelihood workspace.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspace_json"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Audit a pyhf or simplified-likelihood workspace; simplified-likelihood audit is inside the promoted March 2026 stable subset. Pyhf inputs return compatibility counts and warnings; simplified-likelihood inputs return the published simplified audit artifact. HS3 is rejected explicitly.",
+        "name": "nextstat_workspace_audit",
+        "parameters": {
+          "properties": {
+            "execution": {
+              "description": "Optional execution controls. If deterministic=true (default), NextStat will attempt to enforce parity-friendly settings (threads=1, eval_mode='parity') where supported.",
+              "properties": {
+                "deterministic": {
+                  "default": true,
+                  "description": "If true, prefer deterministic parity behavior (default: true).",
+                  "type": "boolean"
+                },
+                "eval_mode": {
+                  "description": "Evaluation mode. 'parity' favors numerical stability; 'fast' may use approximations.",
+                  "enum": [
+                    "parity",
+                    "fast"
+                  ],
+                  "type": "string"
+                },
+                "threads": {
+                  "description": "Requested thread count. If omitted and deterministic=true, defaults to 1. If 0, use library default.",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "workspace_json": {
+              "description": "JSON string of the pyhf or simplified-likelihood workspace to audit. HS3 is not supported for this tool.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "workspace_json"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Read a TH1 histogram from a ROOT file, including sumw2 and under/overflow bins. Returns bin edges, bin content, and flow bins for downstream analysis.",
+        "name": "nextstat_read_root_histogram",
+        "parameters": {
+          "oneOf": [
+            {
+              "required": [
+                "root_path"
+              ]
+            },
+            {
+              "required": [
+                "root_bytes_base64"
+              ]
+            }
+          ],
+          "properties": {
+            "execution": {
+              "description": "Optional execution controls. If deterministic=true (default), NextStat will attempt to enforce parity-friendly settings (threads=1, eval_mode='parity') where supported.",
+              "properties": {
+                "deterministic": {
+                  "default": true,
+                  "description": "If true, prefer deterministic parity behavior (default: true).",
+                  "type": "boolean"
+                },
+                "eval_mode": {
+                  "description": "Evaluation mode. 'parity' favors numerical stability; 'fast' may use approximations.",
+                  "enum": [
+                    "parity",
+                    "fast"
+                  ],
+                  "type": "string"
+                },
+                "threads": {
+                  "description": "Requested thread count. If omitted and deterministic=true, defaults to 1. If 0, use library default.",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "filename_hint": {
+              "description": "Optional filename hint used for diagnostics when reading ROOT bytes from memory.",
+              "type": "string"
+            },
+            "hist_path": {
+              "description": "Histogram path/key inside the ROOT file (e.g. 'dir/hist').",
+              "type": "string"
+            },
+            "root_bytes_base64": {
+              "description": "Base64-encoded ROOT file bytes. Use this when the histogram source is already in memory rather than on local disk.",
+              "type": "string"
+            },
+            "root_path": {
+              "description": "Path to a ROOT file on local disk.",
+              "type": "string"
+            }
+          },
+          "required": [
+            "hist_path"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Fit a Generalized Linear Model (GLM). Supports linear, logistic, Poisson, and negative binomial regression. Returns coefficients, standard errors, and predictions. Input is tabular: X (2D array of features), y (1D array of outcomes).",
+        "name": "nextstat_glm_fit",
+        "parameters": {
+          "properties": {
+            "family": {
+              "default": "linear",
+              "description": "GLM family. Default: linear.",
+              "enum": [
+                "linear",
+                "logistic",
+                "poisson",
+                "negbin"
+              ],
+              "type": "string"
+            },
+            "include_intercept": {
+              "default": true,
+              "description": "Whether to include an intercept term. Default: true.",
+              "type": "boolean"
+            },
+            "l2": {
+              "default": null,
+              "description": "L2 regularization strength (ridge). Default: none.",
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "x": {
+              "description": "Feature matrix (2D array, each inner array is one observation).",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "y": {
+              "description": "Response variable (1D array).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "x",
+            "y"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run Bayesian NUTS sampling on supported NextStat models and return a bounded summary: parameter names, convergence diagnostics, and posterior mean summaries rather than raw posterior draws.",
+        "name": "nextstat_bayesian_sample",
+        "parameters": {
+          "properties": {
+            "event": {
+              "description": "Event indicator: 1=event, 0=censored (survival models only).",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "model_type": {
+              "description": "Type of model to sample from.",
+              "enum": [
+                "linear_regression",
+                "logistic_regression",
+                "poisson_regression",
+                "negbin_regression",
+                "cox_ph",
+                "weibull_survival",
+                "lognormal_aft",
+                "ordered_logit",
+                "ordered_probit",
+                "histfactory"
+              ],
+              "type": "string"
+            },
+            "n_chains": {
+              "default": 4,
+              "description": "Number of MCMC chains. Default: 4.",
+              "type": "integer"
+            },
+            "n_levels": {
+              "description": "Number of ordinal levels (ordered logit/probit only).",
+              "type": "integer"
+            },
+            "n_samples": {
+              "default": 1000,
+              "description": "Number of post-warmup samples per chain. Default: 1000.",
+              "type": "integer"
+            },
+            "n_warmup": {
+              "default": 500,
+              "description": "Number of warmup iterations per chain. Default: 500.",
+              "type": "integer"
+            },
+            "seed": {
+              "default": 42,
+              "description": "Random seed. Default: 42.",
+              "type": "integer"
+            },
+            "target_accept": {
+              "default": 0.8,
+              "description": "Target acceptance rate for NUTS. Default: 0.8.",
+              "type": "number"
+            },
+            "time": {
+              "description": "Event/censoring times (survival models only).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "workspace_json": {
+              "description": "pyhf/HS3 workspace JSON (histfactory model only).",
+              "type": "string"
+            },
+            "x": {
+              "description": "Feature matrix (for regression/survival models).",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "y": {
+              "description": "Response variable.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "model_type"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Fit a survival model via MLE. Supports Cox PH, Weibull, Log-Normal AFT, and Exponential models. Returns parameter estimates (log-hazard ratios or AFT coefficients), standard errors, and NLL. Input: X (covariates), time (event/censoring times), event (1=event, 0=censored).",
+        "name": "nextstat_survival_fit",
+        "parameters": {
+          "properties": {
+            "event": {
+              "description": "Event indicator (1=event, 0=censored).",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "model": {
+              "default": "cox_ph",
+              "description": "Survival model type. Default: cox_ph.",
+              "enum": [
+                "cox_ph",
+                "weibull",
+                "lognormal_aft",
+                "exponential"
+              ],
+              "type": "string"
+            },
+            "time": {
+              "description": "Event or censoring times.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "x": {
+              "description": "Covariate matrix.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "x",
+            "time",
+            "event"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Compute the Kaplan-Meier survival curve and optionally a log-rank test. Returns time points, survival probabilities, confidence intervals, and number at risk. If group labels are provided, also returns a log-rank test.",
+        "name": "nextstat_kaplan_meier",
+        "parameters": {
+          "properties": {
+            "event": {
+              "description": "Event indicator (1=event, 0=censored).",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "group": {
+              "description": "Optional group labels for log-rank test (e.g. 0/1 for two arms).",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "time": {
+              "description": "Event or censoring times.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "time",
+            "event"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run a direct log-rank (Mantel-Cox) test across two or more survival groups. Returns the chi-squared statistic, p-value, degrees of freedom, and per-group observed versus expected event totals.",
+        "name": "nextstat_log_rank_test",
+        "parameters": {
+          "properties": {
+            "events": {
+              "description": "Event indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            },
+            "groups": {
+              "description": "Integer group labels for the survival comparison.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "times": {
+              "description": "Observation times from event or censoring follow-up.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "times",
+            "events",
+            "groups"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Fit a panel data model with entity fixed effects (within estimator). Returns coefficients with cluster-robust standard errors. Equivalent to Stata's xtreg, fe.",
+        "name": "nextstat_panel_fe",
+        "parameters": {
+          "properties": {
+            "cluster": {
+              "default": "entity",
+              "description": "Cluster-robust SE type. Default: entity.",
+              "enum": [
+                "entity",
+                "time",
+                "two_way",
+                "none"
+              ],
+              "type": "string"
+            },
+            "entity": {
+              "description": "Entity/group identifiers (e.g. firm IDs).",
+              "items": {},
+              "type": "array"
+            },
+            "time": {
+              "description": "Optional time identifiers (required for cluster='time' or 'two_way').",
+              "items": {},
+              "type": "array"
+            },
+            "x": {
+              "description": "Feature matrix (no intercept column needed).",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "y": {
+              "description": "Response variable.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "entity"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Estimate a Difference-in-Differences (DiD) model via two-way fixed effects (TWFE). Returns the ATT (average treatment effect on the treated) with cluster-robust SE.",
+        "name": "nextstat_did",
+        "parameters": {
+          "properties": {
+            "cluster": {
+              "default": "entity",
+              "enum": [
+                "entity",
+                "time",
+                "two_way",
+                "none"
+              ],
+              "type": "string"
+            },
+            "entity": {
+              "description": "Entity identifiers.",
+              "items": {},
+              "type": "array"
+            },
+            "post": {
+              "description": "Post-treatment indicator (0/1).",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "time": {
+              "description": "Time period identifiers.",
+              "items": {},
+              "type": "array"
+            },
+            "treat": {
+              "description": "Treatment indicator (0/1).",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "x": {
+              "default": null,
+              "description": "Optional control covariates.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "y": {
+              "description": "Outcome variable.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "y",
+            "treat",
+            "post",
+            "entity",
+            "time"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Estimate an Instrumental Variables (IV) model via Two-Stage Least Squares (2SLS). Returns structural coefficients, standard errors (homoskedastic, HC1, cluster-robust, or HAC), and first-stage F-statistics for weak instrument diagnostics.",
+        "name": "nextstat_iv_2sls",
+        "parameters": {
+          "properties": {
+            "cluster": {
+              "default": null,
+              "description": "Cluster labels when cov='cluster'.",
+              "items": {},
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "cov": {
+              "default": "hc1",
+              "description": "Covariance estimator. Default: hc1.",
+              "enum": [
+                "homoskedastic",
+                "hc1",
+                "cluster",
+                "hac"
+              ],
+              "type": "string"
+            },
+            "endog": {
+              "description": "Endogenous regressors.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "exog": {
+              "default": null,
+              "description": "Optional exogenous controls.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "instruments": {
+              "description": "Excluded instruments.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "max_lag": {
+              "default": null,
+              "description": "Maximum Newey-West lag when cov='hac'. Default: automatic.",
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "time_index": {
+              "default": null,
+              "description": "Ordered time index when cov='hac'.",
+              "items": {},
+              "type": [
+                "array",
+                "null"
+              ]
+            },
+            "y": {
+              "description": "Outcome variable.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "y",
+            "endog",
+            "instruments"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Estimate a doubly-robust Average Treatment Effect (ATE or ATT) via Augmented Inverse Probability Weighting (AIPW). Returns the estimand, treatment effect estimate, standard error, and observation count.",
+        "name": "nextstat_aipw",
+        "parameters": {
+          "properties": {
+            "estimand": {
+              "default": "ate",
+              "description": "Estimand: ATE or ATT. Default: ate.",
+              "enum": [
+                "ate",
+                "att"
+              ],
+              "type": "string"
+            },
+            "treatment": {
+              "description": "Treatment indicator (0/1).",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "x": {
+              "description": "Covariate matrix.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "y": {
+              "description": "Outcome variable.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "x",
+            "y",
+            "treatment"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run a meta-analysis (fixed or random effects). Input: effect sizes and their standard errors from multiple studies. Returns pooled estimate, confidence interval, heterogeneity statistics (I\u00b2, Q, tau\u00b2).",
+        "name": "nextstat_meta_analysis",
+        "parameters": {
+          "properties": {
+            "effects": {
+              "description": "Effect sizes from each study.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "method": {
+              "default": "random",
+              "description": "Meta-analysis method. Default: random.",
+              "enum": [
+                "fixed",
+                "random"
+              ],
+              "type": "string"
+            },
+            "standard_errors": {
+              "description": "Standard errors of each study's effect.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "effects",
+            "standard_errors"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run Kalman filtering, smoothing, forecasting, simulation, or bounded EM re-estimation on a linear state-space model. Returns state estimates, forecast intervals when requested, simulation paths, or re-estimated matrices depending on the selected operation.",
+        "name": "nextstat_kalman",
+        "parameters": {
+          "allOf": [
+            {
+              "if": {
+                "not": {
+                  "required": [
+                    "operation"
+                  ]
+                }
+              },
+              "then": {
+                "required": [
+                  "y"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "operation": {
+                    "enum": [
+                      "filter",
+                      "smooth",
+                      "forecast",
+                      "em"
+                    ]
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
+              },
+              "then": {
+                "required": [
+                  "y"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "operation": {
+                    "const": "simulate"
+                  }
+                },
+                "required": [
+                  "operation"
+                ]
+              },
+              "then": {
+                "required": [
+                  "t_max"
+                ]
+              }
+            }
+          ],
+          "properties": {
+            "F": {
+              "description": "State transition matrix.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "H": {
+              "description": "Observation matrix.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "P0": {
+              "description": "Initial state covariance.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "Q": {
+              "description": "Process noise covariance.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "R": {
+              "description": "Observation noise covariance.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "alpha": {
+              "description": "Two-sided forecast interval alpha in (0,1). Used when operation='forecast'.",
+              "type": "number"
+            },
+            "estimate_f": {
+              "default": false,
+              "description": "Whether EM should re-estimate F. Currently meaningful for 1D models only. Default: false.",
+              "type": "boolean"
+            },
+            "estimate_h": {
+              "default": false,
+              "description": "Whether EM should re-estimate H. Currently meaningful for 1D models only. Default: false.",
+              "type": "boolean"
+            },
+            "estimate_q": {
+              "default": true,
+              "description": "Whether EM should re-estimate Q. Default: true.",
+              "type": "boolean"
+            },
+            "estimate_r": {
+              "default": true,
+              "description": "Whether EM should re-estimate R. Default: true.",
+              "type": "boolean"
+            },
+            "init": {
+              "default": "sample",
+              "description": "Initial state strategy for simulation when simulate_x0 is omitted. Default: sample.",
+              "enum": [
+                "sample",
+                "mean"
+              ],
+              "type": "string"
+            },
+            "max_iter": {
+              "default": 50,
+              "description": "Maximum EM iterations when operation='em'. Default: 50.",
+              "type": "integer"
+            },
+            "min_diag": {
+              "default": 1e-12,
+              "description": "Minimum covariance diagonal floor used by EM. Default: 1e-12.",
+              "type": "number"
+            },
+            "n_ahead": {
+              "default": 10,
+              "description": "Number of steps to forecast ahead (forecast mode only). Default: 10.",
+              "type": "integer"
+            },
+            "operation": {
+              "default": "filter",
+              "description": "Operation to perform. Default: filter.",
+              "enum": [
+                "filter",
+                "smooth",
+                "forecast",
+                "simulate",
+                "em"
+              ],
+              "type": "string"
+            },
+            "seed": {
+              "default": 42,
+              "description": "Random seed used for simulation. Default: 42.",
+              "type": "integer"
+            },
+            "simulate_x0": {
+              "description": "Optional override for the simulated initial state mean. Used when operation='simulate'.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "t_max": {
+              "description": "Number of simulated time steps when operation='simulate'.",
+              "type": "integer"
+            },
+            "tol": {
+              "default": 1e-06,
+              "description": "Relative tolerance for EM convergence. Default: 1e-6.",
+              "type": "number"
+            },
+            "x0": {
+              "description": "Initial state mean.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "y": {
+              "description": "Observation sequence (each element is an observation vector).",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "F",
+            "H",
+            "Q",
+            "R",
+            "x0",
+            "P0"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Apply one-covariate CUPED adjustment as the one-covariate case of the shared CURE layer. Only pre-treatment covariates are supported. Returns adjusted means, effect, variance-reduction diagnostics, selected covariates, provenance validation, and solver metadata.",
+        "name": "nextstat_ads_cuped_adjust",
+        "parameters": {
+          "properties": {
+            "control_covariates": {
+              "description": "One pre-treatment covariate value per control observation.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "control_outcomes": {
+              "description": "Post-treatment control outcomes.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "covariate_name": {
+              "description": "Optional human-readable covariate name for logging and artifact surfaces.",
+              "type": "string"
+            },
+            "covariate_provenance": {
+              "description": "Optional typed provenance metadata for fail-fast leakage validation. timing must remain pre_treatment for promoted production use.",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "source_dataset": {
+                  "type": "string"
+                },
+                "timing": {
+                  "enum": [
+                    "pre_treatment",
+                    "unknown",
+                    "post_treatment",
+                    "mixed"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "timing"
+              ],
+              "type": "object"
+            },
+            "pre_treatment_only": {
+              "default": true,
+              "description": "Keep fail-fast pre-treatment-only validation enabled. Default: true.",
+              "type": "boolean"
+            },
+            "variant_covariates": {
+              "description": "One pre-treatment covariate value per variant observation.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "variant_outcomes": {
+              "description": "Post-treatment variant outcomes.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "control_outcomes",
+            "control_covariates",
+            "variant_outcomes",
+            "variant_covariates"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Apply multivariate CURE adjustment with SVD/ridge collinearity guardrails. Only pre-treatment covariates are supported. Returns adjusted means, effect, variance-reduction diagnostics, selected covariates, provenance validation, and solver metadata.",
+        "name": "nextstat_ads_cure_adjust",
+        "parameters": {
+          "properties": {
+            "control_covariates": {
+              "description": "Row-major control-arm pre-treatment covariate matrix.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "control_outcomes": {
+              "description": "Post-treatment control outcomes.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "covariate_names": {
+              "description": "Optional selected covariate names for logging and artifact surfaces.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "covariate_provenance": {
+              "description": "Optional typed provenance metadata, one item per covariate, for fail-fast leakage validation.",
+              "items": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "source_dataset": {
+                    "type": "string"
+                  },
+                  "timing": {
+                    "enum": [
+                      "pre_treatment",
+                      "unknown",
+                      "post_treatment",
+                      "mixed"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "timing"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "pre_treatment_only": {
+              "default": true,
+              "description": "Keep fail-fast pre-treatment-only validation enabled. Default: true.",
+              "type": "boolean"
+            },
+            "variant_covariates": {
+              "description": "Row-major variant-arm pre-treatment covariate matrix.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "variant_outcomes": {
+              "description": "Post-treatment variant outcomes.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "control_outcomes",
+            "control_covariates",
+            "variant_outcomes",
+            "variant_covariates"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Generate a seeded synthetic churn dataset with customer-level times, events, groups, treatments, covariates, and segment metadata.",
+        "name": "nextstat_churn_generate_data",
+        "parameters": {
+          "properties": {
+            "max_time": {
+              "default": 24.0,
+              "description": "Maximum simulated observation time. Default: 24.0.",
+              "type": "number"
+            },
+            "n_cohorts": {
+              "default": 6,
+              "description": "Number of synthetic signup cohorts. Default: 6.",
+              "type": "integer"
+            },
+            "n_customers": {
+              "default": 2000,
+              "description": "Number of synthetic customers to generate. Default: 2000.",
+              "type": "integer"
+            },
+            "seed": {
+              "default": 42,
+              "description": "Random seed. Default: 42.",
+              "type": "integer"
+            },
+            "treatment_fraction": {
+              "default": 0.3,
+              "description": "Fraction of generated customers assigned to treatment. Default: 0.3.",
+              "type": "number"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Fit a Cox PH churn risk model and return log-hazard coefficients, standard errors, hazard ratios, and confidence intervals for the requested covariates.",
+        "name": "nextstat_churn_risk_model",
+        "parameters": {
+          "properties": {
+            "conf_level": {
+              "default": 0.95,
+              "description": "Confidence level used for hazard-ratio confidence intervals. Default: 0.95.",
+              "type": "number"
+            },
+            "covariates": {
+              "description": "Rectangular covariate matrix with one row per observation.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "events": {
+              "description": "Churn indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            },
+            "names": {
+              "description": "Covariate names matching the covariate column count.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "times": {
+              "description": "Observation times from signup to churn or censoring.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "times",
+            "events",
+            "covariates",
+            "names"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Compute churn retention using stratified Kaplan-Meier summaries and a log-rank comparison. Returns the overall survival curve, per-group retention summaries, and the log-rank test.",
+        "name": "nextstat_churn_retention",
+        "parameters": {
+          "properties": {
+            "conf_level": {
+              "default": 0.95,
+              "description": "Confidence level used for the Kaplan-Meier summaries. Default: 0.95.",
+              "type": "number"
+            },
+            "events": {
+              "description": "Churn indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            },
+            "groups": {
+              "description": "Group labels for stratified retention summaries and the log-rank comparison.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "times": {
+              "description": "Observation times from signup to event or censoring.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "times",
+            "events",
+            "groups"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Compare churn segments with pairwise log-rank tests, hazard-ratio proxies, and multiple-comparisons correction. Returns overall and pairwise segment-comparison diagnostics.",
+        "name": "nextstat_churn_compare",
+        "parameters": {
+          "properties": {
+            "alpha": {
+              "default": 0.05,
+              "description": "Significance threshold used to mark pairwise results as significant. Default: 0.05.",
+              "type": "number"
+            },
+            "conf_level": {
+              "default": 0.95,
+              "description": "Confidence level used for median retention summaries. Default: 0.95.",
+              "type": "number"
+            },
+            "correction": {
+              "default": "benjamini_hochberg",
+              "description": "Multiple-testing correction method. Accepts 'benjamini_hochberg' (alias 'bh') or 'bonferroni'. Default: benjamini_hochberg.",
+              "enum": [
+                "benjamini_hochberg",
+                "bh",
+                "bonferroni"
+              ],
+              "type": "string"
+            },
+            "events": {
+              "description": "Churn indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            },
+            "groups": {
+              "description": "Segment labels for the pairwise churn comparison.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "times": {
+              "description": "Observation times from signup to event or censoring.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "times",
+            "events",
+            "groups"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run churn-analysis trust-gate diagnostics: censoring rates by segment, covariate balance, optional propensity-overlap checks, and warning summaries for downstream retention or uplift analysis.",
+        "name": "nextstat_churn_diagnostics",
+        "parameters": {
+          "properties": {
+            "covariate_names": {
+              "default": [],
+              "description": "Optional covariate names aligned with the covariate matrix columns.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "covariates": {
+              "default": [],
+              "description": "Optional rectangular numeric covariate matrix for balance and propensity-overlap diagnostics.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "events": {
+              "description": "Churn indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            },
+            "groups": {
+              "description": "Segment labels used for censoring-rate diagnostics.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "times": {
+              "description": "Observation times from signup to event or censoring.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "treated": {
+              "default": [],
+              "description": "Optional treatment indicators for propensity-overlap diagnostics. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            },
+            "trim": {
+              "default": 0.01,
+              "description": "Propensity trimming threshold when overlap diagnostics are enabled. Default: 0.01.",
+              "type": "number"
+            }
+          },
+          "required": [
+            "times",
+            "events",
+            "groups"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Build a churn cohort life-table matrix. Returns per-cohort and overall retention periods with at-risk counts, events, censoring, retention rate, and cumulative retention.",
+        "name": "nextstat_churn_cohort_matrix",
+        "parameters": {
+          "properties": {
+            "events": {
+              "description": "Churn indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            },
+            "groups": {
+              "description": "Cohort labels used to build the retention matrix.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "period_boundaries": {
+              "description": "Sorted period-end time points used to define life-table buckets.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "times": {
+              "description": "Observation times from signup to event or censoring.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "times",
+            "events",
+            "groups",
+            "period_boundaries"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Bootstrap hazard ratios from a churn Cox PH model. Returns per-covariate point estimates, confidence intervals, convergence counts, CI diagnostics, and bounded bootstrap metadata.",
+        "name": "nextstat_churn_bootstrap_hr",
+        "parameters": {
+          "properties": {
+            "ci_method": {
+              "default": "percentile",
+              "description": "Confidence-interval method: 'percentile' or 'bca'.",
+              "enum": [
+                "percentile",
+                "bca"
+              ],
+              "type": "string"
+            },
+            "conf_level": {
+              "default": 0.95,
+              "description": "Requested confidence level in (0,1). Default: 0.95.",
+              "type": "number"
+            },
+            "covariates": {
+              "description": "Rectangular customer-level covariate matrix used in the Cox PH refits.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "events": {
+              "description": "Churn indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            },
+            "n_bootstrap": {
+              "default": 1000,
+              "description": "Number of bootstrap refits. Local Python keeps the raw default of 1000.",
+              "type": "integer"
+            },
+            "n_jackknife": {
+              "default": 200,
+              "description": "Requested jackknife refits for BCa acceleration. Ignored for percentile intervals.",
+              "type": "integer"
+            },
+            "names": {
+              "description": "Covariate names matching the covariate column count.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "seed": {
+              "default": 42,
+              "description": "Bootstrap RNG seed. Default: 42.",
+              "type": "integer"
+            },
+            "times": {
+              "description": "Observation times from signup to event or censoring.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "times",
+            "events",
+            "covariates",
+            "names"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Validate and ingest raw churn arrays into a clean bounded dataset. Drops invalid rows, applies optional observation-end censoring, and returns normalized times, events, groups, treatment flags, covariates, and warnings.",
+        "name": "nextstat_churn_ingest",
+        "parameters": {
+          "properties": {
+            "covariate_names": {
+              "default": [],
+              "description": "Optional covariate names matching the covariate column count.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "covariates": {
+              "default": [],
+              "description": "Optional rectangular customer-level covariate matrix.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "events": {
+              "description": "Churn indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            },
+            "groups": {
+              "description": "Optional segment or cohort labels. When omitted, the underlying churn ingest uses its default grouping.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "observation_end": {
+              "description": "Optional censoring cap; times above this threshold are clipped and marked censored.",
+              "type": "number"
+            },
+            "times": {
+              "description": "Raw observation times from signup to event or censoring.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "treated": {
+              "description": "Optional treatment indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "times",
+            "events"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Estimate bounded churn uplift with the promoted AIPW workflow: treatment effect on churn within a time horizon, standard error, confidence interval, and sensitivity summary.",
+        "name": "nextstat_churn_uplift",
+        "parameters": {
+          "properties": {
+            "covariates": {
+              "description": "Rectangular numeric covariate matrix used for the propensity model.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "events": {
+              "description": "Churn indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            },
+            "horizon": {
+              "default": 12.0,
+              "description": "Time horizon defining churn within horizon. Default: 12.0.",
+              "type": "number"
+            },
+            "times": {
+              "description": "Observation times from signup to event or censoring.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "treated": {
+              "description": "Treatment indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "times",
+            "events",
+            "treated",
+            "covariates"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Estimate survival-native churn uplift with RMST, IPW-weighted survival differences at specified horizons, and overlap diagnostics.",
+        "name": "nextstat_churn_uplift_survival",
+        "parameters": {
+          "properties": {
+            "covariates": {
+              "default": [],
+              "description": "Optional rectangular numeric covariate matrix used for the propensity model.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "eval_horizons": {
+              "default": [
+                3.0,
+                6.0,
+                12.0,
+                24.0
+              ],
+              "description": "Horizons where survival differences should be reported.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "events": {
+              "description": "Churn indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            },
+            "horizon": {
+              "default": 12.0,
+              "description": "RMST horizon. Default: 12.0.",
+              "type": "number"
+            },
+            "times": {
+              "description": "Observation times from signup to event or censoring.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "treated": {
+              "description": "Treatment indicators. Accepts booleans or 0/1 integers.",
+              "items": {
+                "type": [
+                  "boolean",
+                  "integer"
+                ]
+              },
+              "type": "array"
+            },
+            "trim": {
+              "default": 0.01,
+              "description": "Propensity trimming threshold. Default: 0.01.",
+              "type": "number"
+            }
+          },
+          "required": [
+            "times",
+            "events",
+            "treated"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run chain ladder or Mack chain ladder reserving on a cumulative claims triangle. Accepts either a ragged upper-left triangle or a null-filled square triangle and returns development factors, ultimates, IBNR, and (for Mack) uncertainty metrics.",
+        "name": "nextstat_chain_ladder",
+        "parameters": {
+          "properties": {
+            "conf_level": {
+              "default": 0.95,
+              "description": "Confidence level for Mack prediction intervals. Default: 0.95.",
+              "type": "number"
+            },
+            "method": {
+              "default": "mack",
+              "description": "basic = deterministic chain ladder; mack = with prediction errors. Default: mack.",
+              "enum": [
+                "basic",
+                "mack"
+              ],
+              "type": "string"
+            },
+            "triangle": {
+              "description": "Cumulative claims triangle as either a ragged upper-left triangle or a null-filled square matrix. In square form, only the upper-left triangle is used.",
+              "items": {
+                "items": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "type": "array"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "triangle"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Fit a nonlinear mixed-effects (NLME) population PK model using FOCE, FOCEI, FO, or SAEM. Supports 1/2/3-compartment models with IV or oral absorption. Returns population parameters (theta), random-effect standard deviations (omega), individual ETAs, OFV, and convergence info.",
+        "name": "nextstat_pharma_fit",
+        "parameters": {
+          "properties": {
+            "bioavailability": {
+              "default": 1.0,
+              "description": "Bioavailability fraction (0-1). Default: 1.0.",
+              "type": "number"
+            },
+            "doses": {
+              "description": "Per-subject dose amounts (length = n_subjects, or length 1 for broadcast).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "error_model": {
+              "default": "proportional",
+              "description": "Residual error model. Default: proportional.",
+              "enum": [
+                "additive",
+                "proportional",
+                "combined"
+              ],
+              "type": "string"
+            },
+            "execution": {
+              "description": "Optional execution controls. If deterministic=true (default), NextStat will attempt to enforce parity-friendly settings (threads=1, eval_mode='parity') where supported.",
+              "properties": {
+                "deterministic": {
+                  "default": true,
+                  "description": "If true, prefer deterministic parity behavior (default: true).",
+                  "type": "boolean"
+                },
+                "eval_mode": {
+                  "description": "Evaluation mode. 'parity' favors numerical stability; 'fast' may use approximations.",
+                  "enum": [
+                    "parity",
+                    "fast"
+                  ],
+                  "type": "string"
+                },
+                "threads": {
+                  "description": "Requested thread count. If omitted and deterministic=true, defaults to 1. If 0, use library default.",
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            },
+            "method": {
+              "default": "focei",
+              "description": "Estimation method. Default: focei.",
+              "enum": [
+                "foce",
+                "focei",
+                "fo",
+                "saem"
+              ],
+              "type": "string"
+            },
+            "model": {
+              "default": "1cpt_oral",
+              "description": "PK compartment model. Default: 1cpt_oral.",
+              "enum": [
+                "1cpt_iv",
+                "1cpt_oral",
+                "2cpt_iv",
+                "2cpt_oral",
+                "3cpt_iv",
+                "3cpt_oral"
+              ],
+              "type": "string"
+            },
+            "n_subjects": {
+              "description": "Total number of subjects.",
+              "type": "integer"
+            },
+            "omega_init": {
+              "description": "Initial omega diagonal elements (IIV standard deviations).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "sigma": {
+              "default": 0.1,
+              "description": "Initial residual error magnitude. Default: 0.1.",
+              "type": "number"
+            },
+            "sigma_add": {
+              "description": "Additive residual error magnitude. Required when error_model='combined'.",
+              "type": "number"
+            },
+            "subject_idx": {
+              "description": "Subject index for each observation (0-based).",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "theta_init": {
+              "description": "Initial population PK parameter estimates (e.g. [Ka, CL, V] for 1cpt_oral).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "times": {
+              "description": "Flat array of observation times across all subjects.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "y": {
+              "description": "Flat array of observed concentrations (same length as times).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "times",
+            "y",
+            "subject_idx",
+            "n_subjects",
+            "doses",
+            "theta_init",
+            "omega_init"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run a Visual Predictive Check (VPC) for a fitted population PK model. Simulates replicate datasets, bins observations in time, and returns observed and simulated quantile envelopes for visual comparison.",
+        "name": "nextstat_pharma_vpc",
+        "parameters": {
+          "properties": {
+            "bioavailability": {
+              "default": 1.0,
+              "description": "Bioavailability fraction (0-1). Default: 1.0.",
+              "type": "number"
+            },
+            "doses": {
+              "description": "Per-subject dose amounts (length = n_subjects, or length 1 for broadcast).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "error_model": {
+              "default": "proportional",
+              "enum": [
+                "additive",
+                "proportional",
+                "combined"
+              ],
+              "type": "string"
+            },
+            "model": {
+              "description": "PK model type.",
+              "enum": [
+                "1cpt_iv",
+                "1cpt_oral",
+                "2cpt_iv",
+                "2cpt_oral",
+                "3cpt_iv",
+                "3cpt_oral"
+              ],
+              "type": "string"
+            },
+            "n_bins": {
+              "default": 10,
+              "description": "Number of time bins used to summarize the VPC. Default: 10.",
+              "type": "integer"
+            },
+            "n_sim": {
+              "default": 200,
+              "description": "Number of simulated datasets. Default: 200.",
+              "type": "integer"
+            },
+            "n_subjects": {
+              "description": "Total number of subjects.",
+              "type": "integer"
+            },
+            "omega_matrix": {
+              "description": "Fitted omega covariance matrix.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "pi_level": {
+              "default": 0.9,
+              "description": "Prediction-interval level for simulated envelopes. Default: 0.90.",
+              "type": "number"
+            },
+            "quantiles": {
+              "description": "Quantile levels to summarize per time bin. Default: [0.05, 0.50, 0.95].",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "seed": {
+              "default": 42,
+              "type": "integer"
+            },
+            "sigma": {
+              "description": "Fitted residual error.",
+              "type": "number"
+            },
+            "sigma_add": {
+              "description": "Additive residual error magnitude. Required when error_model='combined'.",
+              "type": "number"
+            },
+            "subject_idx": {
+              "description": "Subject index for each observation.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "theta": {
+              "description": "Fitted population parameters.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "times": {
+              "description": "Flat array of observation times.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "y": {
+              "description": "Flat array of observed concentrations.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "times",
+            "y",
+            "subject_idx",
+            "n_subjects",
+            "doses",
+            "model",
+            "theta",
+            "omega_matrix",
+            "sigma"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run per-observation population PK goodness-of-fit diagnostics. Returns population predictions (PRED), individual predictions (IPRED), and weighted residual diagnostics (IWRES, CWRES) for each observation.",
+        "name": "nextstat_pk_gof",
+        "parameters": {
+          "properties": {
+            "bioavailability": {
+              "default": 1.0,
+              "description": "Bioavailability fraction (0-1). Default: 1.0.",
+              "type": "number"
+            },
+            "doses": {
+              "description": "Per-subject dose amounts (length = number of ETA rows, or length 1 for broadcast).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "error_model": {
+              "default": "proportional",
+              "description": "Residual error model used for GOF diagnostics. Default: proportional.",
+              "enum": [
+                "additive",
+                "proportional",
+                "combined"
+              ],
+              "type": "string"
+            },
+            "eta": {
+              "description": "Per-subject ETA vectors.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "model": {
+              "default": "1cpt_oral",
+              "description": "PK model type. Default: 1cpt_oral.",
+              "enum": [
+                "1cpt_iv",
+                "1cpt_oral",
+                "2cpt_iv",
+                "2cpt_oral",
+                "3cpt_iv",
+                "3cpt_oral"
+              ],
+              "type": "string"
+            },
+            "sigma": {
+              "default": 0.1,
+              "description": "Residual error magnitude. Default: 0.1.",
+              "type": "number"
+            },
+            "sigma_add": {
+              "description": "Additive residual error magnitude. Required when error_model='combined'.",
+              "type": "number"
+            },
+            "subject_idx": {
+              "description": "Subject index for each observation.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "theta": {
+              "description": "Population PK parameters.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "times": {
+              "description": "Flat array of observation times.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "y": {
+              "description": "Flat array of observed concentrations.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "times",
+            "y",
+            "subject_idx",
+            "doses",
+            "theta",
+            "eta"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run normalized prediction distribution error (NPDE) diagnostics for a population PK model. Uses deterministic simulation with an explicit seed and returns per-observation percentiles plus NPDE values, along with overall mean and variance summaries.",
+        "name": "nextstat_pk_npde",
+        "parameters": {
+          "properties": {
+            "bioavailability": {
+              "default": 1.0,
+              "description": "Bioavailability fraction (0-1). Default: 1.0.",
+              "type": "number"
+            },
+            "doses": {
+              "description": "Per-subject dose amounts (length = n_subjects, or length 1 for broadcast).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "error_model": {
+              "default": "proportional",
+              "description": "Residual error model used for NPDE diagnostics. Default: proportional.",
+              "enum": [
+                "additive",
+                "proportional",
+                "combined"
+              ],
+              "type": "string"
+            },
+            "model": {
+              "default": "1cpt_oral",
+              "description": "PK model type. Default: 1cpt_oral.",
+              "enum": [
+                "1cpt_iv",
+                "1cpt_oral",
+                "2cpt_iv",
+                "2cpt_oral",
+                "3cpt_iv",
+                "3cpt_oral"
+              ],
+              "type": "string"
+            },
+            "n_sim": {
+              "default": 500,
+              "description": "Number of simulated replicates per observation. Default: 500.",
+              "type": "integer"
+            },
+            "n_subjects": {
+              "description": "Total number of subjects.",
+              "type": "integer"
+            },
+            "omega_matrix": {
+              "description": "Omega covariance matrix.",
+              "items": {
+                "items": {
+                  "type": "number"
+                },
+                "type": "array"
+              },
+              "type": "array"
+            },
+            "seed": {
+              "default": 42,
+              "description": "Simulation seed. Default: 42.",
+              "type": "integer"
+            },
+            "sigma": {
+              "default": 0.1,
+              "description": "Residual error magnitude. Default: 0.1.",
+              "type": "number"
+            },
+            "sigma_add": {
+              "description": "Additive residual error magnitude. Required when error_model='combined'.",
+              "type": "number"
+            },
+            "subject_idx": {
+              "description": "Subject index for each observation.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "theta": {
+              "description": "Population PK parameters.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "times": {
+              "description": "Flat array of observation times.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "y": {
+              "description": "Flat array of observed concentrations.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "times",
+            "y",
+            "subject_idx",
+            "n_subjects",
+            "doses",
+            "theta",
+            "omega_matrix"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Simulate a single clinical PK trial: generate concentration profiles for n_subjects with inter-individual variability and return concentrations, individual parameters, AUC, Cmax, Tmax, and Ctrough for each subject.",
+        "name": "nextstat_trial_simulate",
+        "parameters": {
+          "properties": {
+            "bioavailability": {
+              "default": 1.0,
+              "description": "Oral bioavailability fraction. Used for oral models only. Default: 1.0.",
+              "type": "number"
+            },
+            "dose": {
+              "description": "Single dose amount applied to every subject at time 0.",
+              "type": "number"
+            },
+            "error_model": {
+              "default": "proportional",
+              "description": "Residual error model for the simulated observations. Default: proportional.",
+              "enum": [
+                "additive",
+                "proportional"
+              ],
+              "type": "string"
+            },
+            "n_subjects": {
+              "description": "Number of virtual subjects.",
+              "type": "integer"
+            },
+            "obs_times": {
+              "description": "Observation time points.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "omega": {
+              "description": "Omega diagonal (IIV standard deviations).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "pk_model": {
+              "default": "1cpt_oral",
+              "description": "Supported PK model type. Default: 1cpt_oral.",
+              "enum": [
+                "1cpt_oral",
+                "2cpt_iv",
+                "2cpt_oral"
+              ],
+              "type": "string"
+            },
+            "seed": {
+              "default": 42,
+              "description": "Simulation seed. Default: 42.",
+              "type": "integer"
+            },
+            "sigma": {
+              "description": "Residual error magnitude.",
+              "type": "number"
+            },
+            "theta": {
+              "description": "Population PK parameters.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "n_subjects",
+            "dose",
+            "obs_times",
+            "theta",
+            "omega",
+            "sigma"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run average bioequivalence (ABE) analysis on a 2x2 crossover study. Returns geometric mean ratio, 90% CI, and BE conclusion. Optionally compute power or sample size.",
+        "name": "nextstat_bioequivalence",
+        "parameters": {
+          "properties": {
+            "cv": {
+              "default": 0.3,
+              "description": "Intra-subject CV (for power/sample_size). Default: 0.30.",
+              "type": "number"
+            },
+            "gmr": {
+              "default": 0.95,
+              "description": "Assumed geometric mean ratio (for power/sample_size). Default: 0.95.",
+              "type": "number"
+            },
+            "n_total": {
+              "description": "Total sample size (for 'power' operation).",
+              "type": "integer"
+            },
+            "operation": {
+              "default": "test",
+              "description": "test=run ABE, power=compute power, sample_size=compute N.",
+              "enum": [
+                "test",
+                "power",
+                "sample_size"
+              ],
+              "type": "string"
+            },
+            "ref_values": {
+              "description": "Log-transformed AUC/Cmax for reference formulation (for 'test' operation).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "target_power": {
+              "default": 0.8,
+              "description": "Target power (for 'sample_size'). Default: 0.80.",
+              "type": "number"
+            },
+            "test_values": {
+              "description": "Log-transformed AUC/Cmax for test formulation (for 'test' operation).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run Monte Carlo simulation on a fault tree (FTA). Returns P(top event failure), confidence interval, and Birnbaum component importance measures. Supports Bernoulli, uncertain Bernoulli (logit-normal), and Weibull mission-time failure modes.",
+        "name": "nextstat_fault_tree_mc",
+        "parameters": {
+          "properties": {
+            "device": {
+              "default": "cpu",
+              "enum": [
+                "cpu",
+                "cuda",
+                "metal"
+              ],
+              "type": "string"
+            },
+            "n_scenarios": {
+              "default": 1000000,
+              "description": "Number of Monte Carlo scenarios. Default: 1000000.",
+              "type": "integer"
+            },
+            "seed": {
+              "default": 42,
+              "type": "integer"
+            },
+            "spec": {
+              "description": "Fault tree specification: {components: [{type, ...}], nodes: [{type:'component', index} or {type:'and'/'or', children}], top_event: idx}. Component types: {type:'bernoulli', p:float}, {type:'bernoulli_uncertain', mu:float, sigma:float}, {type:'weibull_mission', k:float, lambda:float, mission_time:float}.",
+              "type": "object"
+            }
+          },
+          "required": [
+            "spec"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run Cross-Entropy Importance Sampling (CE-IS) on a fault tree for rare-event probability estimation. More efficient than crude MC when P(failure) is very small (< 1e-4). Returns P(failure), SE, CI, number of CE levels, and coefficient of variation. Current CE-IS component support is Bernoulli-only.",
+        "name": "nextstat_fault_tree_ce_is",
+        "parameters": {
+          "properties": {
+            "elite_fraction": {
+              "default": 0.01,
+              "description": "Elite fraction for CE update. Default: 0.01.",
+              "type": "number"
+            },
+            "max_levels": {
+              "default": 20,
+              "description": "Max CE iterations. Default: 20.",
+              "type": "integer"
+            },
+            "n_per_level": {
+              "default": 10000,
+              "description": "Samples per CE level. Default: 10000.",
+              "type": "integer"
+            },
+            "q_max": {
+              "default": 0.99,
+              "description": "Upper cap for adaptive proposal probabilities. Default: 0.99.",
+              "type": "number"
+            },
+            "seed": {
+              "default": 42,
+              "type": "integer"
+            },
+            "spec": {
+              "description": "Fault tree specification (same node format as nextstat_fault_tree_mc). Current CE-IS component support is Bernoulli-only.",
+              "type": "object"
+            }
+          },
+          "required": [
+            "spec"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Evaluate an Emax or Sigmoid-Emax dose-response model. Returns predicted response at given concentrations, or NLL when observed responses are provided.",
+        "name": "nextstat_dose_response",
+        "parameters": {
+          "anyOf": [
+            {
+              "required": [
+                "conc"
+              ]
+            },
+            {
+              "required": [
+                "dose"
+              ]
+            }
+          ],
+          "properties": {
+            "conc": {
+              "description": "Concentration values for prediction or likelihood evaluation.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "dose": {
+              "description": "Alias for conc.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "e0": {
+              "description": "Baseline effect (placebo).",
+              "type": "number"
+            },
+            "ec50": {
+              "description": "Concentration at 50% of Emax.",
+              "type": "number"
+            },
+            "emax": {
+              "description": "Maximum drug effect.",
+              "type": "number"
+            },
+            "error_model": {
+              "default": "additive",
+              "description": "Residual error model used when obs/response is provided. Default: additive.",
+              "enum": [
+                "additive",
+                "proportional",
+                "combined",
+                "exponential",
+                "power"
+              ],
+              "type": "string"
+            },
+            "gamma": {
+              "default": 1.0,
+              "description": "Hill coefficient (only for sigmoid_emax). Default: 1.",
+              "type": "number"
+            },
+            "model": {
+              "description": "Dose-response model type.",
+              "enum": [
+                "emax",
+                "sigmoid_emax"
+              ],
+              "type": "string"
+            },
+            "obs": {
+              "description": "Observed responses. If provided, the tool returns NLL instead of predictions.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "response": {
+              "description": "Alias for obs.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "sigma": {
+              "default": 0.05,
+              "description": "Primary residual scale used when obs/response is provided. Default: 0.05.",
+              "type": "number"
+            },
+            "sigma_add": {
+              "description": "Secondary residual parameter: additive SD for combined error or power exponent for power error.",
+              "type": "number"
+            }
+          },
+          "required": [
+            "model",
+            "e0",
+            "emax",
+            "ec50"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Analyze competing risks data: compute cumulative incidence functions (CIF), Gray's test for group comparison, or Fine-Gray subdistribution hazard regression.",
+        "name": "nextstat_competing_risks",
+        "parameters": {
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "operation": {
+                    "const": "gray_test"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "groups"
+                ]
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "operation": {
+                    "const": "fine_gray"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "x",
+                  "p"
+                ]
+              }
+            }
+          ],
+          "properties": {
+            "conf_level": {
+              "default": 0.95,
+              "description": "Pointwise confidence level for CIF intervals. Used when operation='cif'. Default: 0.95.",
+              "type": "number"
+            },
+            "events": {
+              "description": "Event type (0=censored, 1=cause1, 2=cause2, ...).",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "groups": {
+              "description": "Group labels (required for gray_test).",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "operation": {
+              "description": "cif=cumulative incidence, gray_test=group comparison, fine_gray=regression.",
+              "enum": [
+                "cif",
+                "gray_test",
+                "fine_gray"
+              ],
+              "type": "string"
+            },
+            "p": {
+              "description": "Number of covariates (required for fine_gray).",
+              "type": "integer"
+            },
+            "target_cause": {
+              "default": 1,
+              "description": "Cause of interest. Default: 1.",
+              "type": "integer"
+            },
+            "times": {
+              "description": "Event/censoring times.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            },
+            "x": {
+              "description": "Flat covariate matrix (required for fine_gray).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "operation",
+            "times",
+            "events"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Run an event study (dynamic DiD) with leads and lags around treatment. Returns period-specific treatment effects and confidence intervals for parallel trends testing.",
+        "name": "nextstat_event_study",
+        "parameters": {
+          "properties": {
+            "cluster": {
+              "default": "entity",
+              "enum": [
+                "entity",
+                "time",
+                "two_way"
+              ],
+              "type": "string"
+            },
+            "entity": {
+              "description": "Entity identifiers.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "n_lags": {
+              "default": 3,
+              "description": "Number of post-treatment lags. Default: 3.",
+              "type": "integer"
+            },
+            "n_leads": {
+              "default": 3,
+              "description": "Number of pre-treatment leads. Default: 3.",
+              "type": "integer"
+            },
+            "time": {
+              "description": "Time period identifiers.",
+              "items": {
+                "type": "integer"
+              },
+              "type": "array"
+            },
+            "treat_time": {
+              "description": "Treatment onset time for each entity (null if never treated).",
+              "items": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "type": "array"
+            },
+            "y": {
+              "description": "Outcome variable.",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "y",
+            "entity",
+            "time",
+            "treat_time"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    },
+    {
+      "function": {
+        "description": "Fit a GARCH(1,1), EGARCH(1,1), or GJR-GARCH(1,1) volatility model to a return series. Returns estimated parameters (omega, alpha, beta, and model-specific terms), log-likelihood, conditional variances, and standardized residuals.",
+        "name": "nextstat_garch_fit",
+        "parameters": {
+          "properties": {
+            "model": {
+              "default": "garch",
+              "description": "Volatility model. Default: garch.",
+              "enum": [
+                "garch",
+                "egarch",
+                "gjr_garch"
+              ],
+              "type": "string"
+            },
+            "returns": {
+              "description": "Return series (e.g. log-returns of asset prices).",
+              "items": {
+                "type": "number"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "returns"
+          ],
+          "type": "object"
+        }
+      },
+      "type": "function"
+    }
+  ],
+  "transport": "local"
+}

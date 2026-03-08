@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/hep/simplified_likelihood_audit_v0.schema.json",
+  "title": "NextStat Simplified Likelihood Audit v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "input_schema_version",
+    "experiment",
+    "analysis_id",
+    "source_format",
+    "poi_name",
+    "channel_names",
+    "channel_count",
+    "total_bins",
+    "has_signal",
+    "uncertainty_model_kind",
+    "reduced_nuisance_count",
+    "parameter_count_estimate",
+    "total_observed_yield",
+    "total_background_yield",
+    "total_signal_yield",
+    "input_has_factorization_diagnostics",
+    "input_has_fidelity_diagnostics",
+    "diagnostics"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_simplified_likelihood_audit_v0"
+    },
+    "input_schema_version": {
+      "const": "nextstat_simplified_likelihood_v0"
+    },
+    "experiment": { "type": "string", "minLength": 1 },
+    "analysis_id": { "type": "string", "minLength": 1 },
+    "source_format": {
+      "type": "string",
+      "enum": ["basis", "covariance", "derived_from_workspace"]
+    },
+    "poi_name": { "type": "string", "minLength": 1 },
+    "channel_names": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "channel_count": { "type": "integer", "minimum": 1 },
+    "total_bins": { "type": "integer", "minimum": 1 },
+    "has_signal": { "type": "boolean" },
+    "uncertainty_model_kind": {
+      "type": "string",
+      "enum": ["basis", "covariance"]
+    },
+    "reduced_nuisance_count": { "type": "integer", "minimum": 0 },
+    "parameter_count_estimate": { "type": "integer", "minimum": 1 },
+    "total_observed_yield": { "type": "number", "minimum": 0.0 },
+    "total_background_yield": { "type": "number", "minimum": 0.0 },
+    "total_signal_yield": {
+      "type": ["number", "null"],
+      "minimum": 0.0
+    },
+    "input_has_factorization_diagnostics": { "type": "boolean" },
+    "input_has_fidelity_diagnostics": { "type": "boolean" },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factorization", "fidelity"],
+      "properties": {
+        "factorization": {
+          "oneOf": [
+            { "$ref": "#/$defs/factorization_diagnostics" },
+            { "type": "null" }
+          ]
+        },
+        "fidelity": {
+          "oneOf": [
+            { "$ref": "#/$defs/fidelity_diagnostics" },
+            { "type": "null" }
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "factorization_diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "original_rank",
+        "retained_rank",
+        "explained_variance_fraction",
+        "frobenius_residual"
+      ],
+      "properties": {
+        "method": { "type": "string", "minLength": 1 },
+        "original_rank": { "type": "integer", "minimum": 0 },
+        "retained_rank": { "type": "integer", "minimum": 0 },
+        "explained_variance_fraction": { "type": "number" },
+        "frobenius_residual": { "type": "number", "minimum": 0.0 },
+        "clipped_negative_eigenvalues": { "type": "integer", "minimum": 0 },
+        "max_clipped_negative_eigenvalue_magnitude": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "input_trace": { "type": "number", "minimum": 0.0 },
+        "retained_trace": { "type": "number", "minimum": 0.0 },
+        "stat_covariance_trace": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        },
+        "shared_systematic_trace": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        }
+      }
+    },
+    "fidelity_diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nuisance_count_full": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "nuisance_count_reduced": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "bins_count": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "relative_background_cov_residual": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        },
+        "max_abs_expected_delta_at_nominal": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        },
+        "max_abs_expected_delta_random_draws": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        },
+        "qmu_delta_smoke": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        },
+        "upper_limit_ratio_smoke": {
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0.0
+        },
+        "max_abs_yield_delta": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        },
+        "max_rel_yield_delta": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        }
+      }
+    }
+  }
+}

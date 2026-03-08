@@ -8,7 +8,7 @@ last_updated: 2026-02-11
 
 This report is the apples-to-apples CPU rerun for `gauss_exp` on:
 
-- host: Hetzner GEX44 (`i5-13500`, 20 threads)
+- host: Hetzner dedicated-bench (`i5-13500`, 20 threads)
 - event counts: `10k`, `100k`, `1M`
 - seeds: `42`, `43` (median of seeds reported)
 

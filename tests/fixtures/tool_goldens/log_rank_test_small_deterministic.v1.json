@@ -1,0 +1,35 @@
+{
+  "case_name": "log_rank_test_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_log_rank_test": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_log_rank_test"
+      },
+      "ok": true,
+      "result": {
+        "chi_squared": 0.4864864864864866,
+        "df": 1,
+        "expected": [
+          1.4,
+          2.6
+        ],
+        "group_ids": [
+          0,
+          1
+        ],
+        "n": 8,
+        "observed": [
+          2.0,
+          2.0
+        ],
+        "p_value": 0.48549880264428225
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

@@ -1,0 +1,533 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/tools/nextstat_tool_contract_dashboard_v1.schema.json",
+  "title": "NextStat Tool Contract Dashboard v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "report_count",
+    "source_reports",
+    "overall_status",
+    "overall_pass",
+    "runs",
+    "totals"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.tool_contract_dashboard.v1"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "report_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "source_reports": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "overall_status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "passed",
+        "failed",
+        "mixed"
+      ]
+    },
+    "overall_pass": {
+      "type": "boolean"
+    },
+    "runs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/run"
+      },
+      "minItems": 1
+    },
+    "totals": {
+      "$ref": "#/$defs/totals"
+    }
+  },
+  "$defs": {
+    "status_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planned",
+        "passed",
+        "failed"
+      ],
+      "properties": {
+        "planned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "mode_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fast",
+        "live",
+        "all"
+      ],
+      "properties": {
+        "fast": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "live": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "all": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "failure_classification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code",
+        "severity",
+        "reason"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "none",
+            "schema_drift",
+            "rust_contract_failure",
+            "python_contract_failure",
+            "live_server_failure",
+            "unknown"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "none",
+            "high",
+            "critical"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "failure_classification_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "none",
+        "schema_drift",
+        "performance_budget_failure",
+        "rust_contract_failure",
+        "python_contract_failure",
+        "live_server_failure",
+        "unknown"
+      ],
+      "properties": {
+        "none": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "schema_drift": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "performance_budget_failure": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "rust_contract_failure": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "python_contract_failure": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "live_server_failure": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unknown": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "severity_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "none",
+        "high",
+        "critical"
+      ],
+      "properties": {
+        "none": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "high": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "critical": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "failed_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "label",
+        "command",
+        "env_overrides",
+        "returncode",
+        "classification"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "env_overrides": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "returncode": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "stdout_tail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stderr_tail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "classification": {
+          "$ref": "#/$defs/failure_classification"
+        }
+      }
+    },
+    "performance_status_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planned",
+        "within_budget",
+        "exceeded",
+        "not_available"
+      ],
+      "properties": {
+        "planned": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "within_budget": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "exceeded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "not_available": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "budget_status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "within_budget",
+        "exceeded",
+        "not_available"
+      ]
+    },
+    "runner_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "status",
+        "max_total_duration_s",
+        "actual_total_duration_s",
+        "step_budgets"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "fast",
+            "live",
+            "all"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/budget_status"
+        },
+        "max_total_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "actual_total_duration_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "step_budgets": {
+          "type": "array"
+        }
+      }
+    },
+    "live_metrics_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "metrics_path",
+        "missing_metrics",
+        "metrics"
+      ],
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/budget_status"
+        },
+        "metrics_path": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "missing_metrics": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "metrics": {
+          "type": "array"
+        }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "budget_manifest_path",
+        "budget_schema_path",
+        "budget_schema_version",
+        "runner_budget",
+        "live_metrics_budget"
+      ],
+      "properties": {
+        "budget_manifest_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "budget_schema_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "budget_schema_version": {
+          "const": "nextstat.tool_contract_performance_budget.v1"
+        },
+        "runner_budget": {
+          "$ref": "#/$defs/runner_budget"
+        },
+        "live_metrics_budget": {
+          "$ref": "#/$defs/live_metrics_budget"
+        }
+      }
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "report_path",
+        "mode",
+        "dry_run",
+        "status",
+        "overall_pass",
+        "step_count",
+        "duration_s",
+        "failed_step_index",
+        "failed_step_label",
+        "failure_classification",
+        "step_status_counts",
+        "performance"
+      ],
+      "properties": {
+        "report_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "fast",
+            "live",
+            "all"
+          ]
+        },
+        "dry_run": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "planned",
+            "passed",
+            "failed"
+          ]
+        },
+        "overall_pass": {
+          "type": "boolean"
+        },
+        "step_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "failed_step_index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "failed_step_label": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1
+        },
+        "failed_steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/failed_step"
+          }
+        },
+        "failure_classification": {
+          "$ref": "#/$defs/failure_classification"
+        },
+        "performance": {
+          "$ref": "#/$defs/performance"
+        },
+        "step_status_counts": {
+          "$ref": "#/$defs/status_counts"
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "duration_s",
+        "step_count",
+        "step_status_counts",
+        "mode_counts",
+        "failed_report_paths",
+        "failed_step_count",
+        "failure_classification_counts",
+        "severity_counts",
+        "runner_budget_status_counts",
+        "live_metrics_budget_status_counts"
+      ],
+      "properties": {
+        "duration_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "step_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "step_status_counts": {
+          "$ref": "#/$defs/status_counts"
+        },
+        "mode_counts": {
+          "$ref": "#/$defs/mode_counts"
+        },
+        "failed_report_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "failed_step_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failure_classification_counts": {
+          "$ref": "#/$defs/failure_classification_counts"
+        },
+        "severity_counts": {
+          "$ref": "#/$defs/severity_counts"
+        },
+        "runner_budget_status_counts": {
+          "$ref": "#/$defs/performance_status_counts"
+        },
+        "live_metrics_budget_status_counts": {
+          "$ref": "#/$defs/performance_status_counts"
+        }
+      }
+    }
+  }
+}

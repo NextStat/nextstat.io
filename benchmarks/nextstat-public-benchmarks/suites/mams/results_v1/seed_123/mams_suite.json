@@ -1,0 +1,233 @@
+{
+  "cases": [
+    {
+      "backend": "nextstat_mams",
+      "case": "std_normal_10d",
+      "ess_per_grad": 0.26600232780533845,
+      "ess_per_sec": 50029.28787725271,
+      "max_r_hat": 1.0065147141668767,
+      "min_ess_bulk": 6384.055867328123,
+      "n_grad_evals": 24000,
+      "path": "cases/std_normal_10d__nextstat_mams__s123.json",
+      "seed": 123,
+      "sha256": "1553d39575b785062b215a60d3a3085f56afec2da9c1be034ed207ae17093751",
+      "status": "ok",
+      "wall_time_s": 0.12760637095198035
+    },
+    {
+      "backend": "nextstat_nuts",
+      "case": "std_normal_10d",
+      "ess_per_grad": 0.07187005893344832,
+      "ess_per_sec": 33573.19889360029,
+      "max_r_hat": 1.003757814079871,
+      "min_ess_bulk": 8000.0,
+      "n_grad_evals": 111312,
+      "path": "cases/std_normal_10d__nextstat_nuts__s123.json",
+      "seed": 123,
+      "sha256": "0baf4ba756d5db7f0a7c208db7dafa149ba623ddc9a852788c32ed787aeb5c99",
+      "status": "ok",
+      "wall_time_s": 0.23828530684113503
+    },
+    {
+      "backend": "nextstat_mams",
+      "case": "neal_funnel_2d",
+      "ess_per_grad": 0.0003827827969151858,
+      "ess_per_sec": 1098.464168758134,
+      "max_r_hat": 1.0064206609995454,
+      "min_ess_bulk": 1408.9419427090559,
+      "n_grad_evals": 3680787,
+      "path": "cases/neal_funnel_2d__nextstat_mams__s123.json",
+      "seed": 123,
+      "sha256": "e7acb89913dcf2e7ace2f1ca67f477c05e99f5c752a4747c3d66ce024f308e6c",
+      "status": "ok",
+      "wall_time_s": 1.2826471566222608
+    },
+    {
+      "backend": "nextstat_nuts",
+      "case": "neal_funnel_2d",
+      "ess_per_grad": 3.650703318842759e-05,
+      "ess_per_sec": 9.84490441923483,
+      "max_r_hat": 1.3915849002564147,
+      "min_ess_bulk": 11.47671602344598,
+      "n_grad_evals": 314370,
+      "path": "cases/neal_funnel_2d__nextstat_nuts__s123.json",
+      "seed": 123,
+      "sha256": "b29b699e980a426c8aa7a7b5a81c898c023387fb6280ddfaa9b3699d4e56a62f",
+      "status": "ok",
+      "wall_time_s": 1.1657518991269171
+    },
+    {
+      "backend": "nextstat_mams",
+      "case": "eight_schools",
+      "ess_per_grad": 0.13720051337960584,
+      "ess_per_sec": 24649.208831450156,
+      "max_r_hat": 1.0068336677984586,
+      "min_ess_bulk": 4116.015401388176,
+      "n_grad_evals": 30000,
+      "path": "cases/eight_schools__nextstat_mams__s123.json",
+      "seed": 123,
+      "sha256": "54760d900c4a51863464faceb41a98f9f12654883cb234a35126bc6d5c3aa8cc",
+      "status": "ok",
+      "wall_time_s": 0.166983671952039
+    },
+    {
+      "backend": "nextstat_nuts",
+      "case": "eight_schools",
+      "ess_per_grad": 0.03449628136129181,
+      "ess_per_sec": 15595.044443694433,
+      "max_r_hat": 1.0016728195654703,
+      "min_ess_bulk": 5200.2454226520185,
+      "n_grad_evals": 150748,
+      "path": "cases/eight_schools__nextstat_nuts__s123.json",
+      "seed": 123,
+      "sha256": "3a738aaba08becdb44de4e1b99880514afae0aebab591a2604283ec3ebff0a58",
+      "status": "ok",
+      "wall_time_s": 0.3334549921564758
+    },
+    {
+      "backend": "nextstat_mams",
+      "case": "glm_logistic",
+      "ess_per_grad": 0.07145571875625056,
+      "ess_per_sec": 1117.7823969906428,
+      "max_r_hat": 1.0045235440945852,
+      "min_ess_bulk": 1714.9372501500136,
+      "n_grad_evals": 24000,
+      "path": "cases/glm_logistic__nextstat_mams__s123.json",
+      "seed": 123,
+      "sha256": "d5085e884712f92e5cda1b7fdadfce1a8f0f791da9e8516f55697d2c3228785d",
+      "status": "ok",
+      "wall_time_s": 1.534231756348163
+    },
+    {
+      "backend": "nextstat_nuts",
+      "case": "glm_logistic",
+      "ess_per_grad": 0.07671160304275353,
+      "ess_per_sec": 4032.07528349916,
+      "max_r_hat": 1.0006321903220416,
+      "min_ess_bulk": 7413.4093180517,
+      "n_grad_evals": 96640,
+      "path": "cases/glm_logistic__nextstat_nuts__s123.json",
+      "seed": 123,
+      "sha256": "7e898b60465a24218a4f59aec22733cd5bb20f629813a84d98fa51b7285540a6",
+      "status": "ok",
+      "wall_time_s": 1.8386088544502854
+    }
+  ],
+  "config": {
+    "backends": [
+      "nextstat_mams",
+      "nextstat_nuts"
+    ],
+    "dataset_seed": 12345,
+    "n_chains": 4,
+    "n_samples": 2000,
+    "n_warmup": 3500,
+    "parity_fail_z": 12.0,
+    "parity_warn_z": 8.0,
+    "seeds": [
+      123
+    ],
+    "smoke": false,
+    "target_accept": 0.985
+  },
+  "deterministic": true,
+  "meta": {
+    "nextstat_version": "0.9.9",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "parity": {
+    "fail_z": 12.0,
+    "method": "mean_zscore",
+    "note": "Compares NextStat MAMS vs NextStat NUTS posterior means per case/seed; SE uses ESS_bulk when available.",
+    "rows": [
+      {
+        "case": "eight_schools",
+        "max_z": 2.2353143211705024,
+        "seed": 123,
+        "status": "ok",
+        "worst": [
+          {
+            "param": "theta_raw[1]",
+            "z": 2.2353143211705024
+          },
+          {
+            "param": "mu",
+            "z": 1.7556059018942805
+          },
+          {
+            "param": "theta_raw[6]",
+            "z": 1.483249038633551
+          }
+        ]
+      },
+      {
+        "case": "glm_logistic",
+        "max_z": 2.023630948433335,
+        "seed": 123,
+        "status": "ok",
+        "worst": [
+          {
+            "param": "beta5",
+            "z": 2.023630948433335
+          },
+          {
+            "param": "beta2",
+            "z": 1.4810156911957117
+          },
+          {
+            "param": "beta1",
+            "z": 1.4044927807789527
+          }
+        ]
+      },
+      {
+        "case": "neal_funnel_2d",
+        "max_z": 3.480304723529293,
+        "seed": 123,
+        "status": "ok",
+        "worst": [
+          {
+            "param": "y",
+            "z": 3.480304723529293
+          },
+          {
+            "param": "x[1]",
+            "z": 0.24472904652063387
+          }
+        ]
+      },
+      {
+        "case": "std_normal_10d",
+        "max_z": 0.8710229465948603,
+        "seed": 123,
+        "status": "ok",
+        "worst": [
+          {
+            "param": "x0",
+            "z": 0.8710229465948603
+          },
+          {
+            "param": "x3",
+            "z": 0.8281743173879457
+          },
+          {
+            "param": "x1",
+            "z": 0.7365064417352047
+          }
+        ]
+      }
+    ],
+    "warn_z": 8.0
+  },
+  "schema_version": "nextstat.mams_benchmark_suite_result.v1",
+  "suite": "mams",
+  "summary": {
+    "n_failed": 0,
+    "n_ok": 8,
+    "n_parity_fail": 0,
+    "n_parity_warn": 0,
+    "n_total": 8,
+    "n_warn": 0
+  }
+}

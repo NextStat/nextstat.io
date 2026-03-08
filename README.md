@@ -44,11 +44,42 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python scripts/god_run_benchmark.py
 ## Docs
 
 - Docs index: `docs/README.md`
+- Stable-first GVM quickstart (5-minute first result): `docs/quickstarts/hep-gvm-stable-first.md`
+- Stable-first GVM release candidate (`v0.10.0` scope, PR-ready summary): `docs/benchmarks/gvm-stable-first-release-candidate-v0.10.0-2026-03-08.md`
 - Tutorials (end-to-end): `docs/tutorials/README.md`
 - References (CLI/Python/Rust/Server/Tools): `docs/references/`
 - Demo: Physics Assistant (ROOT -> anomaly scan -> p-values + plots): `docs/demos/physics-assistant.md`
 
 ## Quickstart
+
+### HEP GVM Stable-First (5 minutes)
+
+If you want the shortest stable-first GVM path, start from the committed
+example bundle instead of writing a spec by hand:
+
+```bash
+nextstat combine-measurements-build-spec \
+  --manifest docs/examples/gvm-stable-first/manifest.yaml \
+  --output /tmp/gvm-spec.json
+
+nextstat combine-measurements \
+  --input /tmp/gvm-spec.json \
+  --output /tmp/gvm-result.json \
+  --solver auto \
+  --threads 1
+```
+
+Then continue with:
+
+- `nextstat combine-measurements-calibrate`
+- `nextstat combine-measurements-calibrate-study`
+- `make gvm-stable-first-example`
+
+Full walkthrough:
+
+- `docs/quickstarts/hep-gvm-stable-first.md`
+- `docs/tutorials/hep-gvm-measurement-combinations.md`
+- `docs/benchmarks/gvm-stable-first-release-candidate-v0.10.0-2026-03-08.md`
 
 ### Install (Rust)
 

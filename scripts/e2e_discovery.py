@@ -97,6 +97,12 @@ def main() -> None:
         help="Base URL for --transport=server (e.g. http://127.0.0.1:3742). "
         "If omitted, NEXTSTAT_SERVER_URL / NEXTSTAT_TOOLS_SERVER_URL may be used.",
     )
+    ap.add_argument(
+        "--api-key",
+        default="",
+        help="Bearer token for auth-enabled server mode. "
+        "If omitted, NEXTSTAT_SERVER_API_KEY / NEXTSTAT_TOOLS_API_KEY may be used.",
+    )
     ap.add_argument("--timeout-s", type=float, default=30.0, help="HTTP timeout in seconds (server mode).")
     ap.add_argument("--no-fallback", action="store_true", help="Disable fallback to local execution on failures.")
 
@@ -147,6 +153,7 @@ def main() -> None:
             args,
             transport=str(cli.transport),
             server_url=(cli.server_url or None),
+            api_key=(cli.api_key or None),
             timeout_s=float(cli.timeout_s),
             fallback_to_local=not bool(cli.no_fallback),
         )

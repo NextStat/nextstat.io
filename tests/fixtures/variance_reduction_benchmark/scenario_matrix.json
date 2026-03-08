@@ -1,0 +1,129 @@
+{
+  "schema_version": "nextstat.ads_variance_reduction_scenario_manifest.v1",
+  "suite": "ads_variance_reduction_matrix",
+  "scenarios": [
+    {
+      "scenario_id": "revenue_dense_signal",
+      "description": "Continuous revenue metric with spend, clicks, and device-quality baselines.",
+      "metric_type": "continuous",
+      "n_per_arm": 20000,
+      "seed": 2026030801,
+      "primary_covariate": "pre_spend",
+      "sparsity_regime": "dense",
+      "collinearity_regime": "moderate",
+      "covariates": [
+        {
+          "name": "pre_spend",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_account_history_revenue"
+        },
+        {
+          "name": "pre_clicks",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_account_history_revenue"
+        },
+        {
+          "name": "device_quality",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_account_history_revenue"
+        }
+      ]
+    },
+    {
+      "scenario_id": "ratio_style_efficiency",
+      "description": "Ratio-style efficiency metric with CTR, CPC, and conversion-rate baselines.",
+      "metric_type": "ratio_style",
+      "n_per_arm": 24000,
+      "seed": 2026030802,
+      "primary_covariate": "pre_ctr",
+      "sparsity_regime": "dense",
+      "collinearity_regime": "low",
+      "covariates": [
+        {
+          "name": "pre_ctr",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_ratio_metric_history"
+        },
+        {
+          "name": "pre_cpc",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_ratio_metric_history"
+        },
+        {
+          "name": "pre_conversion_rate",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_ratio_metric_history"
+        }
+      ]
+    },
+    {
+      "scenario_id": "sparse_new_user_conversion",
+      "description": "Sparse new-user conversion metric with zero-inflated pre-period activity baselines.",
+      "metric_type": "binary",
+      "n_per_arm": 50000,
+      "seed": 2026030803,
+      "primary_covariate": "pre_sessions",
+      "sparsity_regime": "high",
+      "collinearity_regime": "moderate",
+      "covariates": [
+        {
+          "name": "pre_sessions",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_new_user_history"
+        },
+        {
+          "name": "pre_impressions",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_new_user_history"
+        },
+        {
+          "name": "pre_installs",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_new_user_history"
+        },
+        {
+          "name": "account_age_days",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_new_user_history"
+        }
+      ]
+    },
+    {
+      "scenario_id": "collinear_account_history",
+      "description": "Continuous account-history metric with deliberately collinear spend, impression, and click baselines.",
+      "metric_type": "continuous",
+      "n_per_arm": 18000,
+      "seed": 2026030804,
+      "primary_covariate": "pre_spend",
+      "sparsity_regime": "low",
+      "collinearity_regime": "high",
+      "covariates": [
+        {
+          "name": "pre_spend",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_account_history_collinear"
+        },
+        {
+          "name": "pre_spend_x2",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_account_history_collinear"
+        },
+        {
+          "name": "pre_impressions",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_account_history_collinear"
+        },
+        {
+          "name": "pre_clicks",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_account_history_collinear"
+        },
+        {
+          "name": "pre_budget",
+          "timing": "pre_treatment",
+          "source_dataset": "ads_account_history_collinear"
+        }
+      ]
+    }
+  ]
+}

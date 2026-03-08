@@ -32,6 +32,11 @@ fn load_model_from_workspace_bytes(
         ns_translate::hs3::detect::WorkspaceFormat::Hs3 => {
             ns_translate::hs3::convert::from_hs3_default(json_str)?
         }
+        ns_translate::hs3::detect::WorkspaceFormat::SimplifiedLikelihood => {
+            anyhow::bail!(
+                "simplified-likelihood JSON is not supported by validation-report model loading yet"
+            );
+        }
         ns_translate::hs3::detect::WorkspaceFormat::Pyhf
         | ns_translate::hs3::detect::WorkspaceFormat::Unknown => {
             let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(json_str)?;

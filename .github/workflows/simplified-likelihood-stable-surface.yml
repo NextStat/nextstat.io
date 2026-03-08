@@ -1,0 +1,153 @@
+name: Simplified Likelihood Stable Surface
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - "crates/ns-translate/src/audit.rs"
+      - "crates/ns-translate/src/detect.rs"
+      - "crates/ns-translate/src/simplified/**"
+      - "crates/ns-cli/src/main.rs"
+      - "crates/ns-cli/tests/cli_simplified_likelihood.rs"
+      - "crates/ns-cli/tests/cli_config_schema.rs"
+      - "crates/ns-cli/tests/cli_hs3_scope.rs"
+      - "crates/ns-server/src/tools.rs"
+      - "bindings/ns-py/**"
+      - "tests/apex2_simplified_likelihood_report.py"
+      - "tests/python/_simplified_likelihood_case_zoo.py"
+      - "tests/python/test_apex2_simplified_likelihood_report_smoke.py"
+      - "tests/python/test_bindings_api.py"
+      - "tests/python/test_simplified_likelihood_schema_smoke.py"
+      - "tests/python/test_simplified_likelihood_promotion_evidence_bundle_smoke.py"
+      - "tests/python/test_simplified_likelihood_promotion_evidence_check_smoke.py"
+      - "tests/python/test_simplified_likelihood_promotion_bundle_promotion_smoke.py"
+      - "tests/fixtures/sl_*"
+      - "benchmarks/artifacts/simplified_likelihood_promotion_bundles/**"
+      - ".gitignore"
+      - "docs/references/simplified-likelihood-artifacts.md"
+      - "docs/references/cli.md"
+      - "docs/references/python-api.md"
+      - "docs/references/server-api.md"
+      - "docs/references/rust-api.md"
+      - "docs/benchmarks/simplified-likelihood-*"
+      - "docs/schemas/hep/simplified_likelihood*.json"
+      - "docs/schemas/apex2/simplified_likelihood_report_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_promotion_evidence_*.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_promotion_bundle_promotion_report_v0.schema.json"
+      - "docs/schemas/benchmarks/snapshot_index_v1.schema.json"
+      - "docs/specs/hep/simplified_likelihood*.json"
+      - "docs/specs/apex2_simplified_likelihood_report_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_promotion_evidence_*.json"
+      - "docs/specs/benchmarks/simplified_likelihood_promotion_bundle_promotion_report_v0.example.json"
+      - "scripts/benchmarks/apex2_simplified_likelihood_remote.sh"
+      - "scripts/benchmarks/simplified_likelihood_stable_surface_gate.sh"
+      - "scripts/benchmarks/_simplified_likelihood_promotion_bundle.py"
+      - "scripts/benchmarks/build_simplified_likelihood_promotion_evidence_bundle.py"
+      - "scripts/benchmarks/verify_simplified_likelihood_promotion_evidence_bundle.py"
+      - "scripts/benchmarks/promote_simplified_likelihood_promotion_bundle.py"
+      - "scripts/benchmarks/write_snapshot_index.py"
+      - "Makefile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - "crates/ns-translate/src/audit.rs"
+      - "crates/ns-translate/src/detect.rs"
+      - "crates/ns-translate/src/simplified/**"
+      - "crates/ns-cli/src/main.rs"
+      - "crates/ns-cli/tests/cli_simplified_likelihood.rs"
+      - "crates/ns-cli/tests/cli_config_schema.rs"
+      - "crates/ns-cli/tests/cli_hs3_scope.rs"
+      - "crates/ns-server/src/tools.rs"
+      - "bindings/ns-py/**"
+      - "tests/apex2_simplified_likelihood_report.py"
+      - "tests/python/_simplified_likelihood_case_zoo.py"
+      - "tests/python/test_apex2_simplified_likelihood_report_smoke.py"
+      - "tests/python/test_bindings_api.py"
+      - "tests/python/test_simplified_likelihood_schema_smoke.py"
+      - "tests/python/test_simplified_likelihood_promotion_evidence_bundle_smoke.py"
+      - "tests/python/test_simplified_likelihood_promotion_evidence_check_smoke.py"
+      - "tests/python/test_simplified_likelihood_promotion_bundle_promotion_smoke.py"
+      - "tests/fixtures/sl_*"
+      - "benchmarks/artifacts/simplified_likelihood_promotion_bundles/**"
+      - ".gitignore"
+      - "docs/references/simplified-likelihood-artifacts.md"
+      - "docs/references/cli.md"
+      - "docs/references/python-api.md"
+      - "docs/references/server-api.md"
+      - "docs/references/rust-api.md"
+      - "docs/benchmarks/simplified-likelihood-*"
+      - "docs/schemas/hep/simplified_likelihood*.json"
+      - "docs/schemas/apex2/simplified_likelihood_report_v0.schema.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_promotion_evidence_*.json"
+      - "docs/schemas/benchmarks/simplified_likelihood_promotion_bundle_promotion_report_v0.schema.json"
+      - "docs/schemas/benchmarks/snapshot_index_v1.schema.json"
+      - "docs/specs/hep/simplified_likelihood*.json"
+      - "docs/specs/apex2_simplified_likelihood_report_v0.example.json"
+      - "docs/specs/benchmarks/simplified_likelihood_promotion_evidence_*.json"
+      - "docs/specs/benchmarks/simplified_likelihood_promotion_bundle_promotion_report_v0.example.json"
+      - "scripts/benchmarks/apex2_simplified_likelihood_remote.sh"
+      - "scripts/benchmarks/simplified_likelihood_stable_surface_gate.sh"
+      - "scripts/benchmarks/_simplified_likelihood_promotion_bundle.py"
+      - "scripts/benchmarks/build_simplified_likelihood_promotion_evidence_bundle.py"
+      - "scripts/benchmarks/verify_simplified_likelihood_promotion_evidence_bundle.py"
+      - "scripts/benchmarks/promote_simplified_likelihood_promotion_bundle.py"
+      - "scripts/benchmarks/write_snapshot_index.py"
+      - "Makefile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+concurrency:
+  group: simplified-likelihood-stable-surface-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    name: Stable-Surface Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Create virtualenv
+        run: python -m venv .venv
+
+      - name: Install Python dependencies
+        run: |
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install "maturin>=1.11,<2.0" "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "jsonschema>=4.0" "pyarrow>=18.0" "polars>=1.0" "duckdb>=1.0"
+
+      - name: Shellcheck (bash -n) stable-surface gate
+        run: bash -n scripts/benchmarks/simplified_likelihood_stable_surface_gate.sh
+
+      - name: Run simplified-likelihood stable-surface gate
+        run: make simplified-likelihood-stable-surface-gate
+
+      - name: Upload stable-surface promotion artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simplified-likelihood-stable-surface-report
+          path: |
+            tmp/simplified-likelihood-stable-surface/apex2_simplified_likelihood_report.json
+            tmp/simplified-likelihood-stable-surface/promotion_bundle/promotion_evidence.json
+            tmp/simplified-likelihood-stable-surface/promotion_bundle/promotion_evidence_check.json
+          if-no-files-found: error

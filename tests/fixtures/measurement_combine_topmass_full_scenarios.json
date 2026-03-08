@@ -1,0 +1,68 @@
+{
+  "schema_version": "nextstat_measurement_combination_scenarios_v0",
+  "scenarios": [
+    {
+      "name": "bjes_0p5",
+      "error_on_error": [
+        {
+          "systematic": "b-JES",
+          "value": 0.5
+        }
+      ]
+    },
+    {
+      "name": "theory_core_0p5",
+      "error_on_error": [
+        {
+          "systematic": "b-JES",
+          "value": 0.5
+        },
+        {
+          "systematic": "QCD radiation",
+          "value": 0.5
+        },
+        {
+          "systematic": "Hadronization",
+          "value": 0.5
+        },
+        {
+          "systematic": "Color reconnection",
+          "value": 0.5
+        }
+      ]
+    },
+    {
+      "name": "jes_family_0p5",
+      "error_on_error": [
+        {
+          "systematic": "JES 1",
+          "value": 0.5
+        },
+        {
+          "systematic": "JES 2",
+          "value": 0.5
+        },
+        {
+          "systematic": "JES 3",
+          "value": 0.5
+        },
+        {
+          "systematic": "b-JES",
+          "value": 0.5
+        },
+        {
+          "systematic": "g-JES",
+          "value": 0.5
+        },
+        {
+          "systematic": "l-JES",
+          "value": 0.5
+        },
+        {
+          "systematic": "CMS JES 1",
+          "value": 0.5
+        }
+      ]
+    }
+  ]
+}

@@ -18,6 +18,19 @@ This directory contains end-to-end tutorials for the implemented packs and workf
 
 - Phase 3.1 (frequentist): `docs/tutorials/phase-3.1-frequentist.md`
   - MLE fit, asymptotic CLs hypotest, upper limits, profile scans, plot-friendly artifacts.
+- HEP GVM measurement combinations: `docs/tutorials/hep-gvm-measurement-combinations.md`
+  - Stable-first scalar measurement combinations plus research-grade advanced GVM studies and reporting.
+
+## Stable-First GVM Release Bundle
+
+- Support matrix: `docs/benchmarks/gvm-stable-first-support-matrix-2026-03-07.md`
+- Release notes: `docs/benchmarks/gvm-stable-first-release-notes-2026-03-07.md`
+- Release candidate (`v0.10.0`): `docs/benchmarks/gvm-stable-first-release-candidate-v0.10.0-2026-03-08.md`
+- Readiness memo: `docs/benchmarks/gvm-stable-surface-readiness-2026-03-07.md`
+- Support policy: `docs/benchmarks/gvm-stable-surface-support-policy-2026-03-07.md`
+
+## Related HEP workflows
+
 - ROOT/TRExFitter parity and reproducibility: `docs/tutorials/root-trexfitter-parity.md`
 - TREx analysis spec (YAML + schema + one-command runner): `docs/tutorials/trex-analysis-spec.md`
 - TREx replacement workflow (config → run → report): `docs/tutorials/trex-replacement-workflow.md`

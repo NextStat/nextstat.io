@@ -18,7 +18,7 @@ pub fn render(artifact: &PullsArtifact, config: &VizConfig) -> crate::Result<Str
 
     let row_h = 20.0;
     let fig_w = config.figure.width;
-    let fig_h = (row_h * n as f64 + 100.0).max(230.0);
+    let fig_h = row_h * n as f64 + 80.0;
 
     let mut canvas = Canvas::new(fig_w, fig_h)?;
 
@@ -85,18 +85,20 @@ pub fn render(artifact: &PullsArtifact, config: &VizConfig) -> crate::Result<Str
         };
         let bar_w = (pull_px - x_center).abs();
         let bar_x = pull_px.min(x_center);
-        canvas.rect(
-            bar_x,
-            y - row_h * 0.3,
-            bar_w,
-            row_h * 0.6,
-            &Style::filled(bar_color.with_alpha(0.7)),
-        );
+        if bar_w > 0.01 {
+            canvas.rect(
+                bar_x,
+                y - row_h * 0.3,
+                bar_w,
+                row_h * 0.6,
+                &Style::filled(bar_color.with_alpha(0.7)),
+            );
+        }
 
-        // Constraint error bar (θ̂ ± σ̂/σ₀)
+        // Constraint error bar (θ̂ ± σ̂/σ₀) — horizontal
         let err_lo = x_center + (entry.pull - entry.constraint) * px_per_sigma;
         let err_hi = x_center + (entry.pull + entry.constraint) * px_per_sigma;
-        canvas.error_bar(pull_px, err_lo, err_hi, 3.0, &LineStyle::solid(Color::rgb(0, 0, 0), 1.0));
+        canvas.error_bar_h(err_lo, err_hi, y, 3.0, &LineStyle::solid(Color::rgb(0, 0, 0), 1.0));
 
         // Marker at pull value
         canvas.marker(

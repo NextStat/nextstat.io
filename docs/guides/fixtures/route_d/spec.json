@@ -1,0 +1,64 @@
+{
+  "measurements": [
+    {
+      "name": "atlas_ljets",
+      "value": 172.4
+    },
+    {
+      "name": "cms_ljets",
+      "value": 172.62
+    }
+  ],
+  "poi": "mu",
+  "schema_version": "nextstat_measurement_combination_v0",
+  "stat_covariance": [
+    [
+      0.04,
+      0.0
+    ],
+    [
+      0.0,
+      0.05
+    ]
+  ],
+  "systematics": [
+    {
+      "aux_mean": 0.0,
+      "corr": [
+        [
+          1.0,
+          0.8
+        ],
+        [
+          0.8,
+          1.0
+        ]
+      ],
+      "error_on_error": 0.1,
+      "magnitudes": [
+        0.3,
+        0.28
+      ],
+      "name": "b-JES"
+    },
+    {
+      "aux_mean": 0.0,
+      "corr": [
+        [
+          1.0,
+          1.0
+        ],
+        [
+          1.0,
+          1.0
+        ]
+      ],
+      "error_on_error": 0.0,
+      "magnitudes": [
+        0.2,
+        0.18
+      ],
+      "name": "hadronization"
+    }
+  ]
+}

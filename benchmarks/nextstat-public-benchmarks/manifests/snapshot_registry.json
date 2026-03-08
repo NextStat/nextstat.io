@@ -1,0 +1,466 @@
+{
+  "entries": [
+    {
+      "artifact_count": 14,
+      "generated_at": "2026-03-09T17:30:37.861532Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "mams-publisher-20260309T173500Z",
+      "snapshot_index_path": "snapshots/mams-publisher-20260309T173500Z/snapshot_index.json",
+      "snapshot_index_sha256": "21061614297c823e83686c72321912074a0ffa70b307bd0e4a5bab9c215ec0c7",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [
+        {
+          "assessment_path": "mams/mams_assessment.json",
+          "assessment_schema_version": "nextstat.mams_assessment.v1",
+          "assessment_sha256": "3c1ef47f21f8e3d85d8c0c03c88106633cb46d5515a6205a106f689ee76c878f",
+          "core_quality": {
+            "failure_count": 0,
+            "passed": true,
+            "status": "passed",
+            "warning_count": 0
+          },
+          "promotion_gate": {
+            "failing_cases": [],
+            "failure_count": 0,
+            "passed": true,
+            "review_summary": {
+              "failing_cases": [],
+              "n_failing_cases": 0,
+              "n_failures": 0,
+              "n_reviewed_cases": 4,
+              "worst_ess_per_sec": {
+                "case": "glm_logistic",
+                "value": 1002.4664435765977
+              },
+              "worst_max_r_hat": {
+                "case": "std_normal_10d",
+                "value": 1.0084817363622698
+              },
+              "worst_min_ess_bulk": {
+                "case": "neal_funnel_2d",
+                "value": 1092.5183505785126
+              }
+            },
+            "reviewed_case_count": 4,
+            "status": "passed",
+            "target_backend": "nextstat_mams"
+          },
+          "suite": "mams"
+        }
+      ],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 14,
+      "generated_at": "2026-03-09T15:32:50.831363Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "mams-publisher-20260309T152033Z",
+      "snapshot_index_path": "snapshots/mams-publisher-20260309T152033Z/snapshot_index.json",
+      "snapshot_index_sha256": "86389b97c5a7cf1f205ac5b1c1011681b0b066e5ba7883233c0f9285cc789f66",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [
+        {
+          "assessment_path": "mams/mams_assessment.json",
+          "assessment_schema_version": "nextstat.mams_assessment.v1",
+          "assessment_sha256": "0f9de2a7d1ff7e66a9c121fdfb9b018fe63db3da32588752ad387da303fff421",
+          "core_quality": {
+            "failure_count": 0,
+            "passed": true,
+            "status": "passed",
+            "warning_count": 0
+          },
+          "promotion_gate": {
+            "failing_cases": [],
+            "failure_count": 0,
+            "passed": true,
+            "review_summary": {
+              "failing_cases": [],
+              "n_failing_cases": 0,
+              "n_failures": 0,
+              "n_reviewed_cases": 4,
+              "worst_ess_per_sec": {
+                "case": "neal_funnel_2d",
+                "value": 926.3941485709059
+              },
+              "worst_max_r_hat": {
+                "case": "eight_schools",
+                "value": 1.006642644231716
+              },
+              "worst_min_ess_bulk": {
+                "case": "neal_funnel_2d",
+                "value": 960.7687809149531
+              }
+            },
+            "reviewed_case_count": 4,
+            "status": "passed",
+            "target_backend": "nextstat_mams"
+          },
+          "suite": "mams"
+        }
+      ],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 14,
+      "generated_at": "2026-03-09T13:20:57.419136Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "mams-publisher-20260309T131022Z",
+      "snapshot_index_path": "snapshots/mams-publisher-20260309T131022Z/snapshot_index.json",
+      "snapshot_index_sha256": "288e81927478be310b53e79927663f1ef8dcd551c281b4cb2663095582735072",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [
+        {
+          "assessment_path": "mams/mams_assessment.json",
+          "assessment_schema_version": "nextstat.mams_assessment.v1",
+          "assessment_sha256": "a9e69492ebe284029089fa224719166b77c185838588a65b687c27b6cf6709b2",
+          "core_quality": {
+            "failure_count": 0,
+            "passed": true,
+            "status": "passed",
+            "warning_count": 0
+          },
+          "promotion_gate": {
+            "failing_cases": [
+              "neal_funnel_2d"
+            ],
+            "failure_count": 1,
+            "passed": false,
+            "review_summary": {
+              "failing_cases": [
+                "neal_funnel_2d"
+              ],
+              "n_failing_cases": 1,
+              "n_failures": 1,
+              "n_reviewed_cases": 4,
+              "worst_ess_per_sec": {
+                "case": "neal_funnel_2d",
+                "value": 2736.5700740673346
+              },
+              "worst_max_r_hat": {
+                "case": "neal_funnel_2d",
+                "value": 1.0267350956560526
+              },
+              "worst_min_ess_bulk": {
+                "case": "neal_funnel_2d",
+                "value": 347.8831488433037
+              }
+            },
+            "reviewed_case_count": 4,
+            "status": "failed",
+            "target_backend": "nextstat_mams"
+          },
+          "suite": "mams"
+        }
+      ],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 14,
+      "generated_at": "2026-03-09T13:00:36.788945Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "mams-publisher-20260309T124615Z",
+      "snapshot_index_path": "snapshots/mams-publisher-20260309T124615Z/snapshot_index.json",
+      "snapshot_index_sha256": "8b33d7b8bc9aa7b10bb71e86c64825ffbd44fe9425c5e9eaf457f8607ff5ad16",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [
+        {
+          "assessment_path": "mams/mams_assessment.json",
+          "assessment_schema_version": "nextstat.mams_assessment.v1",
+          "assessment_sha256": "fe85a65a42e88a32f5739b2aab5a5f3ddd8ee4ad292f2b9d70aa7f697869b09a",
+          "core_quality": {
+            "failure_count": 0,
+            "passed": true,
+            "status": "passed",
+            "warning_count": 0
+          },
+          "promotion_gate": {
+            "failing_cases": [
+              "neal_funnel_2d"
+            ],
+            "failure_count": 1,
+            "passed": false,
+            "review_summary": {
+              "failing_cases": [
+                "neal_funnel_2d"
+              ],
+              "n_failing_cases": 1,
+              "n_failures": 1,
+              "n_reviewed_cases": 4,
+              "worst_ess_per_sec": {
+                "case": "neal_funnel_2d",
+                "value": 2558.417037284481
+              },
+              "worst_max_r_hat": {
+                "case": "neal_funnel_2d",
+                "value": 1.0267350956560526
+              },
+              "worst_min_ess_bulk": {
+                "case": "neal_funnel_2d",
+                "value": 347.8831488433037
+              }
+            },
+            "reviewed_case_count": 4,
+            "status": "failed",
+            "target_backend": "nextstat_mams"
+          },
+          "suite": "mams"
+        }
+      ],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 13,
+      "generated_at": "2026-03-09T11:21:14.457821Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "bayesian-publisher-20260309T111048Z",
+      "snapshot_index_path": "snapshots/bayesian-publisher-20260309T111048Z/snapshot_index.json",
+      "snapshot_index_sha256": "5d31f466f231aabaca8d92885e8095c3e4cd6d17152ba6fe59d90de7f7b1eea7",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [
+        {
+          "assessment_path": "bayesian/bayesian_assessment.json",
+          "assessment_schema_version": "nextstat.bayesian_assessment.v1",
+          "assessment_sha256": "a6f71e27ccb65acd267ed41ec5cd7b454ecc9af9ca09a0705622dc4d3473db8a",
+          "core_quality": {
+            "failure_count": 0,
+            "passed": true,
+            "status": "passed",
+            "warning_count": 0
+          },
+          "promotion_gate": {
+            "failing_cases": [],
+            "failure_count": 0,
+            "passed": true,
+            "review_summary": {
+              "failing_cases": [],
+              "n_failing_cases": 0,
+              "n_failures": 0,
+              "n_reviewed_cases": 4,
+              "worst_divergence_rate": {
+                "case": "histfactory_simple_8p",
+                "value": 0.0
+              },
+              "worst_max_r_hat": {
+                "case": "histfactory_simple_8p",
+                "value": 1.0038714629288943
+              },
+              "worst_max_treedepth_rate": {
+                "case": "histfactory_simple_8p",
+                "value": 0.0
+              },
+              "worst_min_ebfmi": {
+                "case": "hier_random_intercept_non_centered",
+                "value": 0.7016835231617996
+              },
+              "worst_min_ess_bulk": {
+                "case": "hier_random_intercept_non_centered",
+                "value": 1718.6560985115195
+              },
+              "worst_min_ess_bulk_per_sec": {
+                "case": "hier_random_intercept_non_centered",
+                "value": 1735.3848599735504
+              },
+              "worst_min_ess_tail": {
+                "case": "histfactory_simple_8p",
+                "value": 1381.8726699008012
+              }
+            },
+            "reviewed_case_count": 4,
+            "status": "passed",
+            "target_backend": "nextstat"
+          },
+          "suite": "bayesian"
+        }
+      ],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 9,
+      "generated_at": "2026-03-09T00:02:27.112403Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "bayesian-assessment-smoke-remote-runner-20260308T235930Z",
+      "snapshot_index_path": "snapshots/bayesian-assessment-smoke-remote-runner-20260308T235930Z/snapshot_index.json",
+      "snapshot_index_sha256": "ea5f7e1d8b32a076f447de9664a0987e6e026cfbd7080f8ffc58694d9c74d082",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 9,
+      "generated_at": "2026-03-08T23:53:41.538072Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "bayesian-assessment-smoke-20260308T235422Z",
+      "snapshot_index_path": "snapshots/bayesian-assessment-smoke-20260308T235422Z/snapshot_index.json",
+      "snapshot_index_sha256": "46849120304d30445c4b390902150cbaa60c27012b426788d6b18bb78c3615d4",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 79,
+      "generated_at": "2026-02-13T20:54:42.787923Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "snapshot-local-smoke-2026-02-13-v4",
+      "snapshot_index_path": "snapshots/snapshot-local-smoke-2026-02-13-v4/snapshot_index.json",
+      "snapshot_index_sha256": "93bcf0fb64e072c58554a6585a0039174b2420d2d43691bb18b0603b44a29c47",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 79,
+      "generated_at": "2026-02-13T20:17:27.000854Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "snapshot-local-smoke-2026-02-13-v3",
+      "snapshot_index_path": "snapshots/snapshot-local-smoke-2026-02-13-v3/snapshot_index.json",
+      "snapshot_index_sha256": "7e64d2a00e438086330a3aa08733eb9e84849b1b6bb4e35116827a2f56e5e044",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 82,
+      "generated_at": "2026-02-13T19:55:11.001824Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "snapshot-local-smoke-2026-02-13-v2",
+      "snapshot_index_path": "snapshots/snapshot-local-smoke-2026-02-13-v2/snapshot_index.json",
+      "snapshot_index_sha256": "3ff7c183ce343159ce64abdc242d072e5dcad78b34ac60040b213e5339e5a388",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 6,
+      "generated_at": "2026-02-09T02:06:31.609324Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "snapshot-bayes-smoke2",
+      "snapshot_index_path": "snapshots/snapshot-bayes-smoke2/snapshot_index.json",
+      "snapshot_index_sha256": "c77343fe3ebb8f7c4edd75ce32a5dc0cd1ceb645bccfcca5ba628c78b58af62d",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 10,
+      "generated_at": "2026-02-09T00:27:49.353142Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "snapshot-source-meta-smoke",
+      "snapshot_index_path": "snapshots/snapshot-source-meta-smoke/snapshot_index.json",
+      "snapshot_index_sha256": "b40d30acc89d39b31c6197a366f698a5074522e209ecc84f9ff9a82aa0a81768",
+      "suite": "public-benchmarks",
+      "suite_health": [],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 10,
+      "generated_at": "2026-02-09T00:26:29.898104Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "snapshot-manifest-v1-smoke",
+      "snapshot_index_path": "snapshots/snapshot-manifest-v1-smoke/snapshot_index.json",
+      "snapshot_index_sha256": "c0db1d8c26dc6e443556e0542642acbebeed3f0fe4de0223a585923e8e7ab25a",
+      "suite": "public-benchmarks",
+      "suite_health": [],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 10,
+      "generated_at": "2026-02-08T22:29:53.316607Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "snapshot-wheelcopy-smoke",
+      "snapshot_index_path": "snapshots/snapshot-wheelcopy-smoke/snapshot_index.json",
+      "snapshot_index_sha256": "f50e2227ac3c759e4b841ca1f0ef66d49c5153446ef4a86391d706b61414266e",
+      "suite": "public-benchmarks",
+      "suite_health": [],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 16,
+      "generated_at": "2026-02-08T22:19:59.992632Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "snapshot-smoke2",
+      "snapshot_index_path": "snapshots/snapshot-smoke2/snapshot_index.json",
+      "snapshot_index_sha256": "49549a4333f772395456dfabb1cf25387e33ecc3e39c69245ca8456712992d1a",
+      "suite": "public-benchmarks",
+      "suite_health": [],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 9,
+      "generated_at": "2026-02-08T21:27:49.609398Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "snapshot-smoke",
+      "snapshot_index_path": "snapshots/snapshot-smoke/snapshot_index.json",
+      "snapshot_index_sha256": "7855bf0c19ae4c0a25561128945453b86bb0584c3fa8f660c40598d3ff48a864",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [],
+      "workflow": {}
+    }
+  ],
+  "entry_count": 16,
+  "generated_at": "2026-03-09T17:30:37.861532Z",
+  "schema_version": "nextstat.snapshot_registry.v1"
+}

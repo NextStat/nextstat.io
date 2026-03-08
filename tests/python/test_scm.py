@@ -20,6 +20,8 @@ def _generate_pk_data(
     seed: int,
     wt_exponent: float = 0.75,
     include_age: bool = False,
+    sigma: float = 0.05,
+    omega_sd: float = 0.15,
 ):
     """Generate synthetic 1-cpt oral PK data with optional weight effect on CL.
 
@@ -32,8 +34,6 @@ def _generate_pk_data(
     ka_pop = 2.0
     dose = 100.0
     bioav = 1.0
-    sigma = 0.05
-    omega_sd = 0.15
     wt_center = 70.0
 
     sample_times = [0.5, 1.0, 2.0, 4.0, 8.0, 12.0]
@@ -141,8 +141,15 @@ def test_scm_selects_significant_covariate():
     """Verify that a strong weight effect on CL is detected by SCM."""
     import nextstat
 
-    # 30 subjects, strong WT effect (exponent = 0.75).
-    data = _generate_pk_data(n_subjects=30, seed=77, wt_exponent=0.75)
+    # Mirror the deterministic Rust fixture: widen subject count and reduce
+    # residual/IIV noise so WT_on_CL is a stable, known-good signal.
+    data = _generate_pk_data(
+        n_subjects=40,
+        seed=77,
+        wt_exponent=0.75,
+        sigma=0.04,
+        omega_sd=0.12,
+    )
 
     result = nextstat.scm(
         data["times"],
@@ -157,6 +164,7 @@ def test_scm_selects_significant_covariate():
         sigma=data["sigma"],
         theta_init=[1.0, 10.0, 1.5],
         omega_init=[0.30, 0.30, 0.30],
+        param_names=["CL"],
         relationships=["power"],
         forward_alpha=0.05,
         backward_alpha=0.01,

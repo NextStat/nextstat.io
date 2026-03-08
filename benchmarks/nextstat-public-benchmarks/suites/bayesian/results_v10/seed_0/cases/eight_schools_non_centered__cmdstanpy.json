@@ -1,6 +1,8 @@
 {
   "backend": "cmdstanpy",
   "backend_meta": {
+    "cmdstan_path": "/tmp/nextstat_bayesian_suite_repo_20260309T003749Z/benchmarks/nextstat-public-benchmarks/vendor/cmdstan/cmdstan-2.38.0",
+    "cmdstan_path_source": "vendor",
     "cmdstan_version": "(2, 38)",
     "cmdstanpy_version": "1.3.0"
   },
@@ -20,7 +22,7 @@
     "id": "eight_schools",
     "sha256": "f0a70a7e839f0c402da002e67605d554600cbabeb997101df464ec511d513b67"
   },
-  "deterministic": false,
+  "deterministic": true,
   "diagnostics": {
     "ess_bulk": {
       "mu": 10072.8,
@@ -91,8 +93,26 @@
     "min_ess_bulk": 5402.37,
     "min_ess_tail": 4247.6
   },
+  "environment": {
+    "cpu": "AMD EPYC 7502P 32-Core Processor",
+    "machine": "x86_64",
+    "nextstat_version": "0.9.9",
+    "node": "nextstat-bench",
+    "packages": {
+      "arviz": "0.23.4",
+      "cmdstanpy": "1.3.0",
+      "numpy": "2.4.2",
+      "pymc": "5.28.1",
+      "scipy": "1.17.1"
+    },
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python_full": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "python_version": "3.12.3",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "system": "Linux"
+  },
   "meta": {
-    "nextstat_version": "0.9.0",
+    "nextstat_version": "0.9.9",
     "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
     "python": "3.12.3"
   },
@@ -104,13 +124,16 @@
   "suite": "bayesian",
   "timing": {
     "ess_bulk_per_sec": {
-      "median": 54911.12830782712,
-      "min": 28986.30880301305
+      "median": 33954.326755548806,
+      "min": 17923.700183637546
     },
+    "ess_per_grad": 0.04620885794443684,
     "ess_tail_per_sec": {
-      "median": 33674.96042795858,
-      "min": 22790.413331866985
+      "median": 20822.930525871157,
+      "min": 14092.464770095134
     },
-    "wall_time_s": 0.18637661099637626
+    "grad_per_sec": 387884.5091819762,
+    "n_grad_evals": 116912,
+    "wall_time_s": 0.3014093041419983
   }
 }

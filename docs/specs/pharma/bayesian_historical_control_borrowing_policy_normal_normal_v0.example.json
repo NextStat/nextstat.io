@@ -1,0 +1,32 @@
+{
+  "borrowing_model": "commensurate",
+  "borrowing_strength": {
+    "full_borrowing_fraction": 0.3,
+    "suspended_borrowing_fraction": 0.0,
+    "tapered_borrowing_fraction": 0.1
+  },
+  "conflict_response": {
+    "full_borrowing_max_conflict_severity": "low",
+    "max_eventual_success_probability_range_for_full_borrowing": 0.12,
+    "max_expected_total_sample_size_range_fraction_for_full_borrowing": 0.1,
+    "tapered_borrowing_max_conflict_severity": "moderate"
+  },
+  "design_family": "normal_normal",
+  "eligibility": {
+    "disallow_recommended_action_flip": true,
+    "minimum_control_information_fraction": 0.5,
+    "minimum_current_control_sample_size": 10
+  },
+  "historical_sources": [
+    {
+      "data_cut_label": "db-lock",
+      "exchangeability_assessment": "moderate",
+      "planned_control_sample_size": 80,
+      "source_id": "study_2022_control",
+      "source_role": "external_control_arm"
+    }
+  ],
+  "policy_id": "continuous_superiority_demo_historical_control_policy_v0",
+  "schema_version": "nextstat_bayesian_historical_control_borrowing_policy_v0",
+  "stability": "research-grade"
+}

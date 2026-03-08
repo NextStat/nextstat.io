@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 //! NextStat Server — self-hosted GPU inference API.
 //!
 //! Provides a JSON REST API for shared GPU statistical fits so that

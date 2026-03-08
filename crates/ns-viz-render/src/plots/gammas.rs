@@ -69,14 +69,6 @@ pub fn render(artifact: &GammasArtifact, config: &VizConfig) -> crate::Result<St
         let lo_px = x_center + (entry.postfit_value - entry.postfit_sigma - 1.0) * px_per_unit;
         let hi_px = x_center + (entry.postfit_value + entry.postfit_sigma - 1.0) * px_per_unit;
 
-        canvas.error_bar(
-            val_px,
-            lo_px.min(hi_px),
-            lo_px.max(hi_px),
-            0.0,
-            &LineStyle::solid(config.colors.expected, 1.0),
-        );
-        // Using horizontal error bar: lo_px and hi_px are x coordinates, y is fixed
         canvas.error_bar_h(lo_px, hi_px, y, 3.0, &LineStyle::solid(config.colors.expected, 1.0));
         canvas.marker(
             val_px,

@@ -1,0 +1,143 @@
+{
+  "backend": "nextstat_mams",
+  "case": "std_normal_10d",
+  "config": {
+    "dataset_seed": 12345,
+    "n_chains": 4,
+    "n_samples": 2000,
+    "n_warmup": 3500,
+    "seed": 42,
+    "target_accept": 0.985
+  },
+  "dataset": {
+    "id": "std_normal_10d",
+    "sha256": "f40b9e2c376ebbebd4a817348245d7f8ac7cf8b8ea5d19d57dec92799b2e5f52"
+  },
+  "deterministic": true,
+  "environment": {
+    "cpu": "AMD EPYC 7502P 32-Core Processor",
+    "machine": "x86_64",
+    "nextstat_version": "0.9.9",
+    "node": "nextstat-bench",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python_full": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "python_version": "3.12.3",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "system": "Linux"
+  },
+  "meta": {
+    "nextstat_version": "0.9.9",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "metrics": {
+    "accept_rate": 0.982012481615096,
+    "cold_start_s": 0.1329632098786533,
+    "ess_per_grad": 0.2777654318868895,
+    "ess_per_sec": 50136.95420988485,
+    "ess_per_sec_warm": 91262.98226218125,
+    "jit_overhead_s": 0.05991748860105872,
+    "max_r_hat": 1.0084817363622698,
+    "min_ess_bulk": 6666.370365285348,
+    "min_ess_tail": 6020.715059051951,
+    "n_grad_evals": 24000,
+    "n_integration_steps": null,
+    "posterior_summary": {
+      "n_draws": 8000,
+      "params": [
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 6479.501665569365,
+          "mean": 0.0028540273770711697,
+          "name": "x0",
+          "r_hat": 1.0084817363622698,
+          "sd": 0.9929439096324458
+        },
+        {
+          "ess_bulk": 7008.8187910823335,
+          "ess_tail": 6098.5926071637095,
+          "mean": 0.01101959033409311,
+          "name": "x1",
+          "r_hat": 1.0031774854573443,
+          "sd": 0.9887215296343821
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 6204.094825353498,
+          "mean": 0.010046479236881414,
+          "name": "x2",
+          "r_hat": 1.0009036605858188,
+          "sd": 0.9843099536133837
+        },
+        {
+          "ess_bulk": 7956.14116455522,
+          "ess_tail": 6509.9149998201065,
+          "mean": -0.0035039490987390886,
+          "name": "x3",
+          "r_hat": 1.0010931555688651,
+          "sd": 0.9948521178997198
+        },
+        {
+          "ess_bulk": 6666.370365285348,
+          "ess_tail": 6020.715059051951,
+          "mean": 0.0023172849826477897,
+          "name": "x4",
+          "r_hat": 1.0003097453275929,
+          "sd": 0.9760747684356401
+        },
+        {
+          "ess_bulk": 7199.676540244953,
+          "ess_tail": 6159.072178136626,
+          "mean": 0.0010839347015030366,
+          "name": "x5",
+          "r_hat": 1.0060051197223203,
+          "sd": 0.9447919200897166
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 6226.705793853385,
+          "mean": 0.0017327940259623913,
+          "name": "x6",
+          "r_hat": 1.0022833535304376,
+          "sd": 0.979620873428611
+        },
+        {
+          "ess_bulk": 7918.106088908555,
+          "ess_tail": 6588.4685727287315,
+          "mean": 0.0026955648555777507,
+          "name": "x7",
+          "r_hat": 1.0044018793732765,
+          "sd": 0.9515446568282716
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 6648.547472224246,
+          "mean": -0.002123482572799971,
+          "name": "x8",
+          "r_hat": 1.0036059999275206,
+          "sd": 1.0203276373300854
+        },
+        {
+          "ess_bulk": 7864.267800706957,
+          "ess_tail": 6397.5371516834975,
+          "mean": 0.00029903983032570833,
+          "name": "x9",
+          "r_hat": 1.0032942680676162,
+          "sd": 0.978441623586156
+        }
+      ],
+      "status": "ok"
+    },
+    "wall_time_s": 0.1329632098786533,
+    "warm_start_s": 0.07304572127759457
+  },
+  "schema_version": "nextstat.mams_benchmark_result.v1",
+  "status": "ok",
+  "suite": "mams",
+  "timing": {
+    "cold_start_s": 0.1329632098786533,
+    "jit_overhead_s": 0.05991748860105872,
+    "wall_time_s": 0.1329632098786533,
+    "warm_start_s": 0.07304572127759457
+  }
+}

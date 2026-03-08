@@ -5,8 +5,8 @@
 //! The NUTS sampler in [`crate::nuts`] builds on top of this.
 
 use crate::posterior::Posterior;
-use ns_core::Result;
 use ns_core::traits::LogDensityModel;
+use ns_core::{Error, Result};
 
 /// Euclidean metric for HMC/NUTS.
 ///
@@ -178,6 +178,39 @@ impl Metric {
             }
         }
     }
+
+    /// Full inverse mass matrix in row-major order, if the metric is dense.
+    pub fn inv_mass_matrix(&self) -> Option<Vec<f64>> {
+        match self {
+            Metric::Diag(_) => None,
+            Metric::DenseCholesky { dim, l } => {
+                // Reconstruct inv_mass = L L^T (row-major output).
+                // NOTE: nalgebra stores matrices column-major, and `l` was produced by
+                // `ch.l().as_slice()`. The HMC code accesses `l[i*n+j]` which effectively
+                // reads the transpose, so the factorization used is still U^T U = L L^T.
+                let n = *dim;
+                let mut inv_mass = vec![0.0; n * n];
+                for i in 0..n {
+                    for j in 0..=i {
+                        let mut acc = 0.0;
+                        for k in 0..n {
+                            acc += l[k * n + i] * l[k * n + j];
+                        }
+                        inv_mass[i * n + j] = acc;
+                        inv_mass[j * n + i] = acc;
+                    }
+                }
+                Some(inv_mass)
+            }
+        }
+    }
+
+    pub fn metric_type_name(&self) -> &'static str {
+        match self {
+            Metric::Diag(_) => "diagonal",
+            Metric::DenseCholesky { .. } => "dense",
+        }
+    }
 }
 
 #[inline]
@@ -216,17 +249,167 @@ impl HmcState {
     }
 }
 
+/// Minimal potential-energy evaluator for Hamiltonian samplers.
+///
+/// This keeps the leapfrog integrator generic over the source of
+/// unconstrained-space potential energy and gradient. The current
+/// [`Posterior`] remains the reference CPU implementation, while future
+/// device-backed evaluators can implement the same contract without forcing
+/// tree-based HMC to depend directly on the posterior wrapper.
+pub trait HamiltonianPotential {
+    /// Dimension of the unconstrained parameter space.
+    fn dim(&self) -> usize;
+
+    /// Evaluate `U(q)` and `grad U(q)` in unconstrained space.
+    fn potential_grad(&self, q: &[f64]) -> Result<(f64, Vec<f64>)>;
+}
+
+impl<M: LogDensityModel + ?Sized> HamiltonianPotential for Posterior<'_, M> {
+    fn dim(&self) -> usize {
+        self.dim()
+    }
+
+    fn potential_grad(&self, q: &[f64]) -> Result<(f64, Vec<f64>)> {
+        let (lp, grad_lp) = self.logpdf_grad_unconstrained(q)?;
+        Ok((-lp, grad_lp.into_iter().map(|g| -g).collect()))
+    }
+}
+
+/// Minimal stepper seam for tree-based Hamiltonian samplers.
+///
+/// Tree-HMC algorithms only need a metric reference, a base step size, and the
+/// ability to advance a state by a signed leapfrog step. The current CPU
+/// [`LeapfrogIntegrator`] implements this trait; future device-backed steppers
+/// can implement the same contract without forcing NUTS/WALNUTS onto the
+/// MAMS/LAPS accelerator interface.
+pub trait HamiltonianStepper {
+    /// Base leapfrog step size.
+    fn step_size(&self) -> f64;
+
+    /// Metric used for kinetic energy and momentum transforms.
+    fn metric(&self) -> &Metric;
+
+    /// Advance the Hamiltonian state by one leapfrog step with explicit size.
+    fn step_with_eps(&self, state: &mut HmcState, eps: f64) -> Result<()>;
+
+    /// Advance the state by `n_steps` explicit leapfrog steps.
+    ///
+    /// The returned outcome reports how many step attempts were made. This
+    /// lets tree-based samplers preserve exact `n_leapfrog` accounting even
+    /// when a backend fails part-way through a sequence.
+    fn step_many_with_eps(
+        &self,
+        state: &mut HmcState,
+        eps: f64,
+        n_steps: usize,
+    ) -> StepSequenceOutcome {
+        for attempt_idx in 0..n_steps {
+            if let Err(error) = self.step_with_eps(state, eps) {
+                return StepSequenceOutcome::Failed { attempted_steps: attempt_idx + 1, error };
+            }
+        }
+        StepSequenceOutcome::Complete { attempted_steps: n_steps }
+    }
+
+    /// Advance a cloned state by `n_steps` and report the final log-joint.
+    ///
+    /// This is the tree-HMC seam for probe-only work such as reversibility
+    /// checks. CPU steppers can use the generic clone+integrate fallback,
+    /// while device-backed steppers may override it to keep state resident and
+    /// return only the summary scalar needed by the caller.
+    fn probe_log_joint_with_eps(
+        &self,
+        initial: &HmcState,
+        eps: f64,
+        n_steps: usize,
+    ) -> StepProbeOutcome {
+        let mut state = initial.clone();
+        let outcome = self.step_many_with_eps(&mut state, eps, n_steps);
+        let attempted_steps = outcome.attempted_steps();
+        match outcome.into_result() {
+            Ok(()) => StepProbeOutcome::Complete {
+                attempted_steps,
+                log_joint: -state.hamiltonian(self.metric()),
+            },
+            Err(error) => StepProbeOutcome::Failed { attempted_steps, error },
+        }
+    }
+
+    /// Advance using the stepper's base step size.
+    fn step(&self, state: &mut HmcState) -> Result<()> {
+        self.step_with_eps(state, self.step_size())
+    }
+
+    /// Advance one signed leapfrog step (`direction` ∈ {+1, -1}).
+    fn step_dir(&self, state: &mut HmcState, direction: i32) -> Result<()> {
+        debug_assert!(direction == 1 || direction == -1);
+        self.step_with_eps(state, self.step_size() * (direction as f64))
+    }
+}
+
+/// Outcome of a batched leapfrog advance.
+pub enum StepSequenceOutcome {
+    /// All requested step attempts completed successfully.
+    Complete { attempted_steps: usize },
+    /// The sequence failed on an attempted step.
+    Failed { attempted_steps: usize, error: Error },
+}
+
+impl StepSequenceOutcome {
+    /// Number of leapfrog attempts made by the backend.
+    pub fn attempted_steps(&self) -> usize {
+        match self {
+            StepSequenceOutcome::Complete { attempted_steps }
+            | StepSequenceOutcome::Failed { attempted_steps, .. } => *attempted_steps,
+        }
+    }
+
+    /// Convert the outcome to a standard `Result`.
+    pub fn into_result(self) -> Result<()> {
+        match self {
+            StepSequenceOutcome::Complete { .. } => Ok(()),
+            StepSequenceOutcome::Failed { error, .. } => Err(error),
+        }
+    }
+}
+
+/// Outcome of a probe-only leapfrog sequence that needs just the final log-joint.
+pub enum StepProbeOutcome {
+    /// All requested step attempts completed successfully.
+    Complete { attempted_steps: usize, log_joint: f64 },
+    /// The sequence failed on an attempted step.
+    Failed { attempted_steps: usize, error: Error },
+}
+
+impl StepProbeOutcome {
+    /// Number of leapfrog attempts made by the backend.
+    pub fn attempted_steps(&self) -> usize {
+        match self {
+            StepProbeOutcome::Complete { attempted_steps, .. }
+            | StepProbeOutcome::Failed { attempted_steps, .. } => *attempted_steps,
+        }
+    }
+
+    /// Convert the outcome to a standard `Result`.
+    pub fn into_result(self) -> Result<f64> {
+        match self {
+            StepProbeOutcome::Complete { log_joint, .. } => Ok(log_joint),
+            StepProbeOutcome::Failed { error, .. } => Err(error),
+        }
+    }
+}
+
 /// Leapfrog integrator for HMC.
-pub struct LeapfrogIntegrator<'a, 'b, M: LogDensityModel + ?Sized> {
-    posterior: &'a Posterior<'b, M>,
+pub struct LeapfrogIntegrator<'a, E: HamiltonianPotential + ?Sized> {
+    evaluator: &'a E,
     step_size: f64,
     metric: Metric,
 }
 
-impl<'a, 'b, M: LogDensityModel + ?Sized> LeapfrogIntegrator<'a, 'b, M> {
+impl<'a, E: HamiltonianPotential + ?Sized> LeapfrogIntegrator<'a, E> {
     /// Create a new leapfrog integrator.
-    pub fn new(posterior: &'a Posterior<'b, M>, step_size: f64, metric: Metric) -> Self {
-        Self { posterior, step_size, metric }
+    pub fn new(evaluator: &'a E, step_size: f64, metric: Metric) -> Self {
+        Self { evaluator, step_size, metric }
     }
 
     /// Update step size (used during adaptation).
@@ -251,21 +434,11 @@ impl<'a, 'b, M: LogDensityModel + ?Sized> LeapfrogIntegrator<'a, 'b, M> {
 
     /// Initialize an HMC state at position `q`.
     pub fn init_state(&self, q: Vec<f64>) -> Result<HmcState> {
-        let (lp, grad_lp) = self.posterior.logpdf_grad_unconstrained(&q)?;
-        let potential = -lp;
-        let grad_potential: Vec<f64> = grad_lp.iter().map(|&g| -g).collect();
+        let (potential, grad_potential) = self.evaluator.potential_grad(&q)?;
         Ok(HmcState { q, p: vec![0.0; grad_potential.len()], potential, grad_potential })
     }
 
-    /// Single leapfrog step: `(q, p, grad) -> (q', p', grad')`.
-    ///
-    /// Returns `Err` if gradient evaluation fails (e.g., NaN parameters).
-    pub fn step(&self, state: &mut HmcState) -> Result<()> {
-        self.step_with_eps(state, self.step_size)
-    }
-
-    /// Single leapfrog step with explicit step size (used for backward integration in NUTS).
-    pub fn step_with_eps(&self, state: &mut HmcState, eps: f64) -> Result<()> {
+    fn step_impl(&self, state: &mut HmcState, eps: f64) -> Result<()> {
         let n = state.q.len();
 
         // Half-step momentum
@@ -289,11 +462,9 @@ impl<'a, 'b, M: LogDensityModel + ?Sized> LeapfrogIntegrator<'a, 'b, M> {
         }
 
         // Recompute potential and gradient at new position (fused: single model eval + transform)
-        let (lp, grad_lp) = self.posterior.logpdf_grad_unconstrained(&state.q)?;
-        state.potential = -lp;
-        for i in 0..n {
-            state.grad_potential[i] = -grad_lp[i];
-        }
+        let (potential, grad_potential) = self.evaluator.potential_grad(&state.q)?;
+        state.potential = potential;
+        state.grad_potential = grad_potential;
 
         // Half-step momentum
         for i in 0..n {
@@ -303,24 +474,48 @@ impl<'a, 'b, M: LogDensityModel + ?Sized> LeapfrogIntegrator<'a, 'b, M> {
         Ok(())
     }
 
+    /// Single leapfrog step: `(q, p, grad) -> (q', p', grad')`.
+    ///
+    /// Returns `Err` if gradient evaluation fails (e.g., NaN parameters).
+    pub fn step(&self, state: &mut HmcState) -> Result<()> {
+        HamiltonianStepper::step(self, state)
+    }
+
+    /// Single leapfrog step with explicit step size (used for backward integration in NUTS).
+    pub fn step_with_eps(&self, state: &mut HmcState, eps: f64) -> Result<()> {
+        self.step_impl(state, eps)
+    }
+
     /// Take one leapfrog step in the given direction (`+1` forward, `-1` backward).
     pub fn step_dir(&self, state: &mut HmcState, direction: i32) -> Result<()> {
-        debug_assert!(direction == 1 || direction == -1);
-        self.step_with_eps(state, self.step_size * (direction as f64))
+        HamiltonianStepper::step_dir(self, state, direction)
     }
 
     /// Full trajectory: `n_steps` leapfrog steps.
     pub fn integrate(&self, mut state: HmcState, n_steps: usize) -> Result<HmcState> {
-        for _ in 0..n_steps {
-            self.step(&mut state)?;
-        }
+        HamiltonianStepper::step_many_with_eps(self, &mut state, self.step_size, n_steps)
+            .into_result()?;
         Ok(state)
+    }
+}
+
+impl<E: HamiltonianPotential + ?Sized> HamiltonianStepper for LeapfrogIntegrator<'_, E> {
+    fn step_size(&self) -> f64 {
+        self.step_size
+    }
+
+    fn metric(&self) -> &Metric {
+        &self.metric
+    }
+
+    fn step_with_eps(&self, state: &mut HmcState, eps: f64) -> Result<()> {
+        self.step_impl(state, eps)
     }
 }
 
 /// Static HMC sampler (fixed trajectory length). Used for validation.
 pub struct StaticHmcSampler<'a, 'b, M: LogDensityModel + ?Sized> {
-    integrator: LeapfrogIntegrator<'a, 'b, M>,
+    integrator: LeapfrogIntegrator<'a, Posterior<'b, M>>,
     n_steps: usize,
 }
 
@@ -367,6 +562,28 @@ mod tests {
     use crate::posterior::Posterior;
     use ns_translate::pyhf::{HistFactoryModel, Workspace};
     use rand::SeedableRng;
+    use std::cell::Cell;
+
+    struct QuadraticPotential {
+        dim: usize,
+    }
+
+    impl HamiltonianPotential for QuadraticPotential {
+        fn dim(&self) -> usize {
+            self.dim
+        }
+
+        fn potential_grad(&self, q: &[f64]) -> Result<(f64, Vec<f64>)> {
+            if q.len() != self.dim {
+                return Err(Error::Validation(format!(
+                    "QuadraticPotential dim mismatch: expected {}, got {}",
+                    self.dim,
+                    q.len()
+                )));
+            }
+            Ok((0.5 * q.iter().map(|v| v * v).sum::<f64>(), q.to_vec()))
+        }
+    }
 
     fn load_simple_workspace() -> Workspace {
         let json = include_str!("../../../tests/fixtures/simple_workspace.json");
@@ -488,5 +705,119 @@ mod tests {
         // - If ΔH = 1 => log_accept = -1 => accept iff u < exp(-1) ~= 0.3679
         assert!(metropolis_accept(-1.0, 0.1));
         assert!(!metropolis_accept(-1.0, 0.5));
+    }
+
+    #[test]
+    fn test_step_many_outcome_counts_failed_attempt() {
+        struct FailingStepper {
+            metric: Metric,
+            attempts: Cell<usize>,
+            fail_on_attempt: usize,
+        }
+
+        impl HamiltonianStepper for FailingStepper {
+            fn step_size(&self) -> f64 {
+                0.1
+            }
+
+            fn metric(&self) -> &Metric {
+                &self.metric
+            }
+
+            fn step_with_eps(&self, state: &mut HmcState, eps: f64) -> Result<()> {
+                let attempt = self.attempts.get() + 1;
+                self.attempts.set(attempt);
+                if attempt == self.fail_on_attempt {
+                    return Err(Error::Computation("synthetic step failure".to_string()));
+                }
+                state.q[0] += eps;
+                state.grad_potential[0] = state.q[0];
+                Ok(())
+            }
+        }
+
+        let stepper = FailingStepper {
+            metric: Metric::identity(1),
+            attempts: Cell::new(0),
+            fail_on_attempt: 3,
+        };
+        let mut state =
+            HmcState { q: vec![0.0], p: vec![0.0], potential: 0.0, grad_potential: vec![0.0] };
+
+        let outcome = stepper.step_many_with_eps(&mut state, 0.25, 5);
+        assert_eq!(outcome.attempted_steps(), 3);
+        assert!(outcome.into_result().is_err());
+        assert!((state.q[0] - 0.5).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_probe_log_joint_counts_failed_attempt() {
+        struct FailingStepper {
+            metric: Metric,
+            attempts: Cell<usize>,
+            fail_on_attempt: usize,
+        }
+
+        impl HamiltonianStepper for FailingStepper {
+            fn step_size(&self) -> f64 {
+                0.1
+            }
+
+            fn metric(&self) -> &Metric {
+                &self.metric
+            }
+
+            fn step_with_eps(&self, state: &mut HmcState, eps: f64) -> Result<()> {
+                let attempt = self.attempts.get() + 1;
+                self.attempts.set(attempt);
+                if attempt == self.fail_on_attempt {
+                    return Err(Error::Computation("synthetic probe failure".to_string()));
+                }
+                state.q[0] += eps;
+                state.grad_potential[0] = state.q[0];
+                state.potential = 0.5 * state.q[0] * state.q[0];
+                Ok(())
+            }
+        }
+
+        let stepper = FailingStepper {
+            metric: Metric::identity(1),
+            attempts: Cell::new(0),
+            fail_on_attempt: 2,
+        };
+        let state = HmcState {
+            q: vec![0.25],
+            p: vec![0.0],
+            potential: 0.03125,
+            grad_potential: vec![0.25],
+        };
+
+        let outcome = stepper.probe_log_joint_with_eps(&state, 0.1, 4);
+        assert_eq!(outcome.attempted_steps(), 2);
+        assert!(outcome.into_result().is_err());
+    }
+
+    #[test]
+    fn test_leapfrog_integrator_accepts_custom_potential_evaluator() {
+        let potential = QuadraticPotential { dim: 2 };
+        let metric = Metric::identity(2);
+        let integrator = LeapfrogIntegrator::new(&potential, 0.1, metric.clone());
+
+        let mut state = integrator.init_state(vec![0.25, -0.5]).unwrap();
+        state.p = vec![0.4, -0.2];
+
+        integrator.step(&mut state).unwrap();
+
+        let expected_q = vec![0.28875, -0.5175];
+        let expected_grad = expected_q.clone();
+        let expected_p = [0.3730625, -0.149125];
+        let expected_potential = 0.5 * expected_q.iter().map(|v| v * v).sum::<f64>();
+
+        for i in 0..2 {
+            assert!((state.q[i] - expected_q[i]).abs() < 1e-12);
+            assert!((state.grad_potential[i] - expected_grad[i]).abs() < 1e-12);
+            assert!((state.p[i] - expected_p[i]).abs() < 1e-12);
+        }
+        assert!((state.potential - expected_potential).abs() < 1e-12);
     }
 }

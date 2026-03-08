@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/io/hepdata_lock_v1.schema.json",
+  "title": "NextStat HEPData Lockfile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "source_mode", "generated_by", "datasets"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat.hepdata_lock.v1"
+    },
+    "source_mode": {
+      "type": "string",
+      "enum": ["curated", "direct_doi"]
+    },
+    "generated_by": {
+      "type": "string",
+      "const": "nextstat import hepdata"
+    },
+    "datasets": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/dataset" }
+    }
+  },
+  "$defs": {
+    "sha256_hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "download": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "mode", "cached", "path", "sha256"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["cached", "network"]
+        },
+        "cached": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256_hex"
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bkgonly_filename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "patchset_filename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "available_patch_names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "materialized_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path", "sha256"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["bkgonly", "patched"]
+        },
+        "patch_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "patch_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256_hex"
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "doi", "download", "inputs", "materialized"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "doi": {
+          "type": "string",
+          "minLength": 1
+        },
+        "download": {
+          "$ref": "#/$defs/download"
+        },
+        "inputs": {
+          "$ref": "#/$defs/inputs"
+        },
+        "materialized": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/materialized_entry" }
+        }
+      }
+    }
+  }
+}

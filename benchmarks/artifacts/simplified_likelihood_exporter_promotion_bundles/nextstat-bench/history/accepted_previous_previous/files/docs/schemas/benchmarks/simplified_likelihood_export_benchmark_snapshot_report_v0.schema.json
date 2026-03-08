@@ -1,0 +1,228 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/simplified_likelihood_export_benchmark_snapshot_report_v0.schema.json",
+  "title": "Simplified Likelihood Export Benchmark Snapshot Report v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "surface",
+    "status",
+    "persisted",
+    "dry_run",
+    "generated_at_utc",
+    "snapshot_id",
+    "benchmark_artifact_source_path",
+    "current_dir",
+    "current_benchmark_artifact_path",
+    "current_report_path",
+    "current_snapshot_index_path",
+    "history_dir",
+    "source_summary",
+    "actions",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_simplified_likelihood_export_benchmark_snapshot_report_v0"
+    },
+    "surface": {
+      "const": "simplified_likelihood_export_benchmark"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["dry_run", "persisted", "failed"]
+    },
+    "persisted": {
+      "type": "boolean"
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "generated_at_utc": {
+      "type": "string"
+    },
+    "snapshot_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "benchmark_artifact_source_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "current_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "current_benchmark_artifact_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "current_report_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "current_snapshot_index_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "history_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_summary": {
+      "$ref": "#/$defs/sourceSummary"
+    },
+    "actions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archived_previous_current",
+        "archived_previous_current_path",
+        "current_updated",
+        "current_snapshot_index_written",
+        "current_snapshot_index_path",
+        "archived_persisted_snapshot",
+        "archived_persisted_snapshot_path"
+      ],
+      "properties": {
+        "archived_previous_current": {
+          "type": "boolean"
+        },
+        "archived_previous_current_path": {
+          "type": ["string", "null"]
+        },
+        "current_updated": {
+          "type": "boolean"
+        },
+        "current_snapshot_index_written": {
+          "type": "boolean"
+        },
+        "current_snapshot_index_path": {
+          "type": ["string", "null"]
+        },
+        "archived_persisted_snapshot": {
+          "type": "boolean"
+        },
+        "archived_persisted_snapshot_path": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["top_level_errors"],
+      "properties": {
+        "top_level_errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sourceSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "status",
+        "benchmark_host",
+        "all_schema_valid",
+        "all_fidelity_gates_pass",
+        "all_performance_gates_pass",
+        "case_count",
+        "export_matrix_included",
+        "export_matrix_status",
+        "export_matrix_case_count",
+        "export_matrix_case_kinds",
+        "export_matrix_public_reinterpretation_style_case_count",
+        "export_matrix_min_net_end_to_end_upper_limit_speedup",
+        "export_matrix_synthetic_min_net_end_to_end_upper_limit_speedup",
+        "export_matrix_public_reinterpretation_style_min_net_end_to_end_upper_limit_speedup",
+        "export_matrix_summary_status",
+        "export_matrix_summary_all_schema_valid",
+        "export_matrix_summary_all_fidelity_gates_pass",
+        "export_matrix_summary_all_performance_gates_pass",
+        "public_fixture_matrix_included",
+        "public_fixture_matrix_status"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": ["string", "null"]
+        },
+        "status": {
+          "type": ["string", "null"]
+        },
+        "benchmark_host": {
+          "type": ["string", "null"]
+        },
+        "all_schema_valid": {
+          "type": "boolean"
+        },
+        "all_fidelity_gates_pass": {
+          "type": "boolean"
+        },
+        "all_performance_gates_pass": {
+          "type": "boolean"
+        },
+        "case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "export_matrix_included": {
+          "type": "boolean"
+        },
+        "export_matrix_status": {
+          "type": ["string", "null"]
+        },
+        "export_matrix_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "export_matrix_case_kinds": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["synthetic", "public_reinterpretation_style"]
+          },
+          "uniqueItems": true
+        },
+        "export_matrix_public_reinterpretation_style_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "export_matrix_min_net_end_to_end_upper_limit_speedup": {
+          "type": "number"
+        },
+        "export_matrix_synthetic_min_net_end_to_end_upper_limit_speedup": {
+          "type": "number"
+        },
+        "export_matrix_public_reinterpretation_style_min_net_end_to_end_upper_limit_speedup": {
+          "type": "number"
+        },
+        "export_matrix_summary_status": {
+          "type": ["string", "null"]
+        },
+        "export_matrix_summary_all_schema_valid": {
+          "type": "boolean"
+        },
+        "export_matrix_summary_all_fidelity_gates_pass": {
+          "type": "boolean"
+        },
+        "export_matrix_summary_all_performance_gates_pass": {
+          "type": "boolean"
+        },
+        "public_fixture_matrix_included": {
+          "type": "boolean"
+        },
+        "public_fixture_matrix_status": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

@@ -12,6 +12,126 @@ Notes:
 - Convenience wrappers and optional modules live under `nextstat.*` (loaded on first access).
 - Type stubs for the native extension (including overloads) are in `bindings/ns-py/python/nextstat/_core.pyi`.
 - Installation, optional extras, and wheel build notes: `docs/references/python-packaging.md`.
+- For the end-to-end HEP GVM workflow, start with `docs/tutorials/hep-gvm-measurement-combinations.md`.
+
+## Lazy submodules
+
+- `nextstat.hep` — HEP-specific helpers that are intentionally not part of the top-level stable API surface.
+- `nextstat.bayes` — Bayesian sampling helpers (ArviZ integration).
+- `nextstat.bayes_design` — schema-first Bayesian trial design helpers for exact beta-binomial and normal-normal slices, plus frozen policy-review artifacts layered on top of committed design reports.
+- `nextstat.ads` — ads-native observation, response, and variance-reduction helpers for overdispersed conversion rates, delay correction, CUPED/CURE adjustment, and spend curves.
+
+### `nextstat.bayes_design`
+
+- The public contract is additive and schema-first: each design family has a versioned spec, analysis result, and operating-characteristics artifact.
+- Wrappers accept either a Python `dict`, a JSON string, or a filesystem path.
+- `nextstat.bayes_design.analyze_beta_binomial_design(spec_or_path, observed_or_path) -> dict`
+- `nextstat.bayes_design.forecast_beta_binomial_design(spec_or_path, observed_or_path) -> dict`
+- `nextstat.bayes_design.analyze_beta_binomial_prior_sensitivity(spec_or_path, observed_or_path, campaign_or_path) -> dict`
+- `nextstat.bayes_design.simulate_beta_binomial_design(spec_or_path) -> dict`
+- `nextstat.bayes_design.build_beta_binomial_design_report(spec_or_path, observed_or_path, campaign_or_path) -> dict`
+- `nextstat.bayes_design.build_beta_binomial_regulatory_appendix(report_or_path) -> dict` — build the frozen regulatory appendix JSON artifact from a committed beta-binomial design report. Returns `nextstat_bayesian_design_regulatory_appendix_v0`.
+- `nextstat.bayes_design.build_beta_binomial_prior_conflict_diagnostic(report_or_path) -> dict` — build the frozen campaign-based prior conflict diagnostic from a committed beta-binomial design report. Returns `nextstat_bayesian_prior_conflict_diagnostic_v0`.
+- `nextstat.bayes_design.build_beta_binomial_historical_control_borrowing_review(report_or_path, policy_or_path) -> dict` — build the frozen historical-control borrowing policy review from a committed beta-binomial design report and a committed borrowing policy. Returns `nextstat_bayesian_historical_control_borrowing_review_v0`.
+- `nextstat.bayes_design.simulate_beta_binomial_historical_control_borrowing_operating_characteristics(spec_or_path, campaign_or_path, policy_or_path) -> dict` — compute seeded historical-control borrowing policy-review operating characteristics from a versioned beta-binomial design spec, prior-sensitivity campaign, and borrowing policy. Returns `nextstat_bayesian_historical_control_borrowing_operating_characteristics_v0`.
+- `nextstat.bayes_design.build_beta_binomial_robust_mixture_prior_review(report_or_path, policy_or_path) -> dict` — build the frozen robust-mixture prior policy review from a committed beta-binomial design report and a committed robust-mixture policy. Returns `nextstat_bayesian_robust_mixture_prior_review_v0`.
+- `nextstat.bayes_design.simulate_beta_binomial_robust_mixture_prior_operating_characteristics(spec_or_path, campaign_or_path, policy_or_path) -> dict` — compute seeded robust-mixture prior policy-review operating characteristics from a versioned beta-binomial design spec, prior-sensitivity campaign, and robust-mixture policy. Returns `nextstat_bayesian_robust_mixture_prior_operating_characteristics_v0`.
+- `nextstat.bayes_design.render_bayesian_regulatory_appendix_markdown(appendix_or_path) -> str` — render deterministic Markdown from a committed `nextstat_bayesian_design_regulatory_appendix_v0` artifact.
+- `nextstat.bayes_design.write_bayesian_regulatory_appendix_pdf(pdf_path, appendix_or_path) -> None` — write a deterministic PDF from a committed `nextstat_bayesian_design_regulatory_appendix_v0` artifact.
+- `nextstat.bayes_design.render_beta_binomial_design_report(report_or_path) -> str`
+- `nextstat.bayes_design.write_beta_binomial_design_report_bundle(bundle_dir, report_or_path) -> dict` — write a deterministic run bundle from a frozen beta-binomial design report. Returns `nextstat_bayesian_design_report_bundle_v0`.
+- `nextstat.bayes_design.analyze_normal_normal_design(spec_or_path, observed_or_path) -> dict`
+- `nextstat.bayes_design.forecast_normal_normal_design(spec_or_path, observed_or_path) -> dict`
+- `nextstat.bayes_design.analyze_normal_normal_prior_sensitivity(spec_or_path, observed_or_path, campaign_or_path) -> dict`
+- `nextstat.bayes_design.simulate_normal_normal_design(spec_or_path) -> dict`
+- `nextstat.bayes_design.build_normal_normal_design_report(spec_or_path, observed_or_path, campaign_or_path) -> dict`
+- `nextstat.bayes_design.build_normal_normal_regulatory_appendix(report_or_path) -> dict` — build the frozen regulatory appendix JSON artifact from a committed normal-normal design report. Returns `nextstat_bayesian_design_regulatory_appendix_v0`.
+- `nextstat.bayes_design.build_normal_normal_prior_conflict_diagnostic(report_or_path) -> dict` — build the frozen campaign-based prior conflict diagnostic from a committed normal-normal design report. Returns `nextstat_bayesian_prior_conflict_diagnostic_v0`.
+- `nextstat.bayes_design.build_normal_normal_historical_control_borrowing_review(report_or_path, policy_or_path) -> dict` — build the frozen historical-control borrowing policy review from a committed normal-normal design report and a committed borrowing policy. Returns `nextstat_bayesian_historical_control_borrowing_review_v0`.
+- `nextstat.bayes_design.simulate_normal_normal_historical_control_borrowing_operating_characteristics(spec_or_path, campaign_or_path, policy_or_path) -> dict` — compute seeded historical-control borrowing policy-review operating characteristics from a versioned normal-normal design spec, prior-sensitivity campaign, and borrowing policy. Returns `nextstat_bayesian_historical_control_borrowing_operating_characteristics_v0`.
+- `nextstat.bayes_design.build_normal_normal_robust_mixture_prior_review(report_or_path, policy_or_path) -> dict` — build the frozen robust-mixture prior policy review from a committed normal-normal design report and a committed robust-mixture policy. Returns `nextstat_bayesian_robust_mixture_prior_review_v0`.
+- `nextstat.bayes_design.simulate_normal_normal_robust_mixture_prior_operating_characteristics(spec_or_path, campaign_or_path, policy_or_path) -> dict` — compute seeded robust-mixture prior policy-review operating characteristics from a versioned normal-normal design spec, prior-sensitivity campaign, and robust-mixture policy. Returns `nextstat_bayesian_robust_mixture_prior_operating_characteristics_v0`.
+- `nextstat.bayes_design.render_normal_normal_design_report(report_or_path) -> str`
+- `nextstat.bayes_design.write_normal_normal_design_report_bundle(bundle_dir, report_or_path) -> dict` — write a deterministic run bundle from a frozen normal-normal design report. Returns `nextstat_bayesian_design_report_bundle_v0`.
+- See `docs/references/bayesian-trial-design-artifacts.md` for schema names and example payloads.
+
+### `nextstat.hep`
+
+- This namespace is the Python entry point for the stable-first scalar measurement-combination workflow, plus the wider research-grade reporting stack.
+- The recommended default is `solver="auto"`, which keeps the perturbative path on the fast path and falls back safely to the paper-faithful numerical reference when needed.
+- For calibration-style wrappers, deterministic toy generation uses the paper-faithful `numerical-paper` reference whenever the requested solver is `numerical-paper`, `analytic-perturbative`, or `auto`.
+
+- `nextstat.hep.build_measurement_combination_spec(measurements_table, stat_covariance_table, *, poi="mu", systematics_table=None, correlations_table=None) -> dict` — stable-first tabular ingress helper. Accepts raw CSV/TSV text or filesystem paths and returns the canonical `nextstat_measurement_combination_v0` JSON payload expected by the stable fit/calibration wrappers.
+- `nextstat.hep.build_measurement_combination_spec_from_manifest(manifest_path) -> dict` — stable-first manifest ingress helper. Accepts a YAML/JSON manifest path pointing at the same table bundle and returns the canonical `nextstat_measurement_combination_v0` JSON payload expected by the stable fit/calibration wrappers.
+- The tabular helper expects:
+  - `measurements_table`: `name,value`
+  - `stat_covariance_table`: named square matrix with row/column measurement names
+  - optional `systematics_table`: `systematic,measurement,magnitude,error_on_error,aux_mean`
+  - optional `correlations_table`: `systematic,row_measurement,col_measurement,corr`
+- The manifest helper expects a `nextstat_measurement_combination_manifest_v0` file with `poi`, `measurements_table`, `stat_covariance_table`, and optional `systematics_table` / `correlations_table` entries.
+- If `correlations_table` is omitted, each systematic defaults to identity correlation.
+- `nextstat.hep.combine_measurements(spec_or_path, *, ci_level=0.68, solver="auto") -> dict` — stable-first scalar measurement combination wrapper. Accepts either a Python `dict` matching `nextstat_measurement_combination_v0` or a path to a JSON spec and returns a plain `dict` matching the CLI result schema.
+- `nextstat.hep.combine_measurements(...)` uses the same Rust core engine as `nextstat combine-measurements`.
+- `solver="auto"` is the default stable path: it tries the Eq. (21)-(28) / Appendix B perturbative approximation first and falls back to `numerical-paper` outside the validity radius. `solver="numerical"` keeps the existing reduced-basis numerical GVM path, `solver="numerical-paper"` runs the paper-faithful original-`theta_s^i` numerical path, and `solver="analytic-perturbative"` forces the perturbative approximation.
+- When runtime dispatch differs from the requested solver, the returned `dict` records it through `diagnostics.requested_solver` and `diagnostics.effective_solver`.
+- `nextstat.hep.calibrate_measurements(spec_or_path, *, ci_level=0.68, solver="auto", n_toys=128, seed=42) -> dict` — stable-first toy-calibration wrapper. Returns a calibration report matching the CLI schema from `nextstat combine-measurements-calibrate`.
+- `nextstat.hep.calibrate_measurements_study(spec_or_path, *, ci_level=0.68, solver="auto", n_toys=128, seeds=[42, 43, 44]) -> dict` — stable-first repeated-seed calibration wrapper. Returns a study report matching the CLI schema from `nextstat combine-measurements-calibrate-study`, including `per_seed` summaries and aggregate stability diagnostics.
+- `nextstat.hep.study_measurement_combination_scenarios(spec_or_path, scenarios_or_path, *, ci_level=0.68, solver="auto") -> dict` — research-grade scenario-study wrapper. Returns a baseline-relative comparison report matching the CLI schema from `nextstat combine-measurements-scenario-study`.
+- `nextstat.hep.calibrate_measurement_combination_scenarios(spec_or_path, scenarios_or_path, *, ci_level=0.68, solver="auto", n_toys=128, seeds=[42, 43, 44]) -> dict` — research-grade calibration-campaign wrapper. Returns one artifact matching the CLI schema from `nextstat combine-measurements-calibration-campaign`, combining scenario-level fits with repeated-seed calibration summaries per scenario.
+- `nextstat.hep.compare_measurement_combination_scenario_study_solvers(spec_or_path, scenarios_or_path, *, ci_level=0.68, lhs_solver="numerical-paper", rhs_solver="analytic-perturbative") -> dict` — research-grade solver-parity wrapper for scenario studies. Returns a direct parity artifact matching `nextstat combine-measurements-solver-parity-scenario-study`.
+- `nextstat.hep.compare_measurement_combination_calibration_campaign_solvers(spec_or_path, scenarios_or_path, *, ci_level=0.68, lhs_solver="numerical-paper", rhs_solver="analytic-perturbative", n_toys=128, seeds=[42, 43, 44]) -> dict` — research-grade solver-parity wrapper for repeated-seed calibration campaigns. Returns a direct parity artifact matching `nextstat combine-measurements-solver-parity-calibration-campaign`.
+- `nextstat.hep.compare_measurement_combination_scenario_study_solver_reports(lhs_report_or_path, rhs_report_or_path, *, lhs_solver="numerical-paper", rhs_solver="analytic-perturbative") -> dict` — research-grade cached solver-parity wrapper. Reads two precomputed scenario-study reports and returns the same parity schema as `nextstat combine-measurements-solver-parity-scenario-study-from-reports`.
+- `nextstat.hep.compare_measurement_combination_calibration_campaign_solver_reports(lhs_report_or_path, rhs_report_or_path, *, lhs_solver="numerical-paper", rhs_solver="analytic-perturbative") -> dict` — research-grade cached solver-parity wrapper for repeated-seed campaigns. Reads two precomputed calibration-campaign reports and returns the same parity schema as `nextstat combine-measurements-solver-parity-calibration-campaign-from-reports`.
+- `nextstat.hep.render_measurement_combination_scenario_study_solver_parity(report_or_path) -> str` — Markdown renderer for the scenario-study solver-parity artifact.
+- `nextstat.hep.render_measurement_combination_calibration_campaign_solver_parity(report_or_path) -> str` — Markdown renderer for the calibration-campaign solver-parity artifact.
+- `nextstat.hep.summarize_measurement_combination_scenario_study_solver_parity(report_or_path) -> dict` — research-grade post-processing wrapper. Reads an existing scenario-study solver-parity artifact and returns the compact digest schema from `nextstat combine-measurements-solver-parity-scenario-study-summarize`.
+- `nextstat.hep.render_measurement_combination_scenario_study_solver_parity_summary(summary_or_path) -> str` — Markdown renderer for the scenario-study solver-parity digest emitted by `nextstat combine-measurements-solver-parity-scenario-study-summarize --format markdown`.
+- `nextstat.hep.summarize_measurement_combination_calibration_campaign_solver_parity(report_or_path) -> dict` — research-grade post-processing wrapper. Reads an existing calibration-campaign solver-parity artifact and returns the compact digest schema from `nextstat combine-measurements-solver-parity-calibration-campaign-summarize`.
+- `nextstat.hep.render_measurement_combination_calibration_campaign_solver_parity_summary(summary_or_path) -> str` — Markdown renderer for the calibration-campaign solver-parity digest emitted by `nextstat combine-measurements-solver-parity-calibration-campaign-summarize --format markdown`.
+- These wrappers accept the same solver contract as `nextstat.hep.combine_measurements(...)`. For calibration-style wrappers, toy generation uses the paper-faithful `numerical-paper` reference whenever the requested solver is `numerical-paper`, `analytic-perturbative`, or `auto`.
+- The two `...solver_reports(...)` wrappers are pure post-processing helpers for expensive published workflows: run each solver once, persist the study/campaign JSON, then compare them later without rerunning fits or toys.
+- `nextstat.hep.summarize_measurement_combination_calibration_campaign(report_or_path) -> dict` — research-grade digest wrapper. Reads an existing calibration-campaign artifact and returns the compact summary schema from `nextstat combine-measurements-calibration-campaign-summarize`.
+- `nextstat.hep.render_measurement_combination_calibration_campaign_summary(summary_or_path) -> str` — research-grade Markdown renderer. Reads an existing campaign digest and returns the same human-readable note emitted by `nextstat combine-measurements-calibration-campaign-summarize --format markdown`.
+- `nextstat.hep.build_measurement_combination_calibration_campaign_brief(summaries_or_paths, *, labels=None) -> dict` — research-grade comparative brief builder. Reads multiple existing campaign digests and returns a cross-artifact brief matching `nextstat combine-measurements-calibration-campaign-brief --format json`.
+- `nextstat.hep.render_measurement_combination_calibration_campaign_brief(brief_or_path) -> str` — research-grade Markdown renderer for the comparative brief schema emitted by `nextstat combine-measurements-calibration-campaign-brief --format markdown`.
+- `nextstat.hep.build_measurement_combination_calibration_campaign_family_report(briefs_or_paths, *, labels=None) -> dict` — research-grade family-report builder. Reads multiple existing campaign briefs and returns a cross-family report matching `nextstat combine-measurements-calibration-campaign-family-report --format json`.
+- `nextstat.hep.render_measurement_combination_calibration_campaign_family_report(report_or_path) -> str` — research-grade Markdown renderer for the family-report schema emitted by `nextstat combine-measurements-calibration-campaign-family-report --format markdown`.
+- `nextstat.hep.build_measurement_combination_calibration_campaign_family_matrix(report_or_path) -> dict` — research-grade dominance-matrix builder. Reads one existing family report and returns a machine-readable ranking/pairwise-comparison artifact matching `nextstat combine-measurements-calibration-campaign-family-matrix --format json`.
+- `nextstat.hep.render_measurement_combination_calibration_campaign_family_matrix(matrix_or_path) -> str` — research-grade Markdown renderer for the dominance-matrix schema emitted by `nextstat combine-measurements-calibration-campaign-family-matrix --format markdown`.
+- `nextstat.hep.build_measurement_combination_calibration_campaign_portfolio(matrices_or_paths, *, labels=None) -> dict` — research-grade portfolio builder. Reads multiple existing family-matrix artifacts and returns a cross-campaign comparison artifact matching `nextstat combine-measurements-calibration-campaign-portfolio --format json`.
+- `nextstat.hep.render_measurement_combination_calibration_campaign_portfolio(report_or_path) -> str` — research-grade Markdown renderer for the portfolio schema emitted by `nextstat combine-measurements-calibration-campaign-portfolio --format markdown`.
+- `nextstat.hep.build_measurement_combination_calibration_campaign_portfolio_stability(portfolios_or_paths, *, labels=None) -> dict` — research-grade portfolio-stability builder. Reads multiple existing portfolio artifacts and returns a cross-run stability artifact matching `nextstat combine-measurements-calibration-campaign-portfolio-stability --format json`.
+- `nextstat.hep.render_measurement_combination_calibration_campaign_portfolio_stability(report_or_path) -> str` — research-grade Markdown renderer for the portfolio-stability schema emitted by `nextstat combine-measurements-calibration-campaign-portfolio-stability --format markdown`.
+- The returned `dict` includes `diagnostics.bartlett`, which reports the Lawley/Bartlett correction factors used to refine profile-likelihood and GOF diagnostics in the GVM path.
+- The returned `dict` also includes `diagnostics.perturbative_validity`, which reports per-systematic convergence indicators for the perturbative expansion used by the Bartlett layer.
+- Existing `nextstat.workspace_combine(...)` remains the workspace-merge API; it is not affected by the measurement-combination path.
+
+Recommended usage order:
+
+1. `nextstat.hep.combine_measurements(...)`
+2. `nextstat.hep.calibrate_measurements(...)`
+3. `nextstat.hep.calibrate_measurements_study(...)`
+4. `nextstat.hep.study_measurement_combination_scenarios(...)`
+5. `nextstat.hep.calibrate_measurement_combination_scenarios(...)`
+6. `summarize_*` / `render_*` post-processing helpers
+7. `compare_*_solvers(...)` only when you need explicit numerical-vs-perturbative parity artifacts
+
+## Simplified-likelihood support class (March 2026)
+
+The promoted simplified-likelihood subset on the Python surface is intentionally
+narrow:
+
+- `nextstat.workspace_audit(...)` is `stable` for pyhf and simplified-likelihood inputs; simplified-likelihood returns the published `nextstat_simplified_likelihood_audit_v0` artifact and HS3 is rejected explicitly on that audit path
+- for simplified-likelihood inference from Python, the promoted stable contract lives on `nextstat.tools` / `nextstat-server`: `nextstat_workspace_audit`, `nextstat_fit`, `nextstat_hypotest`, `nextstat_upper_limit`, and `nextstat_scan`
+- `nextstat_discovery_asymptotic`, `nextstat_ranking`, and `nextstat_hypotest_toys` remain compatibility-tested but `research-grade` for simplified-likelihood inputs
+- the future stable exporter claim is now published separately and remains narrow: `pyhf` source only, single-POI only, and `constraint_covariance_source="source_model_constraints"` for Gaussian-constrained source nuisances; derived artifacts still remain reduced-coordinate rather than source-level nuisance identities
+
+Support and release references:
+
+- `docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08.md`
+- `docs/benchmarks/simplified-likelihood-release-notes-2026-03-08.md`
+- `docs/benchmarks/simplified-likelihood-exporter-stable-source-semantics-boundary-2026-03-09.md`
+- `docs/references/tool-api.md`
 
 ## Top-level functions
 
@@ -21,7 +141,7 @@ Notes:
 - `nextstat.from_histfactory_xml(xml_path) -> HistFactoryModel` — create model from HistFactory XML.
 - `nextstat.UnbinnedModel.from_config(path) -> UnbinnedModel` — compile an event-level (unbinned) model from an `unbinned_spec_v0` JSON/YAML file. Supported PDF types: `gaussian`, `crystal_ball`, `double_crystal_ball`, `exponential`, `chebyshev`, `argus`, `voigtian`, `spline`, `histogram`, `histogram_from_tree`, `kde`, `kde_from_tree`, `product`, `flow`, `conditional_flow`, `dcr_surrogate`. The `flow`, `conditional_flow`, and `dcr_surrogate` types require building with `--features neural` (ONNX Runtime). See `docs/neural-density-estimation.md` for the full workflow.
 - `nextstat.unbinned.from_config(path) -> nextstat.unbinned.UnbinnedAnalysis` — high-level unbinned workflow wrapper (compile + fit/fit_toys/scan/hypotest/toys/ranking helpers).
-- `nextstat.workspace_audit(json_str) -> dict` — audit pyhf workspace for compatibility (counts channels, samples, modifiers; flags unsupported features).
+- `nextstat.workspace_audit(json_str) -> dict` — audit a pyhf or simplified-likelihood workspace. Pyhf inputs return compatibility counts and unsupported-feature warnings; simplified-likelihood inputs return the published `nextstat_simplified_likelihood_audit_v0` artifact. HS3 is rejected explicitly.
 - `nextstat.apply_patchset(workspace_json, patchset_json, *, patch_name=None) -> str` — apply a pyhf patchset.
 - `nextstat.workspace_combine(ws1_json, ws2_json, *, join="none") -> str` — combine two pyhf workspace JSON strings. Join modes: `"none"` (error on conflict), `"outer"` (union), `"left_outer"`, `"right_outer"`.
 - `nextstat.workspace_prune(ws_json, *, channels=[], samples=[], modifiers=[], measurements=[]) -> str` — remove channels, samples, modifiers, and/or measurements from a workspace.
@@ -85,7 +205,7 @@ HS3 v0.2 support covers all modifier types produced by ROOT 6.37+: `normfactor`,
 
 ### Monte Carlo / Safety
 
-- `nextstat.fault_tree_mc_ce_is(spec, *, n_per_level=10000, elite_fraction=0.01, max_levels=20, q_max=0.99, seed=42) -> dict` — Cross-Entropy Importance Sampling for rare-event fault tree probability estimation with multi-level adaptive biasing. Handles probabilities down to ~1e-16 via soft importance function when no TOP failures are observed. Returns `{p_failure, se, ci_lower, ci_upper, n_levels, n_total_scenarios, final_proposal, coefficient_of_variation, wall_time_s}`. Supports all failure modes: Bernoulli, WeibullMission, BernoulliUncertain.
+- `nextstat.fault_tree_mc_ce_is(spec, *, n_per_level=10000, elite_fraction=0.01, max_levels=20, q_max=0.99, seed=42) -> dict` — Cross-Entropy Importance Sampling for rare-event fault tree probability estimation with multi-level adaptive biasing. Handles probabilities down to ~1e-16 via soft importance function when no TOP failures are observed. Returns `{p_failure, se, ci_lower, ci_upper, n_levels, n_total_scenarios, final_proposal, coefficient_of_variation, wall_time_s}`. Current CE-IS implementation is Bernoulli-only for component failure modes.
 - `nextstat.fault_tree_mc(spec, n_scenarios, seed=42, device='cpu', chunk_size=0) -> dict` — Monte Carlo fault tree simulation. `device`: `'cpu'`, `'cuda'`, `'metal'`.
 
 ### Profile likelihood
@@ -97,12 +217,13 @@ HS3 v0.2 support covers all modifier types produced by ROOT 6.37+: `normfactor`,
 
 ### Sampling
 
-- `nextstat.sample(model, *, method="nuts", return_idata=False, out=None, out_format="json", **kwargs) -> dict | InferenceData` — **Unified sampling interface**. Dispatches to NUTS, MAMS, or LAPS based on `method`. Set `return_idata=True` to get an ArviZ `InferenceData` object (requires `arviz`). Set `out="trace.json"` to save results to disk. All method-specific kwargs are forwarded to the underlying sampler.
-- `nextstat.sample_nuts(model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_strategy="random", metric="diagonal", init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, stepsize_jitter=0.0, data=None) -> dict` — NUTS (No-U-Turn Sampler). Also available via `nextstat.sample(model, method="nuts", ...)`. Accepts `Posterior` as well; `data=` is not supported when sampling a `Posterior`. `init_strategy`: `"random"` (default, Stan-style Uniform(-2,2)), `"mle"` (L-BFGS mode), or `"pathfinder"` (L-BFGS mode + Hessian-derived metric as initial mass matrix for faster warmup; produces dense metric when `metric="dense"` or `metric="auto"` for dim ≤ 32). `metric`: `"diagonal"` (default, CmdStan-compatible), `"dense"` (full covariance, better for correlated posteriors), or `"auto"` (dense for dim ≤ 32, diagonal otherwise). The `sample_stats` dict in results includes `metric_type` ("diagonal"/"dense"), `mass_diag`, and `inv_mass_matrix` (row-major, only for dense metric).
-- `nextstat.sample_mams(model, *, n_chains=4, n_warmup=1000, n_samples=1000, seed=42, target_accept=0.9, init_strategy="random", metric="diagonal", init_step_size=0.0, init_l=0.0, max_leapfrog=1024, diagonal_precond=True, data=None) -> dict` — MAMS (Metropolis-Adjusted Microcanonical Sampler, arXiv:2503.01707). Also available via `nextstat.sample(model, method="mams", ...)`. Exact sampler using isokinetic dynamics on the unit velocity sphere. 4-phase Stan-style DualAveraging warmup with adaptive phase durations: when Pathfinder provides a Hessian-derived mass matrix, warmup phases are rebalanced (10%/15%/10%/65% vs default 15%/40%/15%/30%) to spend less time on mass matrix collection and more on equilibration. Returns ArviZ-compatible dict with `posterior`, `sample_stats`, `diagnostics`. Typically 1.3–1.7x better ESS/gradient than NUTS on hierarchical models. `init_strategy`: `"random"` (default), `"mle"`, or `"pathfinder"` (recommended for well-conditioned posteriors; avoid on funnel-like geometries).
+- `nextstat.sample(model, *, method="nuts", return_idata=False, out=None, out_format="json", **kwargs) -> dict | InferenceData` — **Unified sampling interface**. Dispatches to NUTS, WALNUTS, MAMS, or LAPS based on `method`. Set `return_idata=True` to get an ArviZ `InferenceData` object (requires `arviz`). Set `out="trace.json"` to save results to disk. All method-specific kwargs are forwarded to the underlying sampler.
+- `nextstat.sample_nuts(model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, target_accept=0.8, init_strategy="random", metric="diagonal", init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, stepsize_jitter=0.0, data=None) -> dict` — NUTS (No-U-Turn Sampler). Also available via `nextstat.sample(model, method="nuts", ...)`. Accepts `Posterior` as well; `data=` is not supported when sampling a `Posterior`. `init_strategy`: `"random"` (default, Stan-style Uniform(-2,2)), `"mle"` (L-BFGS mode), or `"pathfinder"` (L-BFGS mode + Hessian-derived metric as initial mass matrix for faster warmup; produces dense metric when `metric="dense"` or `metric="auto"` for dim ≤ 32). `metric`: `"diagonal"` (default, CmdStan-compatible), `"dense"` (full covariance, better for correlated posteriors), or `"auto"` (dense for dim ≤ 32, diagonal otherwise). The `sample_stats` dict in results includes `metric_type` ("diagonal"/"dense"), `mass_diag`, `inv_mass_matrix` (row-major, only for dense metric), and `n_leapfrog_warmup_total` (per-chain warmup leapfrog totals).
+- `nextstat.sample_walnuts(model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42, max_treedepth=10, max_step_halvings=4, min_micro_steps=1, max_energy_error=2.0, target_accept=0.8, target_tree_depth=4.0, init_strategy="random", metric="diagonal", init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, stepsize_jitter=0.0, data=None) -> dict` — WALNUTS (Window-Adaptive NUTS). Also available via `nextstat.sample(model, method="walnuts", ...)`, though the unified `sample(..., method="walnuts")` entry point remains the recommended public surface. Accepts `Posterior` as well; `data=` is not supported when sampling a `Posterior`. `init_strategy`: `"random"` (default), `"mle"`, or `"pathfinder"`; Pathfinder can seed a dense initial metric when `metric="dense"` or `metric="auto"` for dim ≤ 32. `metric`: `"diagonal"` (default), `"dense"` (full covariance), or `"auto"` (dense for dim ≤ 32, diagonal otherwise). Returns the same top-level `posterior` / `sample_stats` / `diagnostics` contract as NUTS, including `metric_type`, `mass_diag`, `inv_mass_matrix` (row-major, only for dense metric), and `sample_stats["n_leapfrog_warmup_total"]` for per-chain warmup telemetry. See `docs/references/walnuts-sampler.md` for the dedicated WALNUTS surface note.
+- `nextstat.sample_mams(model, *, n_chains=4, n_warmup=3500, n_samples=1000, seed=42, target_accept=0.985, init_strategy="random", metric="diagonal", init_step_size=0.0, init_l=0.0, max_leapfrog=1024, diagonal_precond=True, eps_jitter=0.0, data=None) -> dict` — MAMS (Metropolis-Adjusted Microcanonical Sampler, arXiv:2503.01707). Also available via `nextstat.sample(model, method="mams", ...)`. Exact sampler using isokinetic dynamics on the unit velocity sphere. The stable CPU public surface currently supports only `metric="diagonal"`; `"dense"` and `"auto"` are rejected explicitly rather than silently downgraded. The stabilized CPU default regime now uses a longer warmup (`3500`), stricter `target_accept=0.985`, a tracked `max_leapfrog=1024` cap, and disables `eps_jitter` by default because that combination clears both funnel and eight-schools repeatability on the canonical `nextstat-bench` seed set while preserving the rest of the canonical suite. `init_l=0.0` means use the stable default `sqrt(d)` trajectory length in preconditioned space; it is not an auto-tuning surface. 4-phase Stan-style DualAveraging warmup with adaptive phase durations: when the `pathfinder` init strategy provides a Hessian-derived diagonal preconditioner, warmup phases are rebalanced (10%/15%/10%/65% vs default 15%/40%/15%/30%) to spend less time on mass-matrix collection and more on equilibration. Returns ArviZ-compatible dict with `posterior`, `sample_stats`, `diagnostics`; `sample_stats` includes `metric_type="diagonal"`, per-chain `n_leapfrog_warmup_total`, and divergence flags that now correctly mark early-terminated non-finite energy-error transitions. Typically 1.3–1.7x better ESS/gradient than NUTS on hierarchical models. `init_strategy`: `"random"` (default), `"mle"`, or `"pathfinder"` (mode + Hessian-derived diagonal preconditioner for faster warmup, not a standalone Pathfinder posterior-approximation surface; avoid on funnel-like geometries).
 - `nextstat.sample_laps(model, *, model_data=None, n_chains=4096, n_warmup=500, n_samples=2000, seed=42, target_accept=0.9, init_step_size=0.0, init_l=0.0, max_leapfrog=1024, device_ids=None, sync_interval=100, welford_chains=256, batch_size=1000, fused_transitions=1000, divergence_threshold=1000.0) -> dict` — **LAPS** (Late-Adjusted Parallel Sampler): GPU-accelerated MAMS on CUDA. Also available via `nextstat.sample(model, method="laps", ...)`. Runs `n_chains` chains simultaneously on GPU with zero warp divergence (fixed trajectory length). Four-phase warmup: Phase 1 (fast DA, step-size adapt) + Phase 2 (DA + Welford, mass matrix) + Phase 3 (DA with new metric) + Phase 4 (L tuning + equilibrate). All phases use exact MH. `model`: `"std_normal"`, `"eight_schools"`, `"neal_funnel"`, `"neal_funnel_ncp"`, `"neal_funnel_riemannian"`, `"glm_logistic"`, `"glm_linear"`, `"glm_poisson"`, `"glm_negbin"` (or `"glm_negative_binomial"`), `"glm_composed_logistic"`, or a `RawCudaModel` instance. GLM models require `model_data` with `x`, `y`, `n`, `p`. Poisson/NegBin accept optional `offset` (length-n array). NegBin samples an additional `log_alpha` dispersion parameter (dim = p+1). ComposedLogistic requires `group_idx`, `n_groups`, and optional `re_prior_sigma` (default 1.0); dim = p + n_groups. For Neal's funnel, prefer `"neal_funnel_ncp"` (non-centered parametrization, R-hat < 1.02, ESS/s > 40k). `"neal_funnel_riemannian"` uses hybrid Riemannian metric for x-components but has known v-bias — experimental. `model_data`: dict with model-specific data (e.g. `{"y": [...], "sigma": [...]}` for eight_schools, `{"dim": 10}` for std_normal). `device_ids`: list of GPU device indices (default `None` = auto-detect all GPUs). Multi-GPU: chains are split across devices with synchronized warmup adaptation and independent sampling. `sync_interval`: warmup diagnostics sync frequency (default 100). `welford_chains`: chains per device for mass matrix estimation (default 256). `batch_size`: transitions per GPU-side accumulation batch (default 1000). `fused_transitions`: when >0, a single kernel launch executes N transitions keeping chain state in registers, eliminating per-transition launch overhead (default 1000; set to 0 to disable). Returns same format as `sample_mams()` plus `wall_time_s`, `n_kernel_launches`, `n_gpu_chains`, `n_devices`, `device_ids`. Requires `cuda` or `metal` feature and a compatible GPU at runtime. On Apple Silicon (Metal, f32), only built-in models are supported (no JIT). When both CUDA and Metal are available, CUDA is preferred (f64 precision).
 - `nextstat.RawCudaModel(dim, cuda_src, *, data=None, param_names=None)` — User-defined CUDA model for LAPS JIT compilation via NVRTC. The `cuda_src` must define `__device__ double user_nll(const double* x, int dim, const double* model_data)` and `__device__ void user_grad(const double* x, double* grad, int dim, const double* model_data)`. The `data` array is uploaded to GPU as `model_data`. PTX is cached to disk (`~/.cache/nextstat/ptx/`) keyed by SHA-256(source + GPU arch). Requires `cuda` feature.
-- `nextstat.bayes.sample(model, *, method="nuts", return_idata=True, **kwargs)` — convenience wrapper that returns ArviZ `InferenceData` by default. Supports all three methods (nuts/mams/laps).
+- `nextstat.bayes.sample(model, *, method="nuts", return_idata=True, **kwargs)` — convenience wrapper that returns ArviZ `InferenceData` by default. Supports all four methods (nuts/walnuts/mams/laps).
 - `nextstat.bayes.to_inferencedata(raw) -> InferenceData` — convert a raw sampling dict into ArviZ `InferenceData`.
 
 #### Sampling quick start
@@ -176,7 +297,7 @@ print(raw["diagnostics"]["quality"]["status"])  # "ok" / "warn" / "fail"
 
 ### Parameter ranking
 
-- `nextstat.ranking(model, *, device="cpu") -> list[dict]` — nuisance parameter ranking (impact on POI). Dispatches on model type: `HistFactoryModel` or `UnbinnedModel`. `device="cuda"` or `device="metal"` for GPU-accelerated ranking (requires corresponding build feature).
+- `nextstat.ranking(model, *, device="cpu") -> list[dict]` — nuisance parameter ranking (impact on POI). Dispatches on model type: `HistFactoryModel` or `UnbinnedModel`. `device="cuda"` or `device="metal"` for GPU-accelerated ranking (requires corresponding build feature). For simplified-likelihood models, entries rank reduced nuisance coordinates from the compiled model; covariance-form and `derived_from_workspace` artifacts do not preserve source-level nuisance identities. This remains consistent with the published exporter stable-source-semantics boundary: reduced artifacts are not a source-level nuisance-identity surface.
 
 ### Utilities
 
@@ -437,6 +558,73 @@ Low-level:
 
 High-level wrappers:
 - `nextstat.timeseries.*` — convenience helpers and plotting.
+- `nextstat.timeseries.local_level_model(*, q, r, m0=0.0, p0=1.0) -> KalmanModel`
+- `nextstat.timeseries.local_linear_trend_model(*, q_level, q_slope, r, level0=0.0, slope0=0.0, p0_level=1.0, p0_slope=1.0) -> KalmanModel`
+- `nextstat.timeseries.local_level_seasonal_model(*, period, q_level, q_season, r, level0=0.0, p0_level=1.0, p0_season=1.0) -> KalmanModel`
+- `nextstat.timeseries.local_linear_trend_seasonal_model(*, period, q_level, q_slope, q_season, r, level0=0.0, slope0=0.0, p0_level=1.0, p0_slope=1.0, p0_season=1.0) -> KalmanModel`
+- `nextstat.timeseries.local_level_weekly_model(*, q_level, q_weekly, r, level0=0.0, p0_level=1.0, p0_weekly=1.0) -> KalmanModel` — fixed weekly alias for `period=7`.
+- `nextstat.timeseries.local_linear_trend_weekly_model(*, q_level, q_slope, q_weekly, r, level0=0.0, slope0=0.0, p0_level=1.0, p0_slope=1.0, p0_weekly=1.0) -> KalmanModel` — fixed weekly alias for `period=7`.
+
+### Ads-native measurement / response models
+
+Low-level:
+- `nextstat.BetaBinomialModel(alpha, beta)` — beta prior over latent conversion rates.
+  - `fit(conversion_rates, sample_sizes) -> BetaBinomialModel`
+  - `fit_from_counts(successes, trials) -> BetaBinomialModel`
+  - `alpha`, `beta`
+  - `mean()`, `variance()`, `overdispersion()`
+  - `posterior(successes, trials) -> BetaBinomialModel`
+  - `predictive_mean(trials)`, `predictive_variance(trials)`
+- `nextstat.DelayCorrectionModel(lambda_, lambda_se=None)` — exponential delay-censoring correction model.
+  - `fit_from_lag_buckets(buckets) -> DelayCorrectionModel`
+  - `lambda_`, `lambda_se`
+  - `observed_fraction(window_days) -> float`
+  - `correct(observed_count, window_days) -> (corrected_count, uncertainty)`
+
+High-level wrappers:
+- `nextstat.ads.BetaBinomialModel` — lazy convenience export of the native class.
+- `nextstat.ads.DelayCorrectionModel` — lazy convenience export of the native class.
+- `nextstat.ads.cuped_adjust(control_outcomes, control_covariates, variant_outcomes, variant_covariates, *, covariate_name=None, covariate_provenance=None, pre_treatment_only=True) -> dict`
+  - one-covariate CUPED adjustment
+  - `covariate_provenance` may provide `{name, timing, source_dataset}` for
+    fail-fast leakage validation
+  - returns adjusted means, `theta`, `rho`, `r_squared`,
+    `variance_reduction_factor`, `effective_sample_multiplier`,
+    `selected_covariates`, `covariate_provenance`, `provenance_validated`,
+    `solver`, `condition_number`, `ridge_lambda`, and `pre_treatment_only`
+- `nextstat.ads.cure_adjust(control_outcomes, control_covariates, variant_outcomes, variant_covariates, *, covariate_names=None, covariate_provenance=None, pre_treatment_only=True) -> dict`
+  - multivariate CURE adjustment
+  - `control_covariates` / `variant_covariates` are row-major pre-treatment
+    covariate matrices
+  - `covariate_provenance` accepts one `{name, timing, source_dataset}` mapping
+    per covariate
+  - returns adjusted means, coefficient vector `theta`, pooled `r_squared`,
+    `variance_reduction_factor`, `effective_sample_multiplier`,
+    `selected_covariates`, `covariate_provenance`, `provenance_validated`,
+    `solver`, `condition_number`, `ridge_lambda`, and `pre_treatment_only`
+- Architectural rule: `nextstat.ads.cuped_adjust(...)` is the one-covariate
+  case of the shared CURE layer.
+- Guardrails:
+  - only pre-treatment covariates are accepted
+  - `covariate_provenance[*]["timing"]` must remain `pre_treatment`
+  - ill-conditioned designs report `solver="ridge"` and the chosen
+    `ridge_lambda`
+  - committed public-surface reference fixtures live under
+    `tests/fixtures/variance_reduction/`
+- Surface boundary:
+  - these helpers are part of the stable Python API surface
+  - they are also exposed through `nextstat.tools` as
+    `nextstat_ads_cuped_adjust` and `nextstat_ads_cure_adjust`
+  - the same two tools are available through the authenticated
+    `nextstat-server` server-safe subset
+  - performance-evidence and benchmark governance live in
+    `docs/benchmarks/ads-variance-reduction-runbook-2026-03-08.md` and
+    `docs/benchmarks/ads-variance-reduction-benchmark-2026-03-08.md`
+  - local acceptance / CI gate details live in
+    `docs/benchmarks/ads-variance-reduction-stable-surface-acceptance-2026-03-09.md`
+    and `docs/benchmarks/ads-variance-reduction-runtime-gate.md`
+- `nextstat.ads.hill(x, ec, slope) -> float` — Hill saturation helper.
+- `nextstat.ads.adstock_geometric(spend, decay) -> list[float]` — geometric adstock helper.
 
 ### GARCH / Stochastic Volatility
 
@@ -690,7 +878,7 @@ if cov is not None:
 
 - `nextstat.pk_gof(times, y, subject_idx, *, doses, bioavailability=1.0, theta, eta, error_model="proportional", sigma=0.1, sigma_add=None) -> list[dict]` — Goodness of Fit. `doses` is per-subject (or length 1 for broadcast). Returns per-observation records with `subject`, `time`, `dv`, `pred`, `ipred`, `iwres`, `cwres`.
 
-- `nextstat.pk_npde(times, y, subject_idx, n_subjects, *, doses, bioavailability=1.0, theta, omega_matrix, error_model="proportional", sigma=0.1, sigma_add=None, n_sim=500, seed=42) -> dict` — Normalized Prediction Distribution Errors. Simulation-based GOF diagnostic: simulates `n_sim` replicates, computes per-observation NPDE by comparing observed DV to simulated distribution. Returns `records` (list of per-observation dicts with `subject`, `time`, `dv`, `npde`, `pd`), `mean_npde`, `var_npde`, `shapiro_w`, `shapiro_p`. Well-calibrated model → NPDE ~ N(0,1), mean ≈ 0, variance ≈ 1.
+- `nextstat.pk_npde(times, y, subject_idx, n_subjects, *, doses, bioavailability=1.0, theta, omega_matrix, error_model="proportional", sigma=0.1, sigma_add=None, n_sim=1000, seed=42) -> dict` — Normalized Prediction Distribution Errors. Simulation-based GOF diagnostic: simulates `n_sim` replicates, computes per-observation NPDE by comparing observed DV to the simulated distribution, and returns `records` (list of per-observation dicts with `subject`, `time`, `dv`, `percentile`, `npde`) plus aggregate `mean` and `variance`. Well-calibrated model → NPDE ~ N(0,1), mean ≈ 0, variance ≈ 1.
 
 #### Stepwise Covariate Modeling (SCM)
 
@@ -780,6 +968,7 @@ These modules live under `nextstat.*` as convenience helpers. Some require optio
 
 - `nextstat.viz` — plot-friendly artifacts + plotting helpers (CLs/profile/pulls/ranking/corr).
 - `nextstat.bayes` — Bayesian helpers (ArviZ integration).
+- `nextstat.ads` — ads-native observation and response helpers.
 - `nextstat.torch` — PyTorch differentiable wrappers (see below).
 - `nextstat.timeseries` — higher-level time series helpers and plotting.
 - `nextstat.survival` — high-level survival helpers (parametric right-censoring + Cox PH).
@@ -863,6 +1052,15 @@ Requires `pyarrow` (install with: `pip install "nextstat[io]"`).
 
 Types: `HistogramTableStats`, `ModifiersTableStats`, `EventTableStats`. Constants: `HISTOGRAM_TABLE_MANIFEST_V1`, `UNBINNED_EVENTS_SCHEMA_V1`.
 
+Contract references:
+
+- Manifest schema: `docs/schemas/io/histograms_parquet_manifest_v1.schema.json`
+- Canonical example: `docs/specs/histograms_parquet_manifest_v1.example.json`
+- Example regen/check: `python scripts/generate_histograms_parquet_schema_examples.py [--check]`
+- Family reproducibility gate: `python scripts/check_io_contracts.py --family histograms_parquet [--dry-run] [--report-json ...]`
+- Aggregate runner report schema: `docs/schemas/io/nextstat_io_contract_runner_report_v1.schema.json`
+- Narrative contract reference: `docs/references/arrow-parquet-io.md`
+
 ### `nextstat.analysis` (TREx replacement helpers)
 
 - `nextstat.analysis.read_root_histogram(root_path, hist_path, *, flow_policy="drop") -> dict` — read one ROOT TH1 histogram and optionally fold under/overflow into the edge bins. Guarantees `sumw2` (and adds `sumw2_policy`) and adds `flow_policy` to the returned dict.
@@ -882,7 +1080,7 @@ Types: `TrexConfigParseError`, `TrexConfigImportError`, `TrexConfigDoc`, `TrexCo
 ### `nextstat.audit` (run bundles)
 
 - `nextstat.audit.environment_fingerprint() -> dict[str, Any]` — small, privacy-preserving environment fingerprint for reproducibility.
-- `nextstat.audit.write_bundle(bundle_dir, *, command, args, input_path, output_value, tool_version=None) -> None` — write a reproducible run bundle to a directory (Python mirror of CLI `--bundle`).
+- `nextstat.audit.write_bundle(bundle_dir, *, command, args, input_path, output_value, tool_version=None, deterministic=False) -> None` — write a reproducible run bundle to a directory (Python mirror of CLI `--bundle`). When `deterministic=True`, timestamps are normalized to `0`.
 
 Dataclasses: `BundleMeta`, `BundleInputMeta`.
 
@@ -1050,14 +1248,18 @@ Systematic-impact ranking translated into ML-style Feature Importance.
 
 ## Agentic Analysis (`nextstat.tools`)
 
-- `nextstat.tools.get_toolkit(*, transport="local", server_url=None, timeout_s=10.0) -> list[dict]`
-- `nextstat.tools.execute_tool(name, arguments, *, transport="local", server_url=None, timeout_s=30.0, fallback_to_local=True) -> dict`
+- `nextstat.tools.get_toolkit(*, transport="local", server_url=None, api_key=None, timeout_s=10.0) -> list[dict]`
+- `nextstat.tools.get_toolkit_descriptor(*, transport="local", server_url=None, api_key=None, timeout_s=10.0) -> dict`
+  - Returns the versioned discovery descriptor (`schema_version`, `transport`, `tools`, `capabilities`, `guidance`).
+- `nextstat.tools.execute_tool(name, arguments, *, transport="local", server_url=None, api_key=None, timeout_s=30.0, fallback_to_local=True) -> dict`
 - `nextstat.tools.execute_tool_raw(name, arguments) -> dict`
 - `nextstat.tools.get_langchain_tools() -> list[StructuredTool]` (requires `langchain-core`)
 - `nextstat.tools.get_mcp_tools() -> list[dict]`
 - `nextstat.tools.handle_mcp_call(name, arguments) -> dict`
 - `nextstat.tools.get_tool_names() -> list[str]`
 - `nextstat.tools.get_tool_schema(name) -> dict | None`
+
+Model-specific bootstrap packs for `Codex`, `Gemini`, `Ollama/local`, and IDE assistants live in `docs/references/agent-bootstrap.md`.
 
 ## Neural PDFs (`FlowPdf`, `DcrSurrogate`)
 
@@ -1138,7 +1340,7 @@ Pure-Python HTTP client for a remote `nextstat-server` instance. Zero native dep
 
 - `nextstat.remote.connect(url, *, timeout=300.0) -> NextStatClient` — create a client.
 - `client.fit(workspace=None, *, model_id=None, gpu=True) -> FitResult` — remote MLE fit. Pass `workspace` (dict or JSON string) or `model_id` from the model cache.
-- `client.ranking(workspace=None, *, model_id=None, gpu=True) -> RankingResult` — remote nuisance-parameter ranking.
+- `client.ranking(workspace=None, *, model_id=None, gpu=True) -> RankingResult` — remote nuisance-parameter ranking. For simplified-likelihood workspaces, entries rank reduced nuisance coordinates from the compiled model rather than source-level systematics.
 - `client.health() -> HealthResult` — server health check (status, version, uptime, device, counters, cached_models).
 - `client.close()` — close the connection. Also supports context manager (`with`).
 

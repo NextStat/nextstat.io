@@ -81,8 +81,9 @@ These are **not the same optimization problem**. The centered funnel has positio
 
 ### Algorithmic changes in v0.9.6
 
-- MAMS uses `eps_jitter=0.1` by default (±10% uniform step-size noise per transition), breaking fixed-L periodicity and improving tail ESS on periodic targets like `std_normal`.
+- MAMS now uses a stabilized CPU default regime: `n_warmup=3500`, `target_accept=0.985`, `max_leapfrog=1024`, and `eps_jitter=0.0`. The earlier `eps_jitter=0.1` default was useful on periodic Gaussian targets, but the stricter stable public surface now prioritizes centered-funnel and eight-schools repeatability on `nextstat-bench`.
 - Default trajectory length: `L = sqrt(d)` in preconditioned space (Robnik et al. 2025).
+- The stable CPU MAMS public surface is diagonal-preconditioned; dense/auto metric modes are not silently downgraded.
 
 ### BlackJAX configuration (V100 parity run)
 

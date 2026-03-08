@@ -31,17 +31,18 @@ use rand::Rng;
 /// MAMS sampler configuration.
 #[derive(Debug, Clone)]
 pub struct MamsConfig {
-    /// Number of warmup iterations (default: 1000).
+    /// Number of warmup iterations (default: 3500).
     pub n_warmup: usize,
     /// Number of post-warmup samples (default: 1000).
     pub n_samples: usize,
-    /// Target MH acceptance rate (default: 0.9).
+    /// Target MH acceptance rate (default: 0.985).
     pub target_accept: f64,
     /// Initial step size; 0 = auto-detect (default: 0).
     pub init_step_size: f64,
-    /// Initial decoherence length L; 0 = auto-tune (default: 0).
+    /// Initial decoherence length L; 0 = use the stable default `sqrt(d)` in
+    /// preconditioned space (default: 0).
     pub init_l: f64,
-    /// Maximum leapfrog steps per trajectory (default: 32768).
+    /// Maximum leapfrog steps per trajectory (default: 1024).
     pub max_leapfrog: usize,
     /// Use diagonal preconditioning (default: true).
     pub diagonal_precond: bool,
@@ -49,7 +50,7 @@ pub struct MamsConfig {
     pub init_strategy: InitStrategy,
     /// Euclidean metric type (default: Diagonal).
     pub metric_type: MetricType,
-    /// Step-size jitter scale (default: 0.1 = ±10%).
+    /// Step-size jitter scale (default: 0.0 = disabled).
     /// Each transition uses eps * uniform(1-scale, 1+scale).
     /// Breaks fixed-L periodicity → fixes resonance on harmonic targets.
     /// Set to 0.0 to disable (e.g. for concentrated GLM posteriors).
@@ -59,16 +60,16 @@ pub struct MamsConfig {
 impl Default for MamsConfig {
     fn default() -> Self {
         Self {
-            n_warmup: 1000,
+            n_warmup: 3500,
             n_samples: 1000,
-            target_accept: 0.9,
+            target_accept: 0.985,
             init_step_size: 0.0,
             init_l: 0.0,
-            max_leapfrog: 32768,
+            max_leapfrog: 1024,
             diagonal_precond: true,
             init_strategy: InitStrategy::Random,
             metric_type: MetricType::Diagonal,
-            eps_jitter: 0.1,
+            eps_jitter: 0.0,
         }
     }
 }
@@ -106,6 +107,10 @@ struct MamsTransitionResult {
     energy_error: f64,
     /// Number of leapfrog steps taken.
     n_leapfrog: usize,
+}
+
+fn mams_accept_prob_from_energy_error(energy_error: f64) -> f64 {
+    if energy_error.is_finite() { (-energy_error).exp().min(1.0) } else { 0.0 }
 }
 
 // ---------------------------------------------------------------------------
@@ -808,7 +813,7 @@ pub fn sample_mams<M: LogDensityModel>(
     // Phase 1: Fast DA — adapt step size only.
     // Phase 2: DA + Welford — adapt step size, collect mass matrix.
     // Phase 3: DA with new metric — re-adapt step size after mass update.
-    // Phase 4: Tune L + equilibrate — no adaptation.
+    // Phase 4: Equilibrate with fixed L — no adaptation.
     //
     // When Pathfinder provided a Hessian-derived inverse mass matrix, Phase 2
     // (Welford variance collection) can be shortened since the diagonal metric
@@ -821,6 +826,11 @@ pub fn sample_mams<M: LogDensityModel>(
     // DualAveraging is essential for multi-scale geometry (funnels) where the
     // optimal ε varies as the chain explores different curvature regions.
     // Binary search alone picks ε from the startup position and gets stuck.
+    //
+    // The stable CPU surface now uses a stricter default regime
+    // (3500 warmup, target_accept=0.985, max_leapfrog=1024, no eps-jitter)
+    // because that gives materially better convergence on centered funnel
+    // geometry while preserving the rest of the canonical suite.
     let (p1, p2, p3) = if pathfinder_metric { (0.10, 0.15, 0.10) } else { (0.15, 0.40, 0.15) };
     let phase1_iters = (config.n_warmup as f64 * p1) as usize;
     let phase2_iters = (config.n_warmup as f64 * p2) as usize;
@@ -835,6 +845,7 @@ pub fn sample_mams<M: LogDensityModel>(
     };
 
     let mut da = DualAveraging::new(config.target_accept, eps);
+    let mut n_leapfrog_warmup_total = 0usize;
 
     // --- Phase 1: Fast DA — adapt ε only ---
     for _ in 0..phase1_iters {
@@ -849,8 +860,8 @@ pub fn sample_mams<M: LogDensityModel>(
             &sqrt_inv_mass,
             &mut rng,
         ) {
-            let ap =
-                if r.energy_error.is_finite() { (-r.energy_error).exp().min(1.0) } else { 0.0 };
+            let ap = mams_accept_prob_from_energy_error(r.energy_error);
+            n_leapfrog_warmup_total += r.n_leapfrog;
             da.update(ap);
             eps = da.current_step_size();
             state.x = r.x;
@@ -874,8 +885,8 @@ pub fn sample_mams<M: LogDensityModel>(
             &sqrt_inv_mass,
             &mut rng,
         ) {
-            let ap =
-                if r.energy_error.is_finite() { (-r.energy_error).exp().min(1.0) } else { 0.0 };
+            let ap = mams_accept_prob_from_energy_error(r.energy_error);
+            n_leapfrog_warmup_total += r.n_leapfrog;
             da.update(ap);
             eps = da.current_step_size();
             state.x = r.x;
@@ -922,8 +933,8 @@ pub fn sample_mams<M: LogDensityModel>(
             &sqrt_inv_mass,
             &mut rng,
         ) {
-            let ap =
-                if r.energy_error.is_finite() { (-r.energy_error).exp().min(1.0) } else { 0.0 };
+            let ap = mams_accept_prob_from_energy_error(r.energy_error);
+            n_leapfrog_warmup_total += r.n_leapfrog;
             da.update(ap);
             eps = da.current_step_size();
             state.x = r.x;
@@ -960,6 +971,7 @@ pub fn sample_mams<M: LogDensityModel>(
             &sqrt_inv_mass,
             &mut rng,
         ) {
+            n_leapfrog_warmup_total += r.n_leapfrog;
             state.x = r.x;
             state.u = r.u;
             state.potential = r.potential;
@@ -993,6 +1005,8 @@ pub fn sample_mams<M: LogDensityModel>(
             &mut rng,
         ) {
             Ok(r) => {
+                let is_divergent = !r.energy_error.is_finite();
+                let accept_prob = mams_accept_prob_from_energy_error(r.energy_error);
                 state.x = r.x;
                 state.u = r.u;
                 state.potential = r.potential;
@@ -1003,8 +1017,8 @@ pub fn sample_mams<M: LogDensityModel>(
 
                 draws_unconstrained.push(state.x.clone());
                 draws_constrained.push(constrained);
-                divergences.push(false);
-                accept_probs.push(if r.accepted { 1.0 } else { 0.0 });
+                divergences.push(is_divergent);
+                accept_probs.push(accept_prob);
                 energies.push(state.potential);
                 leapfrog_counts.push(r.n_leapfrog);
             }
@@ -1034,6 +1048,7 @@ pub fn sample_mams<M: LogDensityModel>(
         accept_probs,
         energies,
         n_leapfrog: leapfrog_counts,
+        n_leapfrog_warmup_total,
         max_treedepth: usize::MAX, // MAMS has no tree — prevent false treedepth-rate failures
         step_size: eps,
         mass_diag,
@@ -1166,6 +1181,78 @@ mod tests {
                 .map(|((x, m), iv)| (x - m) * iv)
                 .collect())
         }
+        fn prepared(&self) -> Self::Prepared<'_> {
+            PreparedModelRef::new(self)
+        }
+    }
+
+    #[derive(Clone, Copy)]
+    struct NealsFunnel2D;
+
+    impl LogDensityModel for NealsFunnel2D {
+        type Prepared<'a>
+            = PreparedModelRef<'a, Self>
+        where
+            Self: 'a;
+
+        fn dim(&self) -> usize {
+            2
+        }
+
+        fn parameter_names(&self) -> Vec<String> {
+            vec!["y".to_string(), "x".to_string()]
+        }
+
+        fn parameter_bounds(&self) -> Vec<(f64, f64)> {
+            vec![(f64::NEG_INFINITY, f64::INFINITY), (f64::NEG_INFINITY, f64::INFINITY)]
+        }
+
+        fn parameter_init(&self) -> Vec<f64> {
+            vec![0.0, 0.0]
+        }
+
+        fn nll(&self, params: &[f64]) -> ns_core::Result<f64> {
+            if params.len() != 2 {
+                return Err(ns_core::Error::Validation(format!(
+                    "NealsFunnel2D expects 2 params, got {}",
+                    params.len()
+                )));
+            }
+            let y = params[0];
+            let x = params[1];
+            if !(y.is_finite() && x.is_finite()) {
+                return Err(ns_core::Error::Validation(
+                    "NealsFunnel2D params must be finite".to_string(),
+                ));
+            }
+
+            let ln2pi = (2.0 * std::f64::consts::PI).ln();
+            let nll_y = 0.5 * (y * y) / 9.0 + 3.0_f64.ln() + 0.5 * ln2pi;
+            let nll_x = 0.5 * x * x * (-y).exp() + 0.5 * y + 0.5 * ln2pi;
+            Ok(nll_y + nll_x)
+        }
+
+        fn grad_nll(&self, params: &[f64]) -> ns_core::Result<Vec<f64>> {
+            if params.len() != 2 {
+                return Err(ns_core::Error::Validation(format!(
+                    "NealsFunnel2D expects 2 params, got {}",
+                    params.len()
+                )));
+            }
+            let y = params[0];
+            let x = params[1];
+            if !(y.is_finite() && x.is_finite()) {
+                return Err(ns_core::Error::Validation(
+                    "NealsFunnel2D params must be finite".to_string(),
+                ));
+            }
+
+            let exp_neg_y = (-y).exp();
+            let dy = y / 9.0 - 0.5 * x * x * exp_neg_y + 0.5;
+            let dx = x * exp_neg_y;
+            Ok(vec![dy, dx])
+        }
+
         fn prepared(&self) -> Self::Prepared<'_> {
             PreparedModelRef::new(self)
         }
@@ -1383,6 +1470,16 @@ mod tests {
         assert_eq!(result.n_warmup, 200);
         assert_eq!(result.n_samples, 100);
         assert_eq!(result.total_draws(), 200);
+        for chain in &result.chains {
+            assert!(
+                chain.n_leapfrog_warmup_total > 0,
+                "MAMS should report non-zero warmup leapfrog totals"
+            );
+            assert!(
+                chain.accept_probs.iter().all(|p| p.is_finite() && *p >= 0.0 && *p <= 1.0),
+                "MAMS accept_probs should be finite probabilities"
+            );
+        }
     }
 
     #[test]
@@ -1396,6 +1493,33 @@ mod tests {
             chain.accept_probs.iter().sum::<f64>() / chain.accept_probs.len() as f64;
         // With tuned ε, acceptance should be reasonable (> 0.3 at minimum)
         assert!(accept_rate > 0.3, "Acceptance rate too low: {}", accept_rate);
+    }
+
+    #[test]
+    fn test_mams_records_divergent_transitions_in_chain() {
+        let model = NealsFunnel2D;
+        let config = MamsConfig {
+            n_warmup: 0,
+            n_samples: 40,
+            init_step_size: 8.0,
+            init_l: 12.0,
+            max_leapfrog: 512,
+            diagonal_precond: false,
+            eps_jitter: 0.0,
+            ..Default::default()
+        };
+        let chain = sample_mams(&model, config, 1).unwrap();
+
+        let n_divergent = chain.divergences.iter().filter(|&&d| d).count();
+        assert!(n_divergent > 0, "Expected at least one divergent transition");
+        assert!(
+            chain
+                .accept_probs
+                .iter()
+                .zip(chain.divergences.iter())
+                .all(|(p, d)| (*d && *p == 0.0) || (!*d && p.is_finite())),
+            "Divergent transitions must map to zero accept_prob and finite transitions to finite accept_prob"
+        );
     }
 
     #[test]

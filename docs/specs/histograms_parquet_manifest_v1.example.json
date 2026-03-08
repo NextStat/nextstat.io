@@ -1,0 +1,49 @@
+{
+  "schema_version": "nextstat.histograms_parquet_manifest.v1",
+  "created_at_utc": "2026-01-01T00:00:00Z",
+  "poi": "mu",
+  "parquet_path": "/tmp/nextstat-histograms-parquet/histograms.parquet",
+  "parquet_sha256": "ac6f97b924280a2ce30a72655b07c145e9aaf70c01763c9090809b3eb46c49af",
+  "parquet_compression": "zstd",
+  "table_schema": {
+    "columns": [
+      {
+        "name": "channel",
+        "type": "utf8",
+        "required": true
+      },
+      {
+        "name": "sample",
+        "type": "utf8",
+        "required": true
+      },
+      {
+        "name": "yields",
+        "type": "list<float64>",
+        "required": true
+      },
+      {
+        "name": "stat_error",
+        "type": "list<float64>",
+        "required": false
+      }
+    ],
+    "arrow_schema_str": "channel: string\nsample: string\nyields: list<item: double>\n  child 0, item: double\nstat_error: list<item: double>\n  child 0, item: double",
+    "arrow_schema_sha256": "39b21d72e7259665af75dcf7a00ed2d89254b17ad6a0ad7d58d6297154ea3ad1"
+  },
+  "stats": {
+    "n_rows": 4,
+    "has_stat_error": true,
+    "channels": [
+      {
+        "name": "CR",
+        "n_bins": 2
+      },
+      {
+        "name": "SR",
+        "n_bins": 3
+      }
+    ]
+  },
+  "observations_path": "/tmp/nextstat-histograms-parquet/histograms.parquet.observations.json"
+}

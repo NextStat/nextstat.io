@@ -1,0 +1,101 @@
+{
+  "automatic_stable_promotion": false,
+  "bundle_dir": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted",
+  "evidence_validity": {
+    "failures": [],
+    "passed": true,
+    "status": "passed",
+    "warnings": []
+  },
+  "generated_at_utc": "1970-01-01T00:00:00Z",
+  "review_documents": {
+    "acceptance_doc": "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md",
+    "artifact_reference_doc": "docs/references/simplified-likelihood-artifacts.md",
+    "checklist_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-review-checklist-2026-03-09.md",
+    "promotion_runbook_doc": "docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md",
+    "runtime_gate_doc": "docs/benchmarks/simplified-likelihood-exporter-runtime-gate.md"
+  },
+  "schema_version": "nextstat_simplified_likelihood_exporter_stable_review_assessment_v0",
+  "source_artifacts": {
+    "promotion_evidence": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_bundle_v0",
+      "sha256": "b2c25e0f5c726ae1bbc400022577cf363e5b4dd61b730d738cba27a483c3bf7b",
+      "status": null
+    },
+    "promotion_evidence_check": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence_check.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_check_v0",
+      "sha256": "c4302a3e58b4f7e729997533bb113dd56cc187303589f864298b6047de5ceeac",
+      "status": "passed"
+    },
+    "promotion_report": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_bundle_promotion_report.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_promotion_bundle_promotion_report_v0",
+      "sha256": "9e293e613ce7ce6663e0372130282b7386f228c79b7a4c418c9aad02c44ac89c",
+      "status": "promoted"
+    }
+  },
+  "stable_review": {
+    "failures": [],
+    "policy": {
+      "automatic_stable_promotion": false,
+      "required_benchmark_host": "nextstat-bench",
+      "required_explicit_boundaries": [
+        "research-grade support class",
+        "future stable exporter claim remains pyhf-only on the source side",
+        "future stable exporter claim remains single-POI only",
+        "future stable exporter claim only promises constraint_covariance_source=source_model_constraints",
+        "future stable exporter claim only covers Gaussian-constrained source nuisances on that path",
+        "partial channel bin selection rejected",
+        "derived artifacts remain reduced-coordinate models rather than source-level nuisance replicas",
+        "ranking and impact views on derived artifacts are not a source-level breakdown",
+        "no automatic release gating",
+        "future stable review only"
+      ],
+      "required_max_abs_q_mu_diff": 0.1,
+      "required_max_upper_limit_ratio_deviation": 0.05,
+      "required_min_net_end_to_end_upper_limit_speedup": 1.25,
+      "required_promotion_report_status": "promoted",
+      "required_support_class": "research-grade"
+    },
+    "ready": true,
+    "reviewed_claims": {
+      "benchmark_host": "nextstat-bench",
+      "bundle_check_passed": true,
+      "committed_snapshot_supported": true,
+      "explicit_boundaries": [
+        "research-grade support class",
+        "future stable exporter claim remains pyhf-only on the source side",
+        "future stable exporter claim remains single-POI only",
+        "future stable exporter claim only promises constraint_covariance_source=source_model_constraints",
+        "future stable exporter claim only covers Gaussian-constrained source nuisances on that path",
+        "partial channel bin selection rejected",
+        "derived artifacts remain reduced-coordinate models rather than source-level nuisance replicas",
+        "ranking and impact views on derived artifacts are not a source-level breakdown",
+        "no automatic release gating",
+        "future stable review only"
+      ],
+      "future_stable_review_ready": true,
+      "max_abs_q_mu_diff": 0.09089073579143658,
+      "max_upper_limit_ratio_deviation": 0.0093663653819136,
+      "min_net_end_to_end_upper_limit_speedup": 2.0581999472135606,
+      "promotion_report_status": "promoted",
+      "research_grade_acceptance_supported": true
+    },
+    "status": "review_ready",
+    "warnings": []
+  },
+  "summary": {
+    "automatic_stable_promotion": false,
+    "benchmark_host": "nextstat-bench",
+    "future_stable_review_ready": true,
+    "next_action": "maintainer stable review may proceed, but exporter support class remains research-grade until an explicit promotion decision",
+    "status": "review_ready"
+  },
+  "support_class": "research-grade",
+  "surface": "simplified_likelihood_exporter"
+}

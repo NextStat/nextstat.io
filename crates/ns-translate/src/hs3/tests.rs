@@ -773,6 +773,12 @@ fn test_detect_empty_json() {
     assert_eq!(detect::detect_format("{}"), detect::WorkspaceFormat::Unknown);
 }
 
+#[test]
+fn test_detect_simplified_likelihood_format() {
+    let json = include_str!("../../../../tests/fixtures/sl_basis_two_bin.json");
+    assert_eq!(detect::detect_format(json), detect::WorkspaceFormat::SimplifiedLikelihood);
+}
+
 // ===========================================================================
 // Phase 6 — Export / Roundtrip Tests
 // ===========================================================================

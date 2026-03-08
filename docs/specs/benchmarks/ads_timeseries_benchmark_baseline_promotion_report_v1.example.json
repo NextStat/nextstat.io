@@ -1,0 +1,95 @@
+{
+  "accepted_baseline_path": "/benchmarks/artifacts/ads_timeseries_baselines/nextstat-bench/accepted.json",
+  "actions": {
+    "accepted_updated": false,
+    "archived_previous_baseline": false,
+    "archived_previous_baseline_path": null,
+    "archived_promoted_snapshot": false,
+    "archived_promoted_snapshot_path": null,
+    "history_dir": "/benchmarks/artifacts/ads_timeseries_baselines/nextstat-bench/history"
+  },
+  "allow_review": false,
+  "artifacts": {
+    "accepted_after": {
+      "build_profile": "release",
+      "case_ids": [
+        "python_beta_binomial_fit_from_counts",
+        "python_delay_correction_fit_from_lag_buckets",
+        "python_cuped_adjust",
+        "python_cure_adjust",
+        "python_response_curve_helpers",
+        "python_kalman_local_level_weekly_filter",
+        "python_kalman_local_linear_trend_weekly_filter",
+        "cli_kalman_local_level_weekly_filter",
+        "cli_kalman_local_linear_trend_weekly_filter"
+      ],
+      "deterministic": true,
+      "host_policy": "nextstat-bench",
+      "hostname": "nextstat-bench",
+      "path": "tmp/ads_timeseries_benchmark_20260308T220938Z/nextstat-bench/ads_timeseries_benchmark.json",
+      "runs": 5,
+      "schema_version": "nextstat.ads_timeseries_benchmark_result.v1",
+      "smoke": false,
+      "suite": "ads_timeseries_surface",
+      "warmups": 1
+    },
+    "accepted_before": {
+      "build_profile": "release",
+      "case_ids": [
+        "python_beta_binomial_fit_from_counts",
+        "python_delay_correction_fit_from_lag_buckets",
+        "python_cuped_adjust",
+        "python_cure_adjust",
+        "python_response_curve_helpers",
+        "python_kalman_local_level_weekly_filter",
+        "python_kalman_local_linear_trend_weekly_filter",
+        "cli_kalman_local_level_weekly_filter",
+        "cli_kalman_local_linear_trend_weekly_filter"
+      ],
+      "deterministic": true,
+      "host_policy": "nextstat-bench",
+      "hostname": "nextstat-bench",
+      "path": "/benchmarks/artifacts/ads_timeseries_baselines/nextstat-bench/accepted.json",
+      "runs": 5,
+      "schema_version": "nextstat.ads_timeseries_benchmark_result.v1",
+      "smoke": false,
+      "suite": "ads_timeseries_surface",
+      "warmups": 1
+    },
+    "candidate": {
+      "build_profile": "release",
+      "case_ids": [
+        "python_beta_binomial_fit_from_counts",
+        "python_delay_correction_fit_from_lag_buckets",
+        "python_cuped_adjust",
+        "python_cure_adjust",
+        "python_response_curve_helpers",
+        "python_kalman_local_level_weekly_filter",
+        "python_kalman_local_linear_trend_weekly_filter",
+        "cli_kalman_local_level_weekly_filter",
+        "cli_kalman_local_linear_trend_weekly_filter"
+      ],
+      "deterministic": true,
+      "host_policy": "nextstat-bench",
+      "hostname": "nextstat-bench",
+      "path": "tmp/ads_timeseries_benchmark_20260308T220938Z/nextstat-bench/ads_timeseries_benchmark.json",
+      "runs": 5,
+      "schema_version": "nextstat.ads_timeseries_benchmark_result.v1",
+      "smoke": false,
+      "suite": "ads_timeseries_surface",
+      "warmups": 1
+    }
+  },
+  "candidate_path": "tmp/ads_timeseries_benchmark_20260308T220938Z/nextstat-bench/ads_timeseries_benchmark.json",
+  "compare_report_path": "tmp/ads_timeseries_benchmark_20260308T220938Z/nextstat-bench/compare_report.json",
+  "compare_status": "passed",
+  "dry_run": true,
+  "promoted": false,
+  "schema_version": "nextstat.ads_timeseries_benchmark_baseline_promotion_report.v1",
+  "status": "dry_run",
+  "suite": "ads_timeseries_surface",
+  "summary": {
+    "top_level_errors": []
+  },
+  "timestamp_utc": "2026-03-08T22:10:15Z"
+}

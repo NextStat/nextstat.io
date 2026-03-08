@@ -283,6 +283,14 @@ struct ArgminProblem<'a> {
     counts: Arc<FuncCounts>,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+enum LineSearchTuning {
+    #[default]
+    Default,
+    RelaxedBracket,
+    BoundedBisect,
+}
+
 fn clamp_params(params: &[f64], bounds: &[(f64, f64)]) -> Vec<f64> {
     params.iter().zip(bounds.iter()).map(|(&v, &(lo, hi))| v.clamp(lo, hi)).collect()
 }
@@ -390,12 +398,36 @@ impl<'a> Gradient for ArgminProblem<'a> {
 /// L-BFGS-B optimizer with box constraints
 pub struct LbfgsbOptimizer {
     config: OptimizerConfig,
+    line_search_tuning: LineSearchTuning,
 }
 
 impl LbfgsbOptimizer {
     /// Create new L-BFGS-B optimizer with given configuration
     pub fn new(config: OptimizerConfig) -> Self {
-        Self { config }
+        Self { config, line_search_tuning: LineSearchTuning::Default }
+    }
+
+    pub(crate) fn new_relaxed_profile_bracket(config: OptimizerConfig) -> Self {
+        Self { config, line_search_tuning: LineSearchTuning::RelaxedBracket }
+    }
+
+    pub(crate) fn new_bounded_profile_bisect(config: OptimizerConfig) -> Self {
+        Self { config, line_search_tuning: LineSearchTuning::BoundedBisect }
+    }
+
+    fn build_linesearch<P, G, F>(&self) -> MoreThuenteLineSearch<P, G, F>
+    where
+        F: argmin::core::ArgminFloat,
+    {
+        match self.line_search_tuning {
+            LineSearchTuning::Default => MoreThuenteLineSearch::new(),
+            LineSearchTuning::RelaxedBracket => MoreThuenteLineSearch::new()
+                .with_c(F::from_f64(1e-4).expect("valid c1"), F::from_f64(0.8).expect("valid c2"))
+                .expect("valid relaxed bracket Wolfe constants"),
+            LineSearchTuning::BoundedBisect => MoreThuenteLineSearch::new()
+                .with_bounds(F::epsilon().sqrt(), F::from_f64(0.5).expect("valid step max"))
+                .expect("valid bisect line-search bounds"),
+        }
     }
 
     /// Minimize objective function with bounds
@@ -584,7 +616,7 @@ impl LbfgsbOptimizer {
                 counts: counts.clone(),
             };
 
-            let linesearch = MoreThuenteLineSearch::new();
+            let linesearch = self.build_linesearch();
             let tol_cost =
                 if self.config.tol == 0.0 { 0.0 } else { (0.1 * self.config.tol).max(1e-12) };
             let effective_m = self.config.effective_m(bounds.len());
@@ -648,7 +680,7 @@ impl LbfgsbOptimizer {
         let problem = ArgminProblem { objective, bounds, counts: counts.clone() };
 
         // Create L-BFGS solver with line search
-        let linesearch = MoreThuenteLineSearch::new();
+        let linesearch = self.build_linesearch();
         // Argmin's default cost tolerance is ~EPS, which is too strict for our NLL scales and
         // can lead to unnecessary max-iter terminations on larger HistFactory models.
         let tol_cost =

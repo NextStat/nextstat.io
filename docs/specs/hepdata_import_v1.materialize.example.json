@@ -1,0 +1,55 @@
+{
+  "schema_version": "nextstat.hepdata_import.v1",
+  "mode": "materialize",
+  "source": "hepdata",
+  "source_mode": "direct_doi",
+  "manifest": "direct",
+  "out_dir": "/tmp/nextstat-hepdata/out",
+  "cache_dir": "/tmp/nextstat-hepdata/cache",
+  "lock": "/tmp/nextstat-hepdata/workspaces.lock.json",
+  "datasets": [
+    {
+      "id": "custom.hepdata.90607.v3.r3.example",
+      "name": "ATLAS 1Lbb Custom Example",
+      "doi": "https://doi.org/10.17182/hepdata.90607.v3/r3",
+      "download": {
+        "url": "https://doi.org/10.17182/hepdata.90607.v3/r3",
+        "mode": "cached",
+        "cached": true,
+        "path": "/tmp/nextstat-hepdata/cache/custom.hepdata.90607.v3.r3.example/download",
+        "sha256": "7b223b5da4aae2e049593fe5c7b1563f0f54974d50c375a1a37b82c112a29551"
+      },
+      "inputs": {
+        "bkgonly_filename": "BkgOnly.json",
+        "patchset_filename": "patchset.json",
+        "available_patch_names": [
+          "C1N2_Wh_hbb_1000_0",
+          "C1N2_Wh_hbb_175_25"
+        ]
+      },
+      "timings": {
+        "total_s": 0.18,
+        "archive_prepare_s": 0.11,
+        "download_s": 0.0,
+        "extract_archive_s": 0.08,
+        "extract_nested_archives_s": 0.03,
+        "inspect_inputs_s": 0.02,
+        "materialize_bkgonly_s": 0.01,
+        "materialize_patches_s": 0.04,
+        "materialize_total_s": 0.05
+      },
+      "materialized": [
+        {
+          "kind": "bkgonly",
+          "path": "/tmp/nextstat-hepdata/out/custom.hepdata.90607.v3.r3.example/BkgOnly.json"
+        },
+        {
+          "kind": "patched",
+          "patch_id": "benchmark",
+          "patch_name": "C1N2_Wh_hbb_175_25",
+          "path": "/tmp/nextstat-hepdata/out/custom.hepdata.90607.v3.r3.example/patched__benchmark.json"
+        }
+      ]
+    }
+  ]
+}

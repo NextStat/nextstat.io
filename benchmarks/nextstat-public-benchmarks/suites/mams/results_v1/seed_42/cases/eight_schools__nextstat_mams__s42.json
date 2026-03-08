@@ -1,0 +1,143 @@
+{
+  "backend": "nextstat_mams",
+  "case": "eight_schools",
+  "config": {
+    "dataset_seed": 12345,
+    "n_chains": 4,
+    "n_samples": 2000,
+    "n_warmup": 3500,
+    "seed": 42,
+    "target_accept": 0.985
+  },
+  "dataset": {
+    "id": "eight_schools",
+    "sha256": "2b01bdb0784fca8b1ebee0d73fde232fbb2a67bda6b1e093f69ff34cd67081ac"
+  },
+  "deterministic": true,
+  "environment": {
+    "cpu": "AMD EPYC 7502P 32-Core Processor",
+    "machine": "x86_64",
+    "nextstat_version": "0.9.9",
+    "node": "nextstat-bench",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python_full": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "python_version": "3.12.3",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "system": "Linux"
+  },
+  "meta": {
+    "nextstat_version": "0.9.9",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "metrics": {
+    "accept_rate": 0.9794737779687025,
+    "cold_start_s": 0.14912918210029602,
+    "ess_per_grad": 0.13875768812663727,
+    "ess_per_sec": 29774.49455242187,
+    "ess_per_sec_warm": 49451.358917557314,
+    "jit_overhead_s": 0.059339010156691074,
+    "max_r_hat": 1.0068877932108828,
+    "min_ess_bulk": 4440.246020052393,
+    "min_ess_tail": 2186.371592414306,
+    "n_grad_evals": 32000,
+    "n_integration_steps": null,
+    "posterior_summary": {
+      "n_draws": 8000,
+      "params": [
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 6117.686813631066,
+          "mean": 4.3813145821983674,
+          "name": "mu",
+          "r_hat": 1.0006117907505956,
+          "sd": 3.2625382153138016
+        },
+        {
+          "ess_bulk": 4440.246020052393,
+          "ess_tail": 2186.371592414306,
+          "mean": 3.597676646933222,
+          "name": "tau",
+          "r_hat": 1.000510294653572,
+          "sd": 3.0538421990842153
+        },
+        {
+          "ess_bulk": 5301.359031684288,
+          "ess_tail": 5900.0864212738725,
+          "mean": 0.32098639593758416,
+          "name": "theta_raw[0]",
+          "r_hat": 1.0016354090800295,
+          "sd": 0.9563251126882245
+        },
+        {
+          "ess_bulk": 7445.419510332936,
+          "ess_tail": 6002.374209382463,
+          "mean": 0.08845677215726888,
+          "name": "theta_raw[1]",
+          "r_hat": 1.006102039403183,
+          "sd": 0.9674877198716758
+        },
+        {
+          "ess_bulk": 7468.590334803354,
+          "ess_tail": 5935.003357439987,
+          "mean": -0.08410200192712326,
+          "name": "theta_raw[2]",
+          "r_hat": 1.0012264285280514,
+          "sd": 1.0367459307935567
+        },
+        {
+          "ess_bulk": 6373.318084986694,
+          "ess_tail": 6093.371654995953,
+          "mean": 0.059003978067264165,
+          "name": "theta_raw[3]",
+          "r_hat": 1.0053258898883521,
+          "sd": 0.9289312039412901
+        },
+        {
+          "ess_bulk": 5271.428251340297,
+          "ess_tail": 5527.343087904301,
+          "mean": -0.159271816732299,
+          "name": "theta_raw[4]",
+          "r_hat": 1.0065463503245882,
+          "sd": 0.9127424558323028
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 6224.72768613167,
+          "mean": -0.0729043476491377,
+          "name": "theta_raw[5]",
+          "r_hat": 1.0016012241061323,
+          "sd": 0.9085902607877769
+        },
+        {
+          "ess_bulk": 6296.968987557866,
+          "ess_tail": 5823.788719884316,
+          "mean": 0.35693502854014403,
+          "name": "theta_raw[6]",
+          "r_hat": 1.001554277708812,
+          "sd": 0.9604651642524106
+        },
+        {
+          "ess_bulk": 7181.003712429695,
+          "ess_tail": 6098.958268140881,
+          "mean": 0.07868443816911959,
+          "name": "theta_raw[7]",
+          "r_hat": 1.0068877932108828,
+          "sd": 0.9791259652754389
+        }
+      ],
+      "status": "ok"
+    },
+    "wall_time_s": 0.14912918210029602,
+    "warm_start_s": 0.08979017194360495
+  },
+  "schema_version": "nextstat.mams_benchmark_result.v1",
+  "status": "ok",
+  "suite": "mams",
+  "timing": {
+    "cold_start_s": 0.14912918210029602,
+    "jit_overhead_s": 0.059339010156691074,
+    "wall_time_s": 0.14912918210029602,
+    "warm_start_s": 0.08979017194360495
+  }
+}

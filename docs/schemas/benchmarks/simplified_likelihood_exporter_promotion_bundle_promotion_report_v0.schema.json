@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/simplified_likelihood_exporter_promotion_bundle_promotion_report_v0.schema.json",
+  "title": "Simplified Likelihood Exporter Promotion Bundle Promotion Report v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "surface",
+    "status",
+    "promoted",
+    "dry_run",
+    "generated_at_utc",
+    "source_bundle_dir",
+    "source_bundle_json_path",
+    "source_bundle_check_path",
+    "benchmark_artifact_source_path",
+    "accepted_bundle_dir",
+    "accepted_snapshot_index_path",
+    "history_dir",
+    "source_bundle_summary",
+    "source_check_summary",
+    "actions",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_simplified_likelihood_exporter_promotion_bundle_promotion_report_v0"
+    },
+    "surface": {
+      "const": "simplified_likelihood_exporter"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["failed", "dry_run", "promoted"]
+    },
+    "promoted": { "type": "boolean" },
+    "dry_run": { "type": "boolean" },
+    "generated_at_utc": { "type": "string", "minLength": 1 },
+    "source_bundle_dir": { "type": "string", "minLength": 1 },
+    "source_bundle_json_path": { "type": "string", "minLength": 1 },
+    "source_bundle_check_path": { "type": "string", "minLength": 1 },
+    "benchmark_artifact_source_path": { "type": "string", "minLength": 1 },
+    "accepted_bundle_dir": { "type": "string", "minLength": 1 },
+    "accepted_snapshot_index_path": { "type": "string", "minLength": 1 },
+    "history_dir": { "type": "string", "minLength": 1 },
+    "source_bundle_summary": { "$ref": "#/$defs/bundleSummary" },
+    "source_check_summary": { "$ref": "#/$defs/checkSummary" },
+    "actions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archived_previous_accepted",
+        "archived_previous_accepted_path",
+        "archived_promoted_bundle",
+        "archived_promoted_bundle_path",
+        "accepted_updated",
+        "accepted_snapshot_index_written",
+        "accepted_snapshot_index_path"
+      ],
+      "properties": {
+        "archived_previous_accepted": { "type": "boolean" },
+        "archived_previous_accepted_path": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "archived_promoted_bundle": { "type": "boolean" },
+        "archived_promoted_bundle_path": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "accepted_updated": { "type": "boolean" },
+        "accepted_snapshot_index_written": { "type": "boolean" },
+        "accepted_snapshot_index_path": {
+          "type": ["string", "null"],
+          "minLength": 1
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["top_level_errors"],
+      "properties": {
+        "top_level_errors": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "bundleSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "status",
+        "support_class",
+        "benchmark_host",
+        "supports_future_stable_review",
+        "supports_committed_snapshot",
+        "artifact_count",
+        "required_artifact_count"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "nextstat_simplified_likelihood_exporter_promotion_evidence_bundle_v0"
+        },
+        "status": { "type": "string", "enum": ["ok", "fail"] },
+        "support_class": { "type": "string", "const": "research-grade" },
+        "benchmark_host": { "type": "string", "minLength": 1 },
+        "supports_future_stable_review": { "type": "boolean" },
+        "supports_committed_snapshot": { "type": "boolean" },
+        "artifact_count": { "type": "integer", "minimum": 1 },
+        "required_artifact_count": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "checkSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "status",
+        "ok",
+        "require_promotion_ready",
+        "actual_benchmark_host",
+        "actual_min_net_end_to_end_upper_limit_speedup",
+        "top_level_errors"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "nextstat_simplified_likelihood_exporter_promotion_evidence_check_v0"
+        },
+        "status": { "type": "string", "enum": ["passed", "failed"] },
+        "ok": { "type": "boolean" },
+        "require_promotion_ready": { "type": "boolean" },
+        "actual_benchmark_host": { "type": "string", "minLength": 1 },
+        "actual_min_net_end_to_end_upper_limit_speedup": { "type": "number", "minimum": 0.0 },
+        "top_level_errors": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -68,6 +68,7 @@ fn test_parse_all_modifier_types() {
                     Modifier::ShapeFactor { .. } => "shapefactor",
                     Modifier::StatError { .. } => "staterror",
                     Modifier::Lumi { .. } => "lumi",
+                    Modifier::TemplateMorphing { .. } => "template_morphing",
                     Modifier::Unknown(_) => "unknown",
                 };
                 found_modifiers.insert(mod_type);

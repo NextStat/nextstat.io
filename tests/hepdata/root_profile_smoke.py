@@ -103,26 +103,28 @@ def _run_validate(
 
 
 def _fetch_hepdata(*, manifest: Path, out: Path, cache: Path, lock: Path, datasets: List[str]) -> None:
-    fetch = REPO / "tests" / "hepdata" / "fetch_workspaces.py"
     cmd = [
-        sys.executable,
-        str(fetch),
+        "cargo",
+        "run",
+        "-p",
+        "ns-cli",
+        "--",
+        "import",
+        "hepdata",
         "--manifest",
         str(manifest),
-        "--out",
+        "--out-dir",
         str(out),
-        "--cache",
+        "--cache-dir",
         str(cache),
         "--lock",
         str(lock),
     ]
     for ds in datasets:
         cmd += ["--dataset", ds]
-    env = os.environ.copy()
-    env.setdefault("PYTHONPATH", "bindings/ns-py/python")
-    p = subprocess.run(cmd, cwd=str(REPO), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    p = subprocess.run(cmd, cwd=str(REPO), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     if p.returncode != 0:
-        raise RuntimeError(f"fetch_workspaces failed ({p.returncode}):\n{p.stdout}")
+        raise RuntimeError(f"nextstat import hepdata failed ({p.returncode}):\n{p.stdout}")
 
 
 def main(argv: List[str] | None = None) -> int:

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/releases/release_candidate_bundle_v1.schema.json",
+  "title": "NextStat Release Candidate Bundle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at_utc",
+    "release_tag",
+    "mode",
+    "required_entries",
+    "optional_entries"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.release_candidate_bundle.v1"
+    },
+    "generated_at_utc": {
+      "type": "string"
+    },
+    "release_tag": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "prepare",
+        "publish"
+      ]
+    },
+    "required_entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/bundle_entry"
+      }
+    },
+    "optional_entries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/optional_bundle_entry"
+      }
+    }
+  },
+  "$defs": {
+    "bundle_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "required",
+        "source_path",
+        "bundle_path"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "source_path": {
+          "type": "string"
+        },
+        "bundle_path": {
+          "type": "string"
+        }
+      }
+    },
+    "optional_bundle_entry": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/bundle_entry"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "present"
+          ],
+          "properties": {
+            "present": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "accepted_bundle_dir": "/benchmarks/artifacts/simplified_likelihood_promotion_bundles/nextstat-bench/accepted",
+  "accepted_snapshot_index_path": "/benchmarks/artifacts/simplified_likelihood_promotion_bundles/nextstat-bench/accepted/snapshot_index.json",
+  "actions": {
+    "accepted_snapshot_index_path": "/benchmarks/artifacts/simplified_likelihood_promotion_bundles/nextstat-bench/accepted/snapshot_index.json",
+    "accepted_snapshot_index_written": true,
+    "accepted_updated": true,
+    "archived_previous_accepted": false,
+    "archived_previous_accepted_path": null,
+    "archived_promoted_bundle": true,
+    "archived_promoted_bundle_path": "/benchmarks/artifacts/simplified_likelihood_promotion_bundles/nextstat-bench/history/accepted_20260308T173340Z_promoted"
+  },
+  "benchmark_artifact_source_path": "tmp/apex2_simplified_likelihood_20260308T173340Z/nextstat-bench/apex2_simplified_likelihood_report.json",
+  "dry_run": false,
+  "generated_at_utc": "1970-01-01T00:00:00Z",
+  "history_dir": "/benchmarks/artifacts/simplified_likelihood_promotion_bundles/nextstat-bench/history",
+  "promoted": true,
+  "schema_version": "nextstat_simplified_likelihood_promotion_bundle_promotion_report_v0",
+  "source_bundle_check_path": "tmp/simplified_likelihood_promotion_evidence_bundle_20260308T173340Z/nextstat-bench/promotion_evidence_check.json",
+  "source_bundle_dir": "tmp/simplified_likelihood_promotion_evidence_bundle_20260308T173340Z/nextstat-bench",
+  "source_bundle_json_path": "tmp/simplified_likelihood_promotion_evidence_bundle_20260308T173340Z/nextstat-bench/promotion_evidence.json",
+  "source_bundle_summary": {
+    "artifact_count": 17,
+    "benchmark_host": "nextstat-bench",
+    "required_artifact_count": 17,
+    "schema_version": "nextstat_simplified_likelihood_promotion_evidence_bundle_v0",
+    "status": "ok",
+    "supports_public_fixture_matrix": true,
+    "supports_speedup_claim": true
+  },
+  "source_check_summary": {
+    "actual_benchmark_host": "nextstat-bench",
+    "actual_min_end_to_end_upper_limit_speedup": 10.325036821081905,
+    "ok": true,
+    "require_promotion_ready": true,
+    "schema_version": "nextstat_simplified_likelihood_promotion_evidence_check_v0",
+    "status": "passed",
+    "top_level_errors": []
+  },
+  "status": "promoted",
+  "summary": {
+    "top_level_errors": []
+  },
+  "surface": "simplified_likelihood"
+}

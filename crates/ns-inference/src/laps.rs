@@ -829,6 +829,7 @@ fn assemble_result(
             accept_probs: chain_accept_probs[c].clone(),
             energies: chain_energies[c].clone(),
             n_leapfrog: chain_leapfrogs[c].clone(),
+            n_leapfrog_warmup_total: 0,
             // LAPS/MAMS are not tree-based samplers; avoid false max-treedepth failures.
             max_treedepth: usize::MAX,
             step_size: eps,
@@ -1910,6 +1911,7 @@ fn sample_laps_multi_gpu(
                             accept_probs: chain_accept_probs[c].clone(),
                             energies: chain_energies[c].clone(),
                             n_leapfrog: chain_leapfrogs[c].clone(),
+                            n_leapfrog_warmup_total: 0,
                             // LAPS/MAMS are not tree-based samplers; avoid false max-treedepth failures.
                             max_treedepth: usize::MAX,
                             step_size: eps_median,

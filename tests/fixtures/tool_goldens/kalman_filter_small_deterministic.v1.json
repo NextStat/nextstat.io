@@ -1,0 +1,92 @@
+{
+  "case_name": "kalman_filter_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_kalman": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_kalman"
+      },
+      "ok": true,
+      "result": {
+        "filtered_covs": [
+          [
+            [
+              0.16666666666666669
+            ]
+          ],
+          [
+            [
+              0.1142857142857143
+            ]
+          ],
+          [
+            [
+              0.10344827586206898
+            ]
+          ],
+          [
+            [
+              0.10085470085470086
+            ]
+          ]
+        ],
+        "filtered_means": [
+          [
+            0.8333333333333335
+          ],
+          [
+            1.042857142857143
+          ],
+          [
+            0.9689655172413794
+          ],
+          [
+            1.0350427350427351
+          ]
+        ],
+        "log_likelihood": -3.098015616693327,
+        "predicted_covs": [
+          [
+            [
+              1.0
+            ]
+          ],
+          [
+            [
+              0.2666666666666667
+            ]
+          ],
+          [
+            [
+              0.2142857142857143
+            ]
+          ],
+          [
+            [
+              0.20344827586206898
+            ]
+          ]
+        ],
+        "predicted_means": [
+          [
+            0.0
+          ],
+          [
+            0.8333333333333335
+          ],
+          [
+            1.042857142857143
+          ],
+          [
+            0.9689655172413794
+          ]
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": "nextstat.bayesian_design_report_bundle_performance_budget.v1",
+  "runner_modes": {
+    "smoke": {
+      "repeat": 2,
+      "manifest_repeat": 3
+    },
+    "release": {
+      "repeat": 5,
+      "manifest_repeat": 7
+    }
+  },
+  "cases": {
+    "beta_small": {
+      "description": "Canonical beta-binomial report packaging should remain comfortably sub-second and compact.",
+      "max_bundle_duration_s": 1.0,
+      "max_manifest_regen_duration_s": 0.1,
+      "max_bundle_bytes": 50000,
+      "max_manifest_bytes": 3000
+    },
+    "beta_large": {
+      "description": "Large beta-binomial packaging should stay bounded for operator-grade frozen report bundles.",
+      "max_bundle_duration_s": 1.5,
+      "max_manifest_regen_duration_s": 0.15,
+      "max_bundle_bytes": 250000,
+      "max_manifest_bytes": 4000
+    },
+    "normal_small": {
+      "description": "Canonical normal-normal report packaging should remain comfortably sub-second and compact.",
+      "max_bundle_duration_s": 1.0,
+      "max_manifest_regen_duration_s": 0.1,
+      "max_bundle_bytes": 50000,
+      "max_manifest_bytes": 3000
+    },
+    "normal_large": {
+      "description": "Large normal-normal packaging should stay bounded for operator-grade frozen report bundles.",
+      "max_bundle_duration_s": 1.5,
+      "max_manifest_regen_duration_s": 0.15,
+      "max_bundle_bytes": 250000,
+      "max_manifest_bytes": 4000
+    }
+  }
+}

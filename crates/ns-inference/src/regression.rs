@@ -112,6 +112,35 @@ impl LinearRegressionModel {
         self.x.p + if self.include_intercept { 1 } else { 0 }
     }
 
+    /// Number of observations.
+    pub fn n_obs(&self) -> usize {
+        self.x.n
+    }
+
+    /// Number of feature columns (without intercept).
+    pub fn n_features(&self) -> usize {
+        self.x.p
+    }
+
+    /// Export a column-major design matrix for CUDA GLM evaluators.
+    ///
+    /// When `include_intercept=true`, the returned design matrix prepends an
+    /// all-ones intercept column so the exported feature count equals the
+    /// unconstrained parameter dimension.
+    pub(crate) fn cuda_glm_design_colmajor(&self) -> (Vec<f64>, Vec<f64>, usize, usize) {
+        let p_total = self.dim_internal();
+        let mut x_col = Vec::with_capacity(self.x.n * p_total);
+        if self.include_intercept {
+            x_col.extend(std::iter::repeat_n(1.0, self.x.n));
+        }
+        for j in 0..self.x.p {
+            for i in 0..self.x.n {
+                x_col.push(self.x.row(i)[j]);
+            }
+        }
+        (x_col, self.y.clone(), self.x.n, p_total)
+    }
+
     #[inline]
     fn eta(&self, i: usize, params: &[f64]) -> f64 {
         if self.include_intercept {
@@ -299,6 +328,25 @@ impl LogisticRegressionModel {
     /// Number of feature columns (without intercept).
     pub fn n_features(&self) -> usize {
         self.x.p
+    }
+
+    /// Export a column-major design matrix for CUDA GLM evaluators.
+    ///
+    /// When `include_intercept=true`, the returned design matrix prepends an
+    /// all-ones intercept column so the exported feature count equals the
+    /// unconstrained parameter dimension.
+    pub(crate) fn cuda_glm_design_colmajor(&self) -> (Vec<f64>, Vec<f64>, usize, usize) {
+        let p_total = self.dim_internal();
+        let mut x_col = Vec::with_capacity(self.x.n * p_total);
+        if self.include_intercept {
+            x_col.extend(std::iter::repeat_n(1.0, self.x.n));
+        }
+        for j in 0..self.x.p {
+            for i in 0..self.x.n {
+                x_col.push(self.x.row(i)[j]);
+            }
+        }
+        (x_col, self.y_f64.clone(), self.x.n, p_total)
     }
 
     #[inline]
@@ -605,6 +653,38 @@ impl PoissonRegressionModel {
         self.x.p + if self.include_intercept { 1 } else { 0 }
     }
 
+    /// Number of observations.
+    pub fn n_obs(&self) -> usize {
+        self.x.n
+    }
+
+    /// Number of feature columns (without intercept).
+    pub fn n_features(&self) -> usize {
+        self.x.p
+    }
+
+    /// Export a column-major design matrix for CUDA GLM evaluators.
+    ///
+    /// When `include_intercept=true`, the returned design matrix prepends an
+    /// all-ones intercept column so the exported feature count equals the
+    /// unconstrained parameter dimension.
+    pub(crate) fn cuda_glm_design_colmajor(
+        &self,
+    ) -> Result<(Vec<f64>, Vec<f64>, Option<Vec<f64>>, usize, usize)> {
+        let p_total = self.dim_internal();
+        let mut x_col = Vec::with_capacity(self.x.n * p_total);
+        if self.include_intercept {
+            x_col.extend(std::iter::repeat_n(1.0, self.x.n));
+        }
+        for j in 0..self.x.p {
+            for i in 0..self.x.n {
+                x_col.push(self.x.row(i)[j]);
+            }
+        }
+        let y_f64 = self.y.iter().map(|&v| v as f64).collect::<Vec<_>>();
+        Ok((x_col, y_f64, self.offset.clone(), self.x.n, p_total))
+    }
+
     #[inline]
     fn eta(&self, i: usize, params: &[f64]) -> f64 {
         let base = if self.include_intercept {
@@ -769,6 +849,39 @@ impl NegativeBinomialRegressionModel {
     fn dim_internal(&self) -> usize {
         // beta + log_alpha
         (self.x.p + if self.include_intercept { 1 } else { 0 }) + 1
+    }
+
+    /// Number of observations.
+    pub fn n_obs(&self) -> usize {
+        self.x.n
+    }
+
+    /// Number of feature columns (without intercept).
+    pub fn n_features(&self) -> usize {
+        self.x.p
+    }
+
+    /// Export a column-major design matrix for CUDA GLM evaluators.
+    ///
+    /// Returns `(x_col, y_f64, offset, n, beta_dim, param_dim)` where
+    /// `beta_dim` includes the intercept column when enabled and `param_dim`
+    /// additionally includes the trailing `log_alpha` parameter.
+    pub(crate) fn cuda_glm_design_colmajor(
+        &self,
+    ) -> (Vec<f64>, Vec<f64>, Option<Vec<f64>>, usize, usize, usize) {
+        let beta_dim = self.x.p + if self.include_intercept { 1 } else { 0 };
+        let param_dim = beta_dim + 1;
+        let mut x_col = Vec::with_capacity(self.x.n * beta_dim);
+        if self.include_intercept {
+            x_col.extend(std::iter::repeat_n(1.0, self.x.n));
+        }
+        for j in 0..self.x.p {
+            for i in 0..self.x.n {
+                x_col.push(self.x.row(i)[j]);
+            }
+        }
+        let y_f64 = self.y.iter().map(|&v| v as f64).collect::<Vec<_>>();
+        (x_col, y_f64, self.offset.clone(), self.x.n, beta_dim, param_dim)
     }
 
     #[inline]
@@ -1116,6 +1229,91 @@ mod tests {
         assert!(!m.use_ndarray_fastpath());
 
         crate::perf_hints::clear_mams_chain_hint();
+    }
+
+    #[test]
+    fn test_logistic_regression_cuda_glm_export_includes_intercept_column() {
+        let x = vec![vec![2.0, 3.0], vec![5.0, 7.0]];
+        let y = vec![1u8, 0u8];
+        let m = LogisticRegressionModel::new(x, y, true).unwrap();
+
+        let (x_col, y_f64, n, p_total) = m.cuda_glm_design_colmajor();
+        assert_eq!(n, 2);
+        assert_eq!(p_total, 3);
+        assert_eq!(y_f64, vec![1.0, 0.0]);
+        assert_eq!(
+            x_col,
+            vec![
+                1.0, 1.0, // intercept
+                2.0, 5.0, // feature 1
+                3.0, 7.0, // feature 2
+            ]
+        );
+    }
+
+    #[test]
+    fn test_linear_regression_cuda_glm_export_includes_intercept_column() {
+        let x = vec![vec![2.0, 3.0], vec![5.0, 7.0]];
+        let y = vec![4.5, 9.25];
+        let m = LinearRegressionModel::new(x, y.clone(), true).unwrap();
+
+        let (x_col, y_out, n, p_total) = m.cuda_glm_design_colmajor();
+        assert_eq!(n, 2);
+        assert_eq!(p_total, 3);
+        assert_eq!(y_out, y);
+        assert_eq!(
+            x_col,
+            vec![
+                1.0, 1.0, // intercept
+                2.0, 5.0, // feature 1
+                3.0, 7.0, // feature 2
+            ]
+        );
+    }
+
+    #[test]
+    fn test_poisson_regression_cuda_glm_export_preserves_offset_and_intercept_column() {
+        let x = vec![vec![2.0, 3.0], vec![5.0, 7.0]];
+        let y = vec![4u64, 9u64];
+        let offset = vec![0.1, -0.2];
+        let m = PoissonRegressionModel::new(x, y, true, Some(offset.clone())).unwrap();
+
+        let (x_col, y_f64, offset_out, n, p_total) = m.cuda_glm_design_colmajor().unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(p_total, 3);
+        assert_eq!(y_f64, vec![4.0, 9.0]);
+        assert_eq!(offset_out, Some(offset));
+        assert_eq!(
+            x_col,
+            vec![
+                1.0, 1.0, // intercept
+                2.0, 5.0, // feature 1
+                3.0, 7.0, // feature 2
+            ]
+        );
+    }
+
+    #[test]
+    fn test_negbin_regression_cuda_glm_export_preserves_offset_and_log_alpha_slot() {
+        let x = vec![vec![2.0, 3.0], vec![5.0, 7.0]];
+        let y = vec![4u64, 9u64];
+        let offset = vec![0.15, -0.05];
+        let m = NegativeBinomialRegressionModel::new(x, y, true, Some(offset.clone())).unwrap();
+
+        let (x_col, y_f64, offset_out, n, beta_dim, param_dim) = m.cuda_glm_design_colmajor();
+        assert_eq!(n, 2);
+        assert_eq!(beta_dim, 3);
+        assert_eq!(param_dim, 4);
+        assert_eq!(y_f64, vec![4.0, 9.0]);
+        assert_eq!(offset_out, Some(offset));
+        assert_eq!(
+            x_col,
+            vec![
+                1.0, 1.0, // intercept
+                2.0, 5.0, // feature 1
+                3.0, 7.0, // feature 2
+            ]
+        );
     }
 
     #[test]

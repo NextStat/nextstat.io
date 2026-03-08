@@ -72,7 +72,8 @@ def test_posterior_normal_prior_affects_logpdf_and_grad_by_name():
     assert float(post.logpdf(theta)) == pytest.approx(base_lp, rel=0.0, abs=1e-12)
 
 
-def test_posterior_map_fit_and_sampling_accept_posterior_smoke():
+@pytest.mark.parametrize("method", ["nuts", "walnuts"])
+def test_posterior_map_fit_and_sampling_accept_posterior_smoke(method: str):
     # MAP should be pulled strongly toward the prior center.
     m = nextstat.GaussianMeanModel([0.0, 1.0, 2.0], sigma=1.0)
     post = nextstat.Posterior(m)
@@ -82,7 +83,15 @@ def test_posterior_map_fit_and_sampling_accept_posterior_smoke():
     assert r.success
     assert float(r.bestfit[0]) > 9.0
 
-    # Smoke: NUTS accepts Posterior (i.e. includes priors).
-    raw = nextstat.sample(post, n_chains=1, n_warmup=20, n_samples=20, seed=7, max_treedepth=4)
+    # Smoke: unified samplers accept Posterior (i.e. include priors).
+    raw = nextstat.sample(
+        post,
+        method=method,
+        n_chains=1,
+        n_warmup=20,
+        n_samples=20,
+        seed=7,
+        max_treedepth=4,
+    )
     assert isinstance(raw, dict)
     assert raw.get("param_names") == ["mu"]

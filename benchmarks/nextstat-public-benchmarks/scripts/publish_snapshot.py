@@ -43,10 +43,48 @@ def validate_artifact(path: Path, repo_root: Path, env: dict[str, str]) -> None:
     )
 
 
+def default_registry_path(out_root: Path) -> Path:
+    # Keep the canonical repo layout stable: manifests/snapshots -> manifests/snapshot_registry.json.
+    # For ad hoc roots (for example remote /tmp runs), keep the registry self-contained inside out_root.
+    if out_root.name == "snapshots":
+        return out_root.parent / "snapshot_registry.json"
+    return out_root / "snapshot_registry.json"
+
+
+def write_snapshot_registry(
+    *, out_root: Path, repo_root: Path, env: dict[str, str], registry_out: Path | None = None
+) -> Path:
+    out_path = (registry_out or default_registry_path(out_root)).resolve()
+    subprocess.check_call(
+        [
+            sys.executable,
+            "scripts/write_snapshot_registry.py",
+            "--snapshots-root",
+            str(out_root),
+            "--out",
+            str(out_path),
+        ],
+        cwd=str(repo_root),
+        env=env,
+    )
+    validate_artifact(out_path, repo_root, env)
+    return out_path
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--snapshot-id", default="", help="Snapshot id (default: auto-generated).")
     ap.add_argument("--out-root", default="manifests/snapshots", help="Root directory for snapshots.")
+    ap.add_argument(
+        "--registry-out",
+        default="",
+        help="Optional: output path for snapshot_registry.json. Defaults to manifests/snapshot_registry.json for the canonical layout and <out-root>/snapshot_registry.json for custom roots.",
+    )
+    ap.add_argument(
+        "--no-write-registry",
+        action="store_true",
+        help="Do not refresh snapshot_registry.json after publishing the snapshot.",
+    )
     ap.add_argument("--deterministic", action="store_true")
     ap.add_argument("--smoke", action="store_true", help="Fast mode for expensive suites (where supported).")
     ap.add_argument(
@@ -280,11 +318,19 @@ def main() -> int:
         subprocess.check_call(cmd, cwd=str(repo_root), env=env)
         results.append(bayes_out / "bayesian_suite.json")
         subprocess.check_call(
+            [sys.executable, "suites/bayesian/assess.py", str(bayes_out)],
+            cwd=str(repo_root),
+            env=env,
+        )
+        results.append(bayes_out / "bayesian_assessment.json")
+        subprocess.check_call(
             [
                 sys.executable,
                 "suites/bayesian/report.py",
                 "--suite",
                 str(bayes_out / "bayesian_suite.json"),
+                "--assessment",
+                str(bayes_out / "bayesian_assessment.json"),
                 "--out",
                 str(snap_dir / "README_snippet_bayesian.md"),
             ],
@@ -381,6 +427,32 @@ def main() -> int:
             cmd.extend(["--backends", "nextstat_mams,nextstat_nuts"])
         subprocess.check_call(cmd, cwd=str(repo_root), env=env)
         results.append(mams_out / "mams_suite.json")
+        subprocess.check_call(
+            [sys.executable, "suites/mams/report.py", str(mams_out)],
+            cwd=str(repo_root),
+            env=env,
+        )
+        subprocess.check_call(
+            [sys.executable, "suites/mams/assess.py", str(mams_out)],
+            cwd=str(repo_root),
+            env=env,
+        )
+        results.append(mams_out / "mams_assessment.json")
+        subprocess.check_call(
+            [
+                sys.executable,
+                "suites/mams/report.py",
+                "--suite",
+                str(mams_out / "mams_suite.json"),
+                "--assessment",
+                str(mams_out / "mams_assessment.json"),
+                "--out",
+                str(snap_dir / "README_snippet_mams.md"),
+                "--snippet",
+            ],
+            cwd=str(repo_root),
+            env=env,
+        )
 
     if run_mc:
         mc_out = snap_dir / "montecarlo_safety"
@@ -459,6 +531,10 @@ def main() -> int:
         env=env,
     )
     validate_artifact(index_path, repo_root, env)
+
+    if not args.no_write_registry:
+        registry_out = Path(args.registry_out).expanduser() if str(args.registry_out).strip() else None
+        write_snapshot_registry(out_root=out_root, repo_root=repo_root, env=env, registry_out=registry_out)
 
     print(f"snapshot ready: {snap_dir}")
     return 0

@@ -1,6 +1,8 @@
 {
   "backend": "cmdstanpy",
   "backend_meta": {
+    "cmdstan_path": "/tmp/nextstat_bayesian_suite_repo_20260309T003749Z/benchmarks/nextstat-public-benchmarks/vendor/cmdstan/cmdstan-2.38.0",
+    "cmdstan_path_source": "vendor",
     "cmdstan_version": "(2, 38)",
     "cmdstanpy_version": "1.3.0"
   },
@@ -20,7 +22,7 @@
     "id": "generated:hier_logistic_random_intercept_g=20_nper=20_seed=12345",
     "sha256": "1cdc6ca64da26457eb4fd93a3017f6befb8687f07e14a412ae3a8266fac19bc6"
   },
-  "deterministic": false,
+  "deterministic": true,
   "diagnostics": {
     "ess_bulk": {
       "alpha0": 4310.02,
@@ -166,8 +168,26 @@
     "min_ess_bulk": 2169.7,
     "min_ess_tail": 1935.94
   },
+  "environment": {
+    "cpu": "AMD EPYC 7502P 32-Core Processor",
+    "machine": "x86_64",
+    "nextstat_version": "0.9.9",
+    "node": "nextstat-bench",
+    "packages": {
+      "arviz": "0.23.4",
+      "cmdstanpy": "1.3.0",
+      "numpy": "2.4.2",
+      "pymc": "5.28.1",
+      "scipy": "1.17.1"
+    },
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python_full": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "python_version": "3.12.3",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "system": "Linux"
+  },
   "meta": {
-    "nextstat_version": "0.9.0",
+    "nextstat_version": "0.9.9",
     "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
     "python": "3.12.3"
   },
@@ -179,13 +199,16 @@
   "suite": "bayesian",
   "timing": {
     "ess_bulk_per_sec": {
-      "median": 4056.0505985734558,
-      "min": 951.5400151076731
+      "median": 2009.8308610467657,
+      "min": 471.5016347569543
     },
+    "ess_per_grad": 0.023392487493531136,
     "ess_tail_per_sec": {
-      "median": 2516.6494515807617,
-      "min": 849.0226191858546
+      "median": 1247.0356597628206,
+      "min": 420.7028044390368
     },
-    "wall_time_s": 2.2801983789977385
+    "grad_per_sec": 20156.11357652073,
+    "n_grad_evals": 92752,
+    "wall_time_s": 4.601680757943541
   }
 }

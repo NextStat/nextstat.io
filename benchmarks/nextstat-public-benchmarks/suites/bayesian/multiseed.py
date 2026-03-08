@@ -39,7 +39,11 @@ def _fmt(x) -> str:
         return f"{v:.0f}"
     if abs(v) >= 10:
         return f"{v:.1f}"
-    return f"{v:.3f}".rstrip("0").rstrip(".")
+    if abs(v) >= 1:
+        return f"{v:.3f}".rstrip("0").rstrip(".")
+    if v == 0:
+        return "0"
+    return f"{v:.3g}"
 
 
 def _mean_std(vals: list[float]) -> tuple[float | None, float | None]:
@@ -48,6 +52,38 @@ def _mean_std(vals: list[float]) -> tuple[float | None, float | None]:
     if len(vals) == 1:
         return vals[0], 0.0
     return statistics.mean(vals), statistics.stdev(vals)
+
+
+def _load_json(path: Path) -> dict:
+    return json.loads(path.read_text())
+
+
+def _summary_contract(*, config_by_key: dict[tuple[str, str], list[dict]], args: argparse.Namespace) -> dict[str, object]:
+    configs = [cfg for cfgs in config_by_key.values() for cfg in cfgs if isinstance(cfg, dict)]
+    if not configs:
+        return {
+            "n_chains": int(args.n_chains),
+            "n_warmup": int(args.warmup),
+            "n_samples": int(args.samples),
+            "max_treedepth": int(args.max_treedepth),
+            "target_accept": float(args.target_accept),
+            "init_jitter_rel": float(args.init_jitter_rel),
+            "deterministic": bool(args.deterministic),
+        }
+
+    first = configs[0]
+    target_accept_vals = [_safe_float(cfg.get("target_accept")) for cfg in configs]
+    target_accept_vals = [v for v in target_accept_vals if v is not None]
+
+    return {
+        "n_chains": int(_safe_float(first.get("n_chains")) or int(args.n_chains)),
+        "n_warmup": int(_safe_float(first.get("n_warmup")) or int(args.warmup)),
+        "n_samples": int(_safe_float(first.get("n_samples")) or int(args.samples)),
+        "max_treedepth": int(_safe_float(first.get("max_treedepth")) or int(args.max_treedepth)),
+        "target_accept": min(target_accept_vals) if target_accept_vals else float(args.target_accept),
+        "init_jitter_rel": float(_safe_float(first.get("init_jitter_rel")) or float(args.init_jitter_rel)),
+        "deterministic": bool(args.deterministic),
+    }
 
 
 def main() -> int:
@@ -72,6 +108,11 @@ def main() -> int:
     ap.add_argument("--max-treedepth", type=int, default=10)
     ap.add_argument("--target-accept", type=float, default=0.8)
     ap.add_argument("--init-jitter-rel", type=float, default=0.10)
+    ap.add_argument(
+        "--reuse-existing",
+        action="store_true",
+        help="Do not rerun the suite; regenerate the multiseed summary from existing seed_* artifacts.",
+    )
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir).resolve()
@@ -87,44 +128,50 @@ def main() -> int:
     if not seeds:
         raise SystemExit("no seeds provided")
 
-    # Run suite once per seed (schema artifacts preserved per run).
     rc = 0
     per_seed_suite_paths: dict[int, Path] = {}
-    for seed in seeds:
-        seed_dir = out_dir / f"seed_{seed}"
-        cmd = [
-            sys.executable,
-            str(suite_py),
-            "--out-dir",
-            str(seed_dir),
-            "--backends",
-            str(args.backends),
-            "--n-chains",
-            str(int(args.n_chains)),
-            "--warmup",
-            str(int(args.warmup)),
-            "--samples",
-            str(int(args.samples)),
-            "--seed",
-            str(int(seed)),
-            "--dataset-seed",
-            str(int(args.dataset_seed)),
-            "--max-treedepth",
-            str(int(args.max_treedepth)),
-            "--target-accept",
-            str(float(args.target_accept)),
-            "--init-jitter-rel",
-            str(float(args.init_jitter_rel)),
-        ]
-        if args.deterministic:
-            cmd.append("--deterministic")
-        p = subprocess.run(cmd)
-        if p.returncode != 0:
-            rc = 2
+    if args.reuse_existing:
+        for seed in seeds:
+            suite_path = out_dir / f"seed_{seed}" / "bayesian_suite.json"
+            if suite_path.exists():
+                per_seed_suite_paths[seed] = suite_path
+    else:
+        # Run suite once per seed (schema artifacts preserved per run).
+        for seed in seeds:
+            seed_dir = out_dir / f"seed_{seed}"
+            cmd = [
+                sys.executable,
+                str(suite_py),
+                "--out-dir",
+                str(seed_dir),
+                "--backends",
+                str(args.backends),
+                "--n-chains",
+                str(int(args.n_chains)),
+                "--warmup",
+                str(int(args.warmup)),
+                "--samples",
+                str(int(args.samples)),
+                "--seed",
+                str(int(seed)),
+                "--dataset-seed",
+                str(int(args.dataset_seed)),
+                "--max-treedepth",
+                str(int(args.max_treedepth)),
+                "--target-accept",
+                str(float(args.target_accept)),
+                "--init-jitter-rel",
+                str(float(args.init_jitter_rel)),
+            ]
+            if args.deterministic:
+                cmd.append("--deterministic")
+            p = subprocess.run(cmd)
+            if p.returncode != 0:
+                rc = 2
 
-        suite_path = seed_dir / "bayesian_suite.json"
-        if suite_path.exists():
-            per_seed_suite_paths[seed] = suite_path
+            suite_path = seed_dir / "bayesian_suite.json"
+            if suite_path.exists():
+                per_seed_suite_paths[seed] = suite_path
 
     # Aggregate across seeds: key = (case, backend).
     by_key: dict[tuple[str, str], dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
@@ -132,7 +179,7 @@ def main() -> int:
     config_by_key: dict[tuple[str, str], list[dict]] = defaultdict(list)
 
     for seed, suite_path in per_seed_suite_paths.items():
-        obj = json.loads(suite_path.read_text())
+        obj = _load_json(suite_path)
         for c in (obj.get("cases") if isinstance(obj.get("cases"), list) else []):
             case_id = str(c.get("case") or "unknown")
             backend = str(c.get("backend") or "unknown")
@@ -145,16 +192,25 @@ def main() -> int:
                 case_path = (suite_path.parent / rel).resolve()
                 if case_path.exists():
                     try:
-                        case_obj = json.loads(case_path.read_text())
+                        case_obj = _load_json(case_path)
                         if isinstance(case_obj.get("config"), dict):
                             config_by_key[key].append(case_obj["config"])
+                        diag_summary = case_obj.get("diagnostics_summary") if isinstance(case_obj.get("diagnostics_summary"), dict) else {}
+                        for metric_key, out_key in [
+                            ("divergence_rate", "divergence_rate"),
+                            ("max_treedepth_rate", "max_treedepth_rate"),
+                            ("min_ebfmi", "min_ebfmi"),
+                            ("min_ess_tail", "min_ess_tail"),
+                        ]:
+                            v = _safe_float(diag_summary.get(metric_key))
+                            if v is not None:
+                                by_key[key][out_key].append(v)
                     except Exception:
                         pass
 
             for metric_key, out_key in [
                 ("wall_time_s", "wall_time_s"),
                 ("min_ess_bulk", "min_ess_bulk"),
-                ("min_ess_tail", "min_ess_tail"),
                 ("max_r_hat", "max_r_hat"),
                 ("min_ess_bulk_per_sec", "min_ess_bulk_per_sec"),
             ]:
@@ -163,14 +219,18 @@ def main() -> int:
                     by_key[key][out_key].append(v)
 
     # Render Markdown summary.
+    actual_backends = sorted({backend for (_, backend) in by_key.keys()})
+    backends_str = ",".join(actual_backends) if actual_backends else str(args.backends)
+    summary_config = _summary_contract(config_by_key=config_by_key, args=args)
+
     md_lines: list[str] = []
     md_lines.append("# Bayesian suite (multi-seed summary)")
     md_lines.append("")
     md_lines.append(f"- Seeds: `{', '.join(str(s) for s in seeds)}`")
-    md_lines.append(f"- Backends: `{args.backends}`")
+    md_lines.append(f"- Backends: `{backends_str}`")
     md_lines.append(
-        f"- Config: `chains={args.n_chains}`, `warmup={args.warmup}`, `samples={args.samples}`, "
-        f"`max_treedepth={args.max_treedepth}`, `target_accept={args.target_accept}`, `init_jitter_rel={args.init_jitter_rel}`"
+        f"- Config: `chains={summary_config['n_chains']}`, `warmup={summary_config['n_warmup']}`, `samples={summary_config['n_samples']}`, "
+        f"`max_treedepth={summary_config['max_treedepth']}`, `target_accept={summary_config['target_accept']}`, `init_jitter_rel={summary_config['init_jitter_rel']}`"
     )
     md_lines.append("")
     md_lines.append("Metrics are aggregated across seeds as mean ± std (where available).")
@@ -203,16 +263,31 @@ def main() -> int:
         )
 
     md_lines.append("")
+    md_lines.append("## Health Summary")
+    md_lines.append("")
+    md_lines.append("| Case | Backend | Worst divergence | Worst treedepth hit rate | Worst R-hat | Worst min E-BFMI | Worst min ESS_tail |")
+    md_lines.append("|---|---|---:|---:|---:|---:|---:|")
+    for (case_id, backend) in sorted(by_key.keys()):
+        div_vals = by_key[(case_id, backend)].get("divergence_rate", [])
+        td_vals = by_key[(case_id, backend)].get("max_treedepth_rate", [])
+        rhat_vals = by_key[(case_id, backend)].get("max_r_hat", [])
+        ebfmi_vals = by_key[(case_id, backend)].get("min_ebfmi", [])
+        ess_tail_vals = by_key[(case_id, backend)].get("min_ess_tail", [])
+        md_lines.append(
+            f"| {case_id} | {backend} | {_fmt(max(div_vals) if div_vals else None)} | {_fmt(max(td_vals) if td_vals else None)} | {_fmt(max(rhat_vals) if rhat_vals else None)} | {_fmt(min(ebfmi_vals) if ebfmi_vals else None)} | {_fmt(min(ess_tail_vals) if ess_tail_vals else None)} |"
+        )
+
+    md_lines.append("")
     md_lines.append("## Notes")
     md_lines.append("")
     md_lines.append("- If some seeds produced `warn`/`failed`, inspect the per-seed `bayesian_suite.json` under each `seed_*` directory.")
+    md_lines.append("- `--reuse-existing` regenerates the summary from existing `seed_*` artifacts without rerunning the suite.")
     md_lines.append("- Publishable snapshots should pin toolchains and report exact versions; this summary is meant for quick stability checks.")
     md_lines.append("")
 
     out_md = out_dir / "bayesian_multiseed_summary.md"
     out_md.write_text("\n".join(md_lines) + "\n")
 
-    # Also emit a small machine-readable summary (non-schema).
     out_json = out_dir / "bayesian_multiseed_summary.json"
     out_json.write_text(
         json.dumps(
@@ -221,16 +296,8 @@ def main() -> int:
                 "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                 "suite": "bayesian",
                 "seeds": seeds,
-                "backends": args.backends,
-                "config": {
-                    "n_chains": int(args.n_chains),
-                    "n_warmup": int(args.warmup),
-                    "n_samples": int(args.samples),
-                    "max_treedepth": int(args.max_treedepth),
-                    "target_accept": float(args.target_accept),
-                    "init_jitter_rel": float(args.init_jitter_rel),
-                    "deterministic": bool(args.deterministic),
-                },
+                "backends": backends_str,
+                "config": summary_config,
                 "cases": [
                     {
                         "case": case_id,
@@ -239,7 +306,11 @@ def main() -> int:
                         "min_ess_bulk_per_sec": by_key[(case_id, backend)].get("min_ess_bulk_per_sec", []),
                         "wall_time_s": by_key[(case_id, backend)].get("wall_time_s", []),
                         "min_ess_bulk": by_key[(case_id, backend)].get("min_ess_bulk", []),
+                        "min_ess_tail": by_key[(case_id, backend)].get("min_ess_tail", []),
                         "max_r_hat": by_key[(case_id, backend)].get("max_r_hat", []),
+                        "divergence_rate": by_key[(case_id, backend)].get("divergence_rate", []),
+                        "max_treedepth_rate": by_key[(case_id, backend)].get("max_treedepth_rate", []),
+                        "min_ebfmi": by_key[(case_id, backend)].get("min_ebfmi", []),
                         "configs": config_by_key.get((case_id, backend), []),
                     }
                     for (case_id, backend) in sorted(by_key.keys())

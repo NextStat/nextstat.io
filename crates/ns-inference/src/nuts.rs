@@ -11,8 +11,9 @@
 //! The U-turn check uses the momentum sum (rho) instead of position difference.
 
 use crate::adapt::{WindowedAdaptation, find_reasonable_step_size};
-use crate::hmc::{HmcState, LeapfrogIntegrator};
+use crate::hmc::LeapfrogIntegrator;
 use crate::posterior::Posterior;
+use crate::tree_hmc::tree_transition as nuts_transition;
 use ns_core::Result;
 use ns_core::traits::LogDensityModel;
 use rand::Rng;
@@ -105,630 +106,6 @@ impl Default for NutsConfig {
     }
 }
 
-/// Result of one NUTS transition.
-pub(crate) struct NutsTransition {
-    pub q: Vec<f64>,
-    pub potential: f64,
-    pub grad_potential: Vec<f64>,
-    pub depth: usize,
-    pub divergent: bool,
-    pub accept_prob: f64,
-    pub energy: f64,
-    pub n_leapfrog: usize,
-}
-
-/// Internal tree node for NUTS tree-building.
-struct NutsTree {
-    q_left: Vec<f64>,
-    p_left: Vec<f64>,
-    grad_left: Vec<f64>,
-    q_right: Vec<f64>,
-    p_right: Vec<f64>,
-    grad_right: Vec<f64>,
-    q_proposal: Vec<f64>,
-    potential_proposal: f64,
-    grad_proposal: Vec<f64>,
-    log_sum_weight: f64,
-    /// Sum of momenta across all leaves in this sub-tree (generalized U-turn criterion).
-    p_sum: Vec<f64>,
-    depth: usize,
-    n_leapfrog: usize,
-    divergent: bool,
-    turning: bool,
-    sum_accept_prob: f64,
-}
-
-/// Maximum energy error before declaring divergence.
-const DIVERGENCE_THRESHOLD: f64 = 1000.0;
-
-/// Check the generalized no-U-turn criterion (Betancourt 2017).
-///
-/// `rho` is the sum of all momenta in the sub-tree.  The criterion checks
-/// whether the trajectory is still making progress by testing
-/// `rho · M^{-1} p_left >= 0` and `rho · M^{-1} p_right >= 0`.
-fn is_turning(rho: &[f64], p_left: &[f64], p_right: &[f64], metric: &crate::hmc::Metric) -> bool {
-    match metric {
-        // Hot path in CPU benchmarks: avoid temporary Vec allocations from
-        // mul_inv_mass() at every generalized U-turn check.
-        crate::hmc::Metric::Diag(inv_mass) => {
-            let mut dot_left = 0.0_f64;
-            let mut dot_right = 0.0_f64;
-            for i in 0..rho.len() {
-                let w = rho[i] * inv_mass[i];
-                dot_left += w * p_left[i];
-                dot_right += w * p_right[i];
-            }
-            if !dot_left.is_finite() || !dot_right.is_finite() {
-                return true;
-            }
-            dot_left < 0.0 || dot_right < 0.0
-        }
-        _ => {
-            let v_left = metric.mul_inv_mass(p_left);
-            let v_right = metric.mul_inv_mass(p_right);
-            let dot_left: f64 = rho.iter().zip(v_left.iter()).map(|(&r, &v)| r * v).sum();
-            let dot_right: f64 = rho.iter().zip(v_right.iter()).map(|(&r, &v)| r * v).sum();
-            if !dot_left.is_finite() || !dot_right.is_finite() {
-                return true;
-            }
-            dot_left < 0.0 || dot_right < 0.0
-        }
-    }
-}
-
-/// U-turn criterion for `rho = rho_a + rho_b` without materializing a temporary
-/// `Vec` on the hot diagonal-metric path.
-#[inline]
-fn is_turning_sum(
-    rho_a: &[f64],
-    rho_b: &[f64],
-    p_left: &[f64],
-    p_right: &[f64],
-    metric: &crate::hmc::Metric,
-) -> bool {
-    match metric {
-        crate::hmc::Metric::Diag(inv_mass) => {
-            let mut dot_left = 0.0_f64;
-            let mut dot_right = 0.0_f64;
-            for i in 0..rho_a.len() {
-                let rho = rho_a[i] + rho_b[i];
-                let w = rho * inv_mass[i];
-                dot_left += w * p_left[i];
-                dot_right += w * p_right[i];
-            }
-            if !dot_left.is_finite() || !dot_right.is_finite() {
-                return true;
-            }
-            dot_left < 0.0 || dot_right < 0.0
-        }
-        _ => {
-            let mut rho = vec![0.0; rho_a.len()];
-            for i in 0..rho_a.len() {
-                rho[i] = rho_a[i] + rho_b[i];
-            }
-            is_turning(&rho, p_left, p_right, metric)
-        }
-    }
-}
-
-fn log_sum_exp(a: f64, b: f64) -> f64 {
-    // Defensive: treat NaNs as "missing weight" (-inf) to avoid propagating NaNs
-    // into selection probabilities and diagnostics.
-    //
-    // +inf is a valid (though unexpected) sentinel for overwhelming weight and
-    // should dominate the sum.
-    let a = if a.is_nan() { f64::NEG_INFINITY } else { a };
-    let b = if b.is_nan() { f64::NEG_INFINITY } else { b };
-    if a == f64::INFINITY || b == f64::INFINITY {
-        return f64::INFINITY;
-    }
-    let max = a.max(b);
-    if max == f64::NEG_INFINITY {
-        f64::NEG_INFINITY
-    } else {
-        max + ((a - max).exp() + (b - max).exp()).ln()
-    }
-}
-
-/// Stable `P(select outer)` for multinomial subtree selection.
-///
-/// Returns `exp(logw_outer) / (exp(logw_inner) + exp(logw_outer))` with
-/// protections for +/-inf and NaNs.
-fn prob_select_outer(logw_inner: f64, logw_outer: f64) -> f64 {
-    let a = if logw_inner.is_nan() { f64::NEG_INFINITY } else { logw_inner };
-    let b = if logw_outer.is_nan() { f64::NEG_INFINITY } else { logw_outer };
-
-    if b == f64::NEG_INFINITY {
-        return 0.0;
-    }
-    if a == f64::NEG_INFINITY {
-        return 1.0;
-    }
-    if b == f64::INFINITY {
-        return if a == f64::INFINITY { 0.5 } else { 1.0 };
-    }
-    if a == f64::INFINITY {
-        return 0.0;
-    }
-
-    // p = 1 / (1 + exp(a - b))
-    let d = a - b;
-    if !d.is_finite() {
-        return 0.0;
-    }
-    if d > 0.0 {
-        let e = (-d).exp(); // exp(b-a)
-        e / (1.0 + e)
-    } else {
-        let e = d.exp(); // exp(a-b) in (0, 1]
-        1.0 / (1.0 + e)
-    }
-}
-
-/// Stan-style *progressive* sampling when joining a new subtree at top-level.
-///
-/// This is intentionally biased away from the initial point: it uses the ratio
-/// `W_subtree / W_existing` (before updating the total weight), clamped to 1.
-///
-/// Note: this differs from the within-subtree multinomial selection, which uses
-/// `W_outer / (W_inner + W_outer)`.
-fn prob_select_outer_progressive(logw_existing: f64, logw_subtree: f64) -> f64 {
-    let a = if logw_existing.is_nan() { f64::NEG_INFINITY } else { logw_existing };
-    let b = if logw_subtree.is_nan() { f64::NEG_INFINITY } else { logw_subtree };
-
-    if b == f64::NEG_INFINITY {
-        return 0.0;
-    }
-    if a == f64::NEG_INFINITY {
-        return 1.0;
-    }
-    if b == f64::INFINITY {
-        return 1.0;
-    }
-    if a == f64::INFINITY {
-        return 0.0;
-    }
-
-    let d = b - a; // log(W_sub / W_exist)
-    if !d.is_finite() {
-        return 0.0;
-    }
-    if d >= 0.0 { 1.0 } else { d.exp().clamp(0.0, 1.0) }
-}
-
-/// Build a single-node tree (one leapfrog step).
-///
-/// Multinomial NUTS: the leaf weight is `exp(-energy_error)` rather than a
-/// binary in/out-of-slice indicator.
-fn build_leaf<M: LogDensityModel + ?Sized>(
-    integrator: &LeapfrogIntegrator<'_, '_, M>,
-    state: &HmcState,
-    direction: i32,
-    h0: f64,
-    metric: &crate::hmc::Metric,
-) -> Result<NutsTree> {
-    let mut new_state = state.clone();
-
-    // Integrate forward/backward by taking a step with +/- eps.
-    if integrator.step_dir(&mut new_state, direction).is_err() {
-        // If the leapfrog step fails (e.g. non-finite logpdf/grad, or q blows up),
-        // treat it as an immediate divergence with zero weight. This mirrors Stan's
-        // behavior: invalid proposals should be rejected and drive step size down,
-        // not abort the entire sampling run.
-        let dim = state.q.len();
-        return Ok(NutsTree {
-            q_left: state.q.clone(),
-            p_left: state.p.clone(),
-            grad_left: state.grad_potential.clone(),
-            q_right: state.q.clone(),
-            p_right: state.p.clone(),
-            grad_right: state.grad_potential.clone(),
-            q_proposal: state.q.clone(),
-            potential_proposal: state.potential,
-            grad_proposal: state.grad_potential.clone(),
-            log_sum_weight: f64::NEG_INFINITY,
-            p_sum: vec![0.0; dim],
-            depth: 0,
-            n_leapfrog: 1,
-            divergent: true,
-            turning: true,
-            sum_accept_prob: 0.0,
-        });
-    }
-
-    let h = new_state.hamiltonian(metric);
-    let energy_error = h - h0;
-    let divergent =
-        !h.is_finite() || !energy_error.is_finite() || energy_error.abs() > DIVERGENCE_THRESHOLD;
-    // Multinomial NUTS: weight each leaf by exp(-energy_error).
-    // log_weight = -energy_error for valid states, NEG_INFINITY for divergent.
-    let log_weight = if divergent { f64::NEG_INFINITY } else { -energy_error };
-
-    let accept_prob = if !energy_error.is_finite() { 0.0 } else { (-energy_error).exp().min(1.0) };
-
-    let p_sum = new_state.p.clone();
-
-    Ok(NutsTree {
-        q_left: new_state.q.clone(),
-        p_left: new_state.p.clone(),
-        grad_left: new_state.grad_potential.clone(),
-        q_right: new_state.q.clone(),
-        p_right: new_state.p.clone(),
-        grad_right: new_state.grad_potential.clone(),
-        q_proposal: new_state.q.clone(),
-        potential_proposal: new_state.potential,
-        grad_proposal: new_state.grad_potential.clone(),
-        log_sum_weight: log_weight,
-        p_sum,
-        depth: 0,
-        n_leapfrog: 1,
-        divergent,
-        turning: false,
-        sum_accept_prob: accept_prob,
-    })
-}
-
-/// Recursively build a balanced binary tree of depth `depth`.
-fn build_tree<M: LogDensityModel + ?Sized>(
-    integrator: &LeapfrogIntegrator<'_, '_, M>,
-    state: &HmcState,
-    depth: usize,
-    direction: i32,
-    h0: f64,
-    metric: &crate::hmc::Metric,
-    rng: &mut impl Rng,
-) -> Result<NutsTree> {
-    if depth == 0 {
-        return build_leaf(integrator, state, direction, h0, metric);
-    }
-
-    // Build first half-tree (init subtree)
-    let mut inner = build_tree(integrator, state, depth - 1, direction, h0, metric, rng)?;
-
-    if inner.divergent || inner.turning {
-        return Ok(inner);
-    }
-
-    // Build second half-tree (final subtree) from the edge of the first.
-    let edge_state = if direction > 0 {
-        HmcState {
-            q: inner.q_right.clone(),
-            p: inner.p_right.clone(),
-            potential: 0.0, // not used for tree building
-            grad_potential: inner.grad_right.clone(),
-        }
-    } else {
-        HmcState {
-            q: inner.q_left.clone(),
-            p: inner.p_left.clone(),
-            potential: 0.0,
-            grad_potential: inner.grad_left.clone(),
-        }
-    };
-
-    let outer = build_tree(integrator, &edge_state, depth - 1, direction, h0, metric, rng)?;
-
-    // Merge trees
-    let new_log_sum_weight = log_sum_exp(inner.log_sum_weight, outer.log_sum_weight);
-
-    // Multinomial selection: accept outer proposal with probability proportional
-    // to subtree weights. Use a stable logistic form to avoid inf - inf and
-    // other numerical edge cases.
-    //
-    // Divergent leaves already have log_weight = -inf, so they contribute zero
-    // selection probability. Turning subtrees contain valid leaves and should
-    // participate in multinomial sampling (turning is a stopping criterion, not
-    // a validity criterion).
-    let accept_outer =
-        prob_select_outer(inner.log_sum_weight, outer.log_sum_weight).clamp(0.0, 1.0);
-    let u: f64 = rng.random();
-    if u < accept_outer {
-        inner.q_proposal = outer.q_proposal;
-        inner.potential_proposal = outer.potential_proposal;
-        inner.grad_proposal = outer.grad_proposal;
-    }
-
-    inner.log_sum_weight = new_log_sum_weight;
-    inner.n_leapfrog += outer.n_leapfrog;
-    inner.sum_accept_prob += outer.sum_accept_prob;
-    inner.divergent = inner.divergent || outer.divergent;
-
-    // Stan-style generalized U-turn check (3 criteria, Betancourt 2017).
-    //
-    // Check 1: Full merged tree — standard rho · v check on overall endpoints.
-    // Check 2: Init-to-junction — catches U-turns at the boundary between subtrees
-    //          using rho = rho_init + p_final_junction.
-    // Check 3: Junction-to-final — symmetric check from the other side,
-    //          using rho = rho_final + p_init_junction.
-    let (p_left_merged, p_right_merged, p_start, p_end, p_init_junction, p_final_junction) =
-        if direction > 0 {
-            (
-                &inner.p_left,
-                &outer.p_right,
-                &inner.p_left,
-                &outer.p_right,
-                &inner.p_right,
-                &outer.p_left,
-            )
-        } else {
-            (
-                &outer.p_left,
-                &inner.p_right,
-                &inner.p_right,
-                &outer.p_left,
-                &inner.p_left,
-                &outer.p_right,
-            )
-        };
-
-    let turning1 =
-        is_turning_sum(&inner.p_sum, &outer.p_sum, p_left_merged, p_right_merged, metric);
-    let turning2 =
-        is_turning_sum(&inner.p_sum, p_final_junction, p_start, p_final_junction, metric);
-    let turning3 = is_turning_sum(&outer.p_sum, p_init_junction, p_init_junction, p_end, metric);
-
-    // Merge p_sum (generalized U-turn criterion)
-    for (ps, os) in inner.p_sum.iter_mut().zip(outer.p_sum.iter()) {
-        *ps += *os;
-    }
-
-    // Update tree edges
-    if direction > 0 {
-        inner.q_right = outer.q_right;
-        inner.p_right = outer.p_right;
-        inner.grad_right = outer.grad_right;
-    } else {
-        inner.q_left = outer.q_left;
-        inner.p_left = outer.p_left;
-        inner.grad_left = outer.grad_left;
-    }
-
-    inner.turning = inner.turning || outer.turning || turning1 || turning2 || turning3;
-
-    inner.depth = depth;
-    Ok(inner)
-}
-
-/// Pre-allocated scratch buffers for the `nuts_transition()` main loop.
-///
-/// Eliminates ~9 `Vec<f64>` allocations per tree-doubling iteration
-/// (up to ~90 per transition at max_treedepth=10).
-struct NutsTransitionScratch {
-    rho_existing: Vec<f64>,
-    p_existing_junction: Vec<f64>,
-    edge_state: HmcState,
-    p_subtree_junction: Vec<f64>,
-    rho_subtree: Vec<f64>,
-    rho_cross: Vec<f64>,
-}
-
-impl NutsTransitionScratch {
-    fn new(dim: usize) -> Self {
-        Self {
-            rho_existing: vec![0.0; dim],
-            p_existing_junction: vec![0.0; dim],
-            edge_state: HmcState {
-                q: vec![0.0; dim],
-                p: vec![0.0; dim],
-                potential: 0.0,
-                grad_potential: vec![0.0; dim],
-            },
-            p_subtree_junction: vec![0.0; dim],
-            rho_subtree: vec![0.0; dim],
-            rho_cross: vec![0.0; dim],
-        }
-    }
-}
-
-/// Run one NUTS transition from the given state.
-pub(crate) fn nuts_transition<M: LogDensityModel + ?Sized>(
-    integrator: &LeapfrogIntegrator<'_, '_, M>,
-    current: &HmcState,
-    max_treedepth: usize,
-    rng: &mut impl Rng,
-) -> Result<NutsTransition> {
-    let metric = integrator.metric();
-
-    // Sample momentum ~ N(0, M)
-    let mut state = current.clone();
-    state.p = metric.sample_momentum(rng);
-
-    let h0 = state.hamiltonian(metric);
-    if !h0.is_finite() {
-        return Err(ns_core::Error::Validation(
-            "non-finite initial Hamiltonian in NUTS transition".to_string(),
-        ));
-    }
-
-    let dim = state.q.len();
-
-    // Initialize tree with current point (multinomial: log_weight = 0 = log(1))
-    let mut tree = NutsTree {
-        q_left: state.q.clone(),
-        p_left: state.p.clone(),
-        grad_left: state.grad_potential.clone(),
-        q_right: state.q.clone(),
-        p_right: state.p.clone(),
-        grad_right: state.grad_potential.clone(),
-        q_proposal: state.q.clone(),
-        potential_proposal: state.potential,
-        grad_proposal: state.grad_potential.clone(),
-        log_sum_weight: 0.0, // log(1) = 0
-        p_sum: state.p.clone(),
-        depth: 0,
-        n_leapfrog: 0,
-        divergent: false,
-        turning: false,
-        sum_accept_prob: 0.0,
-    };
-
-    // Pre-allocate scratch buffers for the tree-doubling loop.
-    let mut scratch = NutsTransitionScratch::new(dim);
-
-    // Tree doubling (Stan convention): `depth` counts completed doublings.
-    // At depth d, the tree has 2^d leaves (2^d leapfrog steps total).
-    // `while depth < max_treedepth` ensures at most 2^max_treedepth leaves
-    // (e.g., 1024 for max_treedepth=10).  The previous `<=` was an off-by-one
-    // that doubled the maximum trajectory length vs Stan.
-    let mut depth: usize = 0;
-
-    while depth < max_treedepth {
-        // Choose direction uniformly: +1 or -1
-        let direction: i32 = if rng.random::<bool>() { 1 } else { -1 };
-
-        // Save existing tree's momentum sum and junction momentum before merge
-        // (needed for Stan-style cross-checks between subtrees).
-        scratch.rho_existing.copy_from_slice(&tree.p_sum);
-        if direction > 0 {
-            scratch.p_existing_junction.copy_from_slice(&tree.p_right);
-        } else {
-            scratch.p_existing_junction.copy_from_slice(&tree.p_left);
-        }
-
-        // Build subtree in chosen direction
-        if direction > 0 {
-            scratch.edge_state.q.copy_from_slice(&tree.q_right);
-            scratch.edge_state.p.copy_from_slice(&tree.p_right);
-            scratch.edge_state.potential = 0.0;
-            scratch.edge_state.grad_potential.copy_from_slice(&tree.grad_right);
-        } else {
-            scratch.edge_state.q.copy_from_slice(&tree.q_left);
-            scratch.edge_state.p.copy_from_slice(&tree.p_left);
-            scratch.edge_state.potential = 0.0;
-            scratch.edge_state.grad_potential.copy_from_slice(&tree.grad_left);
-        }
-
-        let subtree =
-            build_tree(integrator, &scratch.edge_state, depth, direction, h0, metric, rng)?;
-
-        // Save subtree's junction momentum and momentum sum
-        if direction > 0 {
-            scratch.p_subtree_junction.copy_from_slice(&subtree.p_left);
-        } else {
-            scratch.p_subtree_junction.copy_from_slice(&subtree.p_right);
-        }
-        scratch.rho_subtree.copy_from_slice(&subtree.p_sum);
-
-        // Multinomial merge: accept subtree proposal with probability
-        // exp(subtree.log_sum_weight - log_sum_weight_existing) (Stan-style progressive sampling).
-        let accept_subtree =
-            prob_select_outer_progressive(tree.log_sum_weight, subtree.log_sum_weight)
-                .clamp(0.0, 1.0);
-        let new_log_sum_weight = log_sum_exp(tree.log_sum_weight, subtree.log_sum_weight);
-        let u: f64 = rng.random();
-        if u < accept_subtree {
-            tree.q_proposal = subtree.q_proposal;
-            tree.potential_proposal = subtree.potential_proposal;
-            tree.grad_proposal = subtree.grad_proposal;
-        }
-
-        tree.log_sum_weight = new_log_sum_weight;
-        tree.n_leapfrog += subtree.n_leapfrog;
-        tree.sum_accept_prob += subtree.sum_accept_prob;
-        tree.divergent = tree.divergent || subtree.divergent;
-        tree.turning = tree.turning || subtree.turning;
-
-        // Merge p_sum (generalized U-turn criterion)
-        for (ps, ss) in tree.p_sum.iter_mut().zip(subtree.p_sum.iter()) {
-            *ps += *ss;
-        }
-
-        // Update tree edges
-        if direction > 0 {
-            tree.q_right = subtree.q_right;
-            tree.p_right = subtree.p_right;
-            tree.grad_right = subtree.grad_right;
-        } else {
-            tree.q_left = subtree.q_left;
-            tree.p_left = subtree.p_left;
-            tree.grad_left = subtree.grad_left;
-        }
-
-        // Increment depth BEFORE checking U-turn (matches Stan: depth counts
-        // completed doublings, so the reported value includes this iteration).
-        depth += 1;
-
-        // Stan-style generalized U-turn check (3 criteria).
-        //
-        // After merging, the existing tree and subtree form left/right halves
-        // (depending on direction). We check:
-        // 1. Full merged trajectory (rho_total against overall endpoints)
-        // 2. Left start to junction (rho_left + p_right_junction)
-        // 3. Junction to right end (rho_right + p_left_junction)
-        let turning1 = is_turning(&tree.p_sum, &tree.p_left, &tree.p_right, metric);
-
-        // Map existing/subtree to absolute left/right based on direction
-        let (rho_left, rho_right, p_left_junction, p_right_junction) = if direction > 0 {
-            // existing = left, subtree = right
-            (
-                &scratch.rho_existing,
-                &scratch.rho_subtree,
-                &scratch.p_existing_junction,
-                &scratch.p_subtree_junction,
-            )
-        } else {
-            // subtree = left, existing = right
-            (
-                &scratch.rho_subtree,
-                &scratch.rho_existing,
-                &scratch.p_subtree_junction,
-                &scratch.p_existing_junction,
-            )
-        };
-
-        for j in 0..dim {
-            scratch.rho_cross[j] = rho_left[j] + p_right_junction[j];
-        }
-        let turning2 = is_turning(&scratch.rho_cross, &tree.p_left, p_right_junction, metric);
-
-        for j in 0..dim {
-            scratch.rho_cross[j] = rho_right[j] + p_left_junction[j];
-        }
-        let turning3 = is_turning(&scratch.rho_cross, p_left_junction, &tree.p_right, metric);
-
-        if turning1 || turning2 || turning3 {
-            tree.turning = true;
-            break;
-        }
-        if tree.divergent || tree.turning {
-            break;
-        }
-    }
-
-    let n_total = tree.n_leapfrog.max(1) as f64;
-    let mut accept_prob = tree.sum_accept_prob / n_total;
-    if !accept_prob.is_finite() {
-        accept_prob = 0.0;
-    }
-    accept_prob = accept_prob.clamp(0.0, 1.0);
-
-    // Defensive: a non-finite proposal position would break downstream transforms
-    // (e.g. mapping unconstrained -> constrained) and should be treated as a hard divergence.
-    if tree.q_proposal.iter().any(|v| !v.is_finite()) {
-        return Ok(NutsTransition {
-            q: current.q.clone(),
-            potential: current.potential,
-            grad_potential: current.grad_potential.clone(),
-            depth,
-            divergent: true,
-            accept_prob: 0.0,
-            energy: h0,
-            n_leapfrog: tree.n_leapfrog,
-        });
-    }
-
-    Ok(NutsTransition {
-        q: tree.q_proposal,
-        potential: tree.potential_proposal,
-        grad_potential: tree.grad_proposal,
-        depth,
-        divergent: tree.divergent,
-        accept_prob,
-        energy: h0,
-        n_leapfrog: tree.n_leapfrog,
-    })
-}
-
 /// Clamp non-finite values in unconstrained coordinates to bounded values.
 fn clamp_non_finite(z: &mut [f64]) {
     const Z_CLAMP: f64 = 20.0;
@@ -750,7 +127,7 @@ fn clamp_non_finite(z: &mut [f64]) {
 
 #[cfg(test)]
 mod nuts_numerics_tests {
-    use super::*;
+    use crate::tree_hmc::{log_sum_exp, prob_select_outer, prob_select_outer_progressive};
 
     #[test]
     fn test_log_sum_exp_handles_infinities() {
@@ -987,6 +364,7 @@ pub fn sample_nuts<M: LogDensityModel>(
     let mut last_good_q = state.q.clone();
     let mut last_good_potential = state.potential;
     let mut last_good_grad = state.grad_potential.clone();
+    let mut n_leapfrog_warmup_total = 0usize;
 
     // Warmup
     for i in 0..n_warmup {
@@ -996,6 +374,7 @@ pub fn sample_nuts<M: LogDensityModel>(
 
         let transition =
             nuts_transition(&warmup_integrator, &state, config.max_treedepth, &mut rng)?;
+        n_leapfrog_warmup_total += transition.n_leapfrog;
 
         state.q = transition.q;
         state.potential = transition.potential;
@@ -1117,30 +496,8 @@ pub fn sample_nuts<M: LogDensityModel>(
     }
 
     let mass_diag: Vec<f64> = final_metric.mass_diag();
-    let (inv_mass_matrix, metric_type_name) = match &final_metric {
-        crate::hmc::Metric::Diag(_) => (None, "diagonal".to_string()),
-        crate::hmc::Metric::DenseCholesky { dim: d, l } => {
-            // Reconstruct inv_mass = L L^T (row-major output).
-            // NOTE: nalgebra stores matrices column-major, and `l` was produced by
-            // `ch.l().as_slice()`. The HMC code accesses `l[i*n+j]` which effectively
-            // reads the *transpose* (U = L^T stored row-major). So the actual
-            // factorization used is U^T U = L L^T = inv_mass.
-            // To reconstruct: inv_mass[i,j] = sum_k U[k,i]*U[k,j] = sum_k l[k*n+i]*l[k*n+j]
-            let n = *d;
-            let mut inv_mass = vec![0.0; n * n];
-            for i in 0..n {
-                for j in 0..=i {
-                    let mut acc = 0.0;
-                    for k in 0..n {
-                        acc += l[k * n + i] * l[k * n + j];
-                    }
-                    inv_mass[i * n + j] = acc;
-                    inv_mass[j * n + i] = acc;
-                }
-            }
-            (Some(inv_mass), "dense".to_string())
-        }
-    };
+    let inv_mass_matrix = final_metric.inv_mass_matrix();
+    let metric_type_name = final_metric.metric_type_name().to_string();
 
     Ok(crate::chain::Chain {
         draws_unconstrained,
@@ -1150,6 +507,7 @@ pub fn sample_nuts<M: LogDensityModel>(
         accept_probs,
         energies,
         n_leapfrog: leapfrog_counts,
+        n_leapfrog_warmup_total,
         max_treedepth: config.max_treedepth,
         step_size: final_eps,
         mass_diag,
@@ -1161,6 +519,7 @@ pub fn sample_nuts<M: LogDensityModel>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tree_hmc::log_sum_exp;
     use ns_core::traits::{LogDensityModel, PreparedModelRef};
     use ns_translate::pyhf::{HistFactoryModel, Workspace};
     use rand::SeedableRng;
@@ -1251,6 +610,7 @@ mod tests {
         assert_eq!(chain.tree_depths.len(), 50);
         assert_eq!(chain.accept_probs.len(), 50);
         assert_eq!(chain.energies.len(), 50);
+        assert!(chain.n_leapfrog_warmup_total > 0);
 
         // Divergence rate should be low
         let n_div: usize = chain.divergences.iter().filter(|&&d| d).count();

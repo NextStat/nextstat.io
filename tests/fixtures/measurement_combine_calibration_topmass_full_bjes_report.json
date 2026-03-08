@@ -1,0 +1,126 @@
+{
+  "ci_level": 0.68,
+  "n_toys": 32,
+  "poi": "m_top",
+  "reference": {
+    "confidence_interval": {
+      "ci_level": 0.68,
+      "lower": 172.1891727775763,
+      "sigma": 0.5123442250139902,
+      "upper": 173.21386122760427
+    },
+    "converged": true,
+    "diagnostics": {
+      "bartlett": {
+        "b_mu": 0.00265583091575583,
+        "b_mu_theta": 1.999240196864829,
+        "b_q": 61.75075980313517,
+        "b_tilde_theta": 1.9965843659490732,
+        "method": "lawley_order_eps2_general",
+        "p_value_star": 0.9999999999890651,
+        "q_scale": 5.410768557366798,
+        "q_star": 0.1858257825053134,
+        "sigma2_unbiased_estimates": [
+          0.13148855701314563
+        ],
+        "sigma_scale": 1.0013270349470027,
+        "sigma_star": 0.5130241237054788,
+        "supported": true,
+        "supported_systematics": [
+          "b-JES"
+        ],
+        "unsupported_reason": null,
+        "w_mu_scale": 1.0026558309157558
+      },
+      "corr_regularization_deltas": [
+        0.0,
+        0.0014765431203307422,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.8163625598350839,
+        0.001632116555109672,
+        0.0,
+        0.0,
+        0.0,
+        1.0181016502568485,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.4637179315401943,
+        0.0,
+        0.0,
+        2.179122126444023,
+        0.0,
+        0.0037176212439129553
+      ],
+      "effective_solver": "analytic-perturbative",
+      "input_schema_version": "nextstat_measurement_combination_v0",
+      "n_measurements": 15,
+      "n_systematics": 25,
+      "perturbative_validity": {
+        "condition_values": [
+          0.000045062184008926494
+        ],
+        "systematic_names": [
+          "b-JES"
+        ],
+        "threshold": 1.0,
+        "within_threshold": [
+          true
+        ]
+      },
+      "profiled_variance_scales": [
+        0.11765236025694223
+      ],
+      "requested_error_on_error": true,
+      "requested_solver": "auto",
+      "supports_error_on_error": true,
+      "theta_l2_norms": [
+        11.37010407082827
+      ]
+    },
+    "goodness_of_fit": {
+      "chi2": 1.005460301127831,
+      "df": 14,
+      "method": "analytic_perturbative_profile",
+      "p_value": 0.9999989611406778
+    },
+    "mu_hat": 172.70151725101405,
+    "optimizer": {
+      "message": "perturbative profile in original theta basis",
+      "method": "analytic_perturbative_order_eps2",
+      "n_fev": 0,
+      "n_gev": 0,
+      "n_iter": 1
+    },
+    "poi": "m_top",
+    "schema_version": "nextstat_measurement_combination_result_v0",
+    "stability": "stable"
+  },
+  "schema_version": "nextstat_measurement_combination_calibration_v0",
+  "seed": 2026,
+  "stability": "stable",
+  "summary": {
+    "bartlett_improves_mean_q": false,
+    "df": 14,
+    "mean_q": 1.9104621712817353,
+    "mean_q_abs_error_to_df": 12.089537828718264,
+    "mean_q_star": 0.353085176367329,
+    "mean_q_star_abs_error_to_df": 13.64691482363267,
+    "mean_sigma": 0.512344062020599,
+    "mean_sigma_star": 0.5130239584563084,
+    "mean_sigma_star_to_sigma_ratio": 1.001327030966316,
+    "sd_q": 2.4354137261434334,
+    "sd_q_star": 0.4501049524685048,
+    "sem_q": 0.4305243901877048,
+    "sem_q_star": 0.07956806603403209,
+    "sigma_star_ge_sigma_fraction": 1.0,
+    "toy_generation_method": "measurement_side_gvm_unbiased_sigma2_star_normalized_spec_original_theta"
+  }
+}

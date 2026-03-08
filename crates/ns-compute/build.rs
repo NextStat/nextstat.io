@@ -291,6 +291,36 @@ fn main() {
         }
         println!("cargo:rustc-env=CUDA_FAULT_TREE_MC_PTX_PATH={}", ft_ptx);
 
+        // --- hmc_stdnormal_step.cu ---
+        let hmc_stdnormal_src = format!("{}/hmc_stdnormal_step.cu", kernel_dir);
+        println!("cargo:rerun-if-changed={}", hmc_stdnormal_src);
+        let hmc_stdnormal_ptx = format!("{}/hmc_stdnormal_step.ptx", out_dir);
+
+        let status = std::process::Command::new(&nvcc)
+            .args([
+                "--ptx",
+                "-arch=compute_70",
+                "-O3",
+                "-I",
+                kernel_dir,
+                "-o",
+                &hmc_stdnormal_ptx,
+                &hmc_stdnormal_src,
+            ])
+            .status();
+        match status {
+            Ok(st) if st.success() => {}
+            Ok(st) => panic!("nvcc failed to compile {} (exit={})", hmc_stdnormal_src, st),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                println!(
+                    "cargo:warning=ns-compute: nvcc not found; writing stub PTX for hmc_stdnormal_step (CUDA will not work at runtime)"
+                );
+                write_stub_ptx(&hmc_stdnormal_ptx, "hmc_stdnormal_leapfrog_diag", "nvcc not found");
+            }
+            Err(e) => panic!("failed to spawn nvcc for {}: {}", hmc_stdnormal_src, e),
+        }
+        println!("cargo:rustc-env=CUDA_HMC_STDNORMAL_PTX_PATH={}", hmc_stdnormal_ptx);
+
         // --- mams_engine.cuh (shared engine header for LAPS, used by build-time + JIT) ---
         let mams_engine = format!("{}/mams_engine.cuh", kernel_dir);
         println!("cargo:rerun-if-changed={}", mams_engine);

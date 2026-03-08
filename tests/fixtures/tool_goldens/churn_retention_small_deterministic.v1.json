@@ -1,0 +1,63 @@
+{
+  "case_name": "churn_retention_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_churn_retention": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_churn_retention"
+      },
+      "ok": true,
+      "result": {
+        "by_group": [
+          {
+            "group": 0,
+            "median": 30.0,
+            "n": 2,
+            "n_events": 1,
+            "survival": [
+              0.5
+            ],
+            "time": [
+              30.0
+            ]
+          },
+          {
+            "group": 1,
+            "median": 90.0,
+            "n": 2,
+            "n_events": 1,
+            "survival": [
+              0.5
+            ],
+            "time": [
+              90.0
+            ]
+          }
+        ],
+        "log_rank": {
+          "chi_squared": 1.0,
+          "df": 1,
+          "p_value": 0.31731050786291404
+        },
+        "overall": {
+          "median": 90.0,
+          "n": 4,
+          "n_events": 2,
+          "survival": [
+            0.75,
+            0.375
+          ],
+          "time": [
+            30.0,
+            90.0
+          ]
+        }
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

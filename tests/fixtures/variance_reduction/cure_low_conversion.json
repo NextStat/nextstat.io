@@ -1,0 +1,64 @@
+{
+  "schema_version": "nextstat.variance_reduction_fixture.v1",
+  "scenario": "low-conversion binary metric with sparse pre-period baselines",
+  "metric_type": "low_conversion",
+  "method": "cure",
+  "control_outcomes": [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+  "variant_outcomes": [0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0],
+  "control_covariates": [
+    [24.0, 180.0],
+    [28.0, 200.0],
+    [26.0, 190.0],
+    [35.0, 240.0],
+    [22.0, 170.0],
+    [25.0, 185.0],
+    [23.0, 175.0],
+    [34.0, 235.0],
+    [21.0, 168.0],
+    [20.0, 162.0],
+    [27.0, 198.0],
+    [24.0, 182.0]
+  ],
+  "variant_covariates": [
+    [25.0, 182.0],
+    [29.0, 202.0],
+    [27.0, 192.0],
+    [36.0, 242.0],
+    [23.0, 172.0],
+    [26.0, 187.0],
+    [24.0, 177.0],
+    [35.0, 237.0],
+    [22.0, 170.0],
+    [21.0, 164.0],
+    [28.0, 200.0],
+    [25.0, 184.0]
+  ],
+  "selected_covariates": ["pre_clicks", "pre_impressions"],
+  "covariate_provenance": [
+    {
+      "name": "pre_clicks",
+      "timing": "pre_treatment",
+      "source_dataset": "sparse_metric_history"
+    },
+    {
+      "name": "pre_impressions",
+      "timing": "pre_treatment",
+      "source_dataset": "sparse_metric_history"
+    }
+  ],
+  "pre_treatment_only": true,
+  "expected": {
+    "method": "cure",
+    "adjusted_mean_control": 0.17754860986668047,
+    "adjusted_mean_variant": 0.3224513901333195,
+    "effect": 0.14490278026663905,
+    "theta": [-0.011879093373720452, 0.016821489886874055],
+    "r_squared": 0.63928405580958,
+    "variance_reduction_factor": 0.36071594419041997,
+    "effective_sample_multiplier": 2.772264481528173,
+    "solver": "svd",
+    "regression_rank": 2,
+    "condition_number": 58.518286976496626,
+    "ridge_lambda": null
+  }
+}

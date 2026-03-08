@@ -1,0 +1,418 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/ads_variance_reduction_benchmark_compare_report_v1.schema.json",
+  "title": "Ads variance-reduction benchmark compare report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "status",
+    "requires_review",
+    "baseline_path",
+    "current_path",
+    "policy",
+    "artifacts",
+    "environment_checks",
+    "cases",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.ads_variance_reduction_benchmark_compare_report.v1"
+    },
+    "suite": {
+      "const": "ads_variance_reduction_matrix"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["passed", "review", "failed"]
+    },
+    "requires_review": {
+      "type": "boolean"
+    },
+    "baseline_path": {
+      "type": "string"
+    },
+    "current_path": {
+      "type": "string"
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "required_host_policy",
+        "required_hostname",
+        "required_build_profile",
+        "require_non_smoke",
+        "require_deterministic",
+        "required_runs",
+        "required_warmups",
+        "case_ids",
+        "python_metric"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "nextstat.ads_variance_reduction_benchmark_compare_policy.v1"
+        },
+        "required_host_policy": {
+          "const": "nextstat-bench"
+        },
+        "required_hostname": {
+          "const": "nextstat-bench"
+        },
+        "required_build_profile": {
+          "const": "release"
+        },
+        "require_non_smoke": {
+          "type": "boolean"
+        },
+        "require_deterministic": {
+          "type": "boolean"
+        },
+        "required_runs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "required_warmups": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "case_ids": {
+          "type": "array",
+          "minItems": 12,
+          "maxItems": 12,
+          "items": {
+            "type": "string"
+          }
+        },
+        "python_metric": {
+          "$ref": "#/$defs/metricPolicy"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline", "current"],
+      "properties": {
+        "baseline": {
+          "$ref": "#/$defs/artifactSummary"
+        },
+        "current": {
+          "$ref": "#/$defs/artifactSummary"
+        }
+      }
+    },
+    "environment_checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host_policy",
+        "hostname",
+        "release_build",
+        "non_smoke",
+        "deterministic",
+        "runs",
+        "warmups",
+        "case_set"
+      ],
+      "properties": {
+        "host_policy": {
+          "$ref": "#/$defs/fieldMatch"
+        },
+        "hostname": {
+          "$ref": "#/$defs/fieldMatch"
+        },
+        "release_build": {
+          "$ref": "#/$defs/fieldMatch"
+        },
+        "non_smoke": {
+          "$ref": "#/$defs/fieldMatch"
+        },
+        "deterministic": {
+          "$ref": "#/$defs/fieldMatch"
+        },
+        "runs": {
+          "$ref": "#/$defs/fieldMatch"
+        },
+        "warmups": {
+          "$ref": "#/$defs/fieldMatch"
+        },
+        "case_set": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["required", "baseline", "current", "matches"],
+          "properties": {
+            "required": {
+              "type": "array",
+              "minItems": 12,
+              "maxItems": 12,
+              "items": {
+                "type": "string"
+              }
+            },
+            "baseline": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "current": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "matches": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "$ref": "#/$defs/caseReport"
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["failed_cases", "review_cases", "skipped_floor_cases", "top_level_errors"],
+      "properties": {
+        "failed_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "review_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped_floor_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "top_level_errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "anyJson": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/anyJson"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/anyJson"
+          }
+        }
+      ]
+    },
+    "artifactSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema_version",
+        "suite",
+        "host_policy",
+        "hostname",
+        "build_profile",
+        "smoke",
+        "deterministic",
+        "runs",
+        "warmups",
+        "case_ids"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": ["string", "null"]
+        },
+        "suite": {
+          "type": ["string", "null"]
+        },
+        "host_policy": {
+          "type": ["string", "null"]
+        },
+        "hostname": {
+          "type": ["string", "null"]
+        },
+        "build_profile": {
+          "type": ["string", "null"]
+        },
+        "smoke": {
+          "type": "boolean"
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "runs": {
+          "type": ["integer", "null"]
+        },
+        "warmups": {
+          "type": ["integer", "null"]
+        },
+        "case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "fieldMatch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline", "current", "matches"],
+      "properties": {
+        "baseline": {
+          "$ref": "#/$defs/anyJson"
+        },
+        "current": {
+          "$ref": "#/$defs/anyJson"
+        },
+        "matches": {
+          "type": "boolean"
+        }
+      }
+    },
+    "metricPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["review_ratio", "fail_ratio", "min_baseline_value"],
+      "properties": {
+        "review_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 1.0
+        },
+        "fail_ratio": {
+          "type": ["number", "null"],
+          "exclusiveMinimum": 1.0
+        },
+        "min_baseline_value": {
+          "type": "number",
+          "minimum": 0.0
+        }
+      }
+    },
+    "metricReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "status",
+        "baseline_value",
+        "current_value",
+        "ratio",
+        "review_ratio",
+        "fail_ratio",
+        "min_baseline_value",
+        "reasons"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "review", "failed", "skipped_floor", "not_applicable"]
+        },
+        "baseline_value": {
+          "type": ["number", "null"]
+        },
+        "current_value": {
+          "type": ["number", "null"]
+        },
+        "ratio": {
+          "type": ["number", "null"]
+        },
+        "review_ratio": {
+          "type": "number"
+        },
+        "fail_ratio": {
+          "type": ["number", "null"]
+        },
+        "min_baseline_value": {
+          "type": "number"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "caseReport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "surface", "status", "identity", "metrics", "errors", "warnings"],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "surface": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "review", "failed"]
+        },
+        "identity": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/fieldMatch"
+          }
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metricReport"
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

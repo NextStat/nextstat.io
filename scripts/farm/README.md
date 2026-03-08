@@ -169,7 +169,7 @@ python3 scripts/farm/render_unbinned_fit_toys_scheduler.py \
   --out-dir /shared/runs \
   --condor-request-cpus 1 \
   --condor-request-memory "2GB" \
-  --condor-requirements '(Machine != "nextstat-gex44")'
+  --condor-requirements '(Machine != "nextstat-bench-node")'
 ```
 
 Submit:

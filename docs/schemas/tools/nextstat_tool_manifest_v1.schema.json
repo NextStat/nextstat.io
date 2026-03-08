@@ -1,0 +1,353 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/tools/nextstat_tool_manifest_v1.schema.json",
+  "title": "NextStat Tool Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policies",
+    "guidance",
+    "tools"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.tool_manifest.v1"
+    },
+    "policies": {
+      "$ref": "#/$defs/policies"
+    },
+    "guidance": {
+      "$ref": "#/$defs/guidance"
+    },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/tool_record"
+      }
+    }
+  },
+  "$defs": {
+    "manifest_value": {
+      "anyOf": [
+        {
+          "type": [
+            "string",
+            "number",
+            "integer",
+            "boolean",
+            "null"
+          ]
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/manifest_value"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/manifest_value"
+          }
+        }
+      ]
+    },
+    "policy_rule": {
+      "type": "object",
+      "required": [
+        "reason_code",
+        "reason"
+      ],
+      "properties": {
+        "reason_code": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "policies": {
+      "type": "object",
+      "required": [
+        "server"
+      ],
+      "properties": {
+        "server": {
+          "type": "object",
+          "required": [
+            "defaults"
+          ],
+          "properties": {
+            "defaults": {
+              "type": "object",
+              "required": [
+                "exposed",
+                "local_only"
+              ],
+              "properties": {
+                "exposed": {
+                  "$ref": "#/$defs/policy_rule"
+                },
+                "local_only": {
+                  "$ref": "#/$defs/policy_rule"
+                }
+              },
+              "additionalProperties": false
+            },
+            "overrides": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^nextstat_[a-z0-9_]+$"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/policy_rule"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "tool_parameters": {
+      "type": "object",
+      "required": [
+        "type",
+        "properties",
+        "required"
+      ],
+      "properties": {
+        "type": {
+          "const": "object"
+        },
+        "properties": {
+          "type": "object"
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "tool_function": {
+      "type": "object",
+      "required": [
+        "name",
+        "description",
+        "parameters"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^nextstat_[a-z0-9_]+$"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parameters": {
+          "$ref": "#/$defs/tool_parameters"
+        }
+      },
+      "additionalProperties": true
+    },
+    "tool_schema": {
+      "type": "object",
+      "required": [
+        "type",
+        "function"
+      ],
+      "properties": {
+        "type": {
+          "const": "function"
+        },
+        "function": {
+          "$ref": "#/$defs/tool_function"
+        }
+      },
+      "additionalProperties": false
+    },
+    "local_transport": {
+      "type": "object",
+      "required": [
+        "tool"
+      ],
+      "properties": {
+        "tool": {
+          "$ref": "#/$defs/tool_schema"
+        }
+      },
+      "additionalProperties": false
+    },
+    "server_transport": {
+      "type": "object",
+      "required": [
+        "tool"
+      ],
+      "properties": {
+        "tool": {
+          "$ref": "#/$defs/tool_schema"
+        }
+      },
+      "additionalProperties": false
+    },
+    "golden_case": {
+      "type": "object",
+      "required": [
+        "arguments"
+      ],
+      "properties": {
+        "arguments": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/manifest_value"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidance_recipe": {
+      "type": "object",
+      "required": [
+        "id",
+        "transport",
+        "title",
+        "summary",
+        "prompt",
+        "tools",
+        "docs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "transport": {
+          "type": "string",
+          "enum": [
+            "local",
+            "server"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tools": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^nextstat_[a-z0-9_]+$"
+          }
+        },
+        "docs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "guidance": {
+      "type": "object",
+      "required": [
+        "transport_hints",
+        "recipes"
+      ],
+      "properties": {
+        "transport_hints": {
+          "type": "object",
+          "required": [
+            "local",
+            "server"
+          ],
+          "properties": {
+            "local": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "server": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "recipes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/guidance_recipe"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "tool_record": {
+      "type": "object",
+      "required": [
+        "name",
+        "local"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^nextstat_[a-z0-9_]+$"
+        },
+        "local": {
+          "$ref": "#/$defs/local_transport"
+        },
+        "server": {
+          "$ref": "#/$defs/server_transport"
+        },
+        "strict_result_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "golden_cases": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": {
+            "type": "string",
+            "minLength": 1
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/golden_case"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

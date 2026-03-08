@@ -50,9 +50,15 @@ def main() -> int:
                     help="Comma-separated backends")
     ap.add_argument("--seeds", default="42", help="Comma-separated seeds")
     ap.add_argument("--n-chains", type=int, default=4)
-    ap.add_argument("--warmup", type=int, default=1000)
+    ap.add_argument("--warmup", type=int, default=3500)
     ap.add_argument("--samples", type=int, default=2000)
-    ap.add_argument("--target-accept", type=float, default=0.9)
+    ap.add_argument("--target-accept", type=float, default=0.985)
+    ap.add_argument(
+        "--dataset-seed",
+        type=int,
+        default=None,
+        help="Optional fixed dataset seed for generated fixtures such as glm_logistic (default: use sampler seed).",
+    )
     ap.add_argument("--deterministic", action="store_true")
     ap.add_argument(
         "--run-timeout-s",
@@ -136,6 +142,7 @@ def main() -> int:
                 "n_warmup": int(args.warmup),
                 "n_samples": int(args.samples),
                 "seed": int(seed),
+                "dataset_seed": int(args.dataset_seed) if args.dataset_seed is not None else int(seed),
                 "target_accept": float(args.target_accept),
             },
             "timing": {"wall_time_s": 0.0},
@@ -160,6 +167,8 @@ def main() -> int:
                     "--seed", str(seed),
                     "--target-accept", str(args.target_accept),
                 ]
+                if args.dataset_seed is not None:
+                    cmd.extend(["--dataset-seed", str(int(args.dataset_seed))])
                 if args.deterministic:
                     cmd.append("--deterministic")
 
@@ -366,6 +375,7 @@ def main() -> int:
             "n_warmup": args.warmup,
             "n_samples": args.samples,
             "target_accept": args.target_accept,
+            "dataset_seed": int(args.dataset_seed) if args.dataset_seed is not None else None,
             "seeds": seeds,
             "backends": backends,
             "smoke": bool(args.smoke),

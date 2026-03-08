@@ -65,9 +65,17 @@ class ExecCfg:
 
 
 class ToolRunner:
-    def __init__(self, *, transport: str, server_url: Optional[str], exec_cfg: ExecCfg):
+    def __init__(
+        self,
+        *,
+        transport: str,
+        server_url: Optional[str],
+        api_key: Optional[str],
+        exec_cfg: ExecCfg,
+    ):
         self.transport = transport
         self.server_url = server_url
+        self.api_key = api_key
         self.exec_cfg = exec_cfg
         self.calls: list[dict[str, Any]] = []
         self._idx = 0
@@ -90,6 +98,7 @@ class ToolRunner:
             args,
             transport=t,
             server_url=self.server_url,
+            api_key=self.api_key,
             fallback_to_local=False,
         )
         self.calls.append(
@@ -296,6 +305,12 @@ def main() -> int:
     ap.add_argument("--out-dir", default="demos/physics_assistant/out/demo", help="Output directory.")
     ap.add_argument("--transport", choices=["local", "server"], default="local")
     ap.add_argument("--server-url", default=os.environ.get("NEXTSTAT_SERVER_URL"))
+    ap.add_argument(
+        "--api-key",
+        default=os.environ.get("NEXTSTAT_SERVER_API_KEY") or os.environ.get("NEXTSTAT_TOOLS_API_KEY"),
+        help="Bearer token for auth-enabled server mode. "
+        "If omitted, NEXTSTAT_SERVER_API_KEY / NEXTSTAT_TOOLS_API_KEY are checked.",
+    )
 
     ap.add_argument("--root-path", default="tests/fixtures/trex_exports/tttt-prod/data.root")
     ap.add_argument("--channel", default="SR_AllBDT", help="TREx export channel name (used in hist prefix).")
@@ -314,7 +329,12 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     exec_cfg = ExecCfg(deterministic=bool(args.deterministic), eval_mode="parity", threads=1)
-    tool = ToolRunner(transport=str(args.transport), server_url=args.server_url, exec_cfg=exec_cfg)
+    tool = ToolRunner(
+        transport=str(args.transport),
+        server_url=args.server_url,
+        api_key=args.api_key,
+        exec_cfg=exec_cfg,
+    )
 
     # List base keys via uproot (read-only; ingestion still uses nextstat_read_root_histogram).
     try:

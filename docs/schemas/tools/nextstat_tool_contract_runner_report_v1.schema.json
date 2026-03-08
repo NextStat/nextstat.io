@@ -1,0 +1,366 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/tools/nextstat_tool_contract_runner_report_v1.schema.json",
+  "title": "NextStat Tool Contract Runner Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "mode",
+    "dry_run",
+    "status",
+    "overall_pass",
+    "repo_root",
+    "python_executable",
+    "started_at",
+    "finished_at",
+    "duration_s",
+    "step_count",
+    "failed_step_index",
+    "failed_step_label",
+    "performance",
+    "steps"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.tool_contract_runner_report.v1"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "fast",
+        "live",
+        "all"
+      ]
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "passed",
+        "failed"
+      ]
+    },
+    "overall_pass": {
+      "type": "boolean"
+    },
+    "repo_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "python_executable": {
+      "type": "string",
+      "minLength": 1
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duration_s": {
+      "type": "number",
+      "minimum": 0
+    },
+    "step_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "failed_step_index": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
+    },
+    "failed_step_label": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1
+    },
+    "performance": {
+      "$ref": "#/$defs/performance"
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step_result"
+      }
+    }
+  },
+  "$defs": {
+    "step_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "label",
+        "argv",
+        "command",
+        "env_overrides",
+        "status",
+        "returncode",
+        "started_at",
+        "finished_at",
+        "duration_s"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "env_overrides": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "planned",
+            "passed",
+            "failed"
+          ]
+        },
+        "returncode": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "started_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "finished_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "duration_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "stdout_tail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stderr_tail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "budget_status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "within_budget",
+        "exceeded",
+        "not_available"
+      ]
+    },
+    "runner_step_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "description",
+        "max_duration_s",
+        "actual_duration_s",
+        "status"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "max_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "actual_duration_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "status": {
+          "$ref": "#/$defs/budget_status"
+        }
+      }
+    },
+    "live_metric_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "description",
+        "max_duration_s",
+        "actual_duration_s",
+        "status"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "max_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "actual_duration_s": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "status": {
+          "$ref": "#/$defs/budget_status"
+        }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "budget_manifest_path",
+        "budget_schema_path",
+        "budget_schema_version",
+        "runner_budget",
+        "live_metrics_budget"
+      ],
+      "properties": {
+        "budget_manifest_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "budget_schema_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "budget_schema_version": {
+          "const": "nextstat.tool_contract_performance_budget.v1"
+        },
+        "runner_budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "status",
+            "max_total_duration_s",
+            "actual_total_duration_s",
+            "step_budgets"
+          ],
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "fast",
+                "live",
+                "all"
+              ]
+            },
+            "status": {
+              "$ref": "#/$defs/budget_status"
+            },
+            "max_total_duration_s": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "actual_total_duration_s": {
+              "type": "number",
+              "minimum": 0
+            },
+            "step_budgets": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/runner_step_budget"
+              }
+            }
+          }
+        },
+        "live_metrics_budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "metrics_path",
+            "missing_metrics",
+            "metrics"
+          ],
+          "properties": {
+            "status": {
+              "$ref": "#/$defs/budget_status"
+            },
+            "metrics_path": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1
+            },
+            "missing_metrics": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "metrics": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/live_metric_budget"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

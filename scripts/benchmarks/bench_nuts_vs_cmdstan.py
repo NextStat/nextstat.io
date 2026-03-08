@@ -26,14 +26,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import platform
 import statistics
-import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -45,32 +41,29 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import numpy as np
 
+from _bayesian_nextstat_bench import (
+    BenchResult,
+    DATASET_SEED,
+    DEFAULT_SEEDS,
+    _assert_nextstat_harness_contract,
+    _ns_available,
+    collect_environment,
+    gen_eight_schools_data,
+    gen_glm_logistic_data,
+    max_rhat,
+    median_wall,
+    min_ess_per_sec,
+    run_nextstat_eight_schools,
+    run_nextstat_glm_logistic,
+    run_nextstat_std_normal,
+)
+
 
 # ── Configuration ──────────────────────────────────────────────────────
 
 N_CHAINS = 4
 N_WARMUP = 1000
 N_SAMPLES = 1000
-DEFAULT_SEEDS = [42, 123, 777]
-DATASET_SEED = 12345
-
-
-# ── Data classes ───────────────────────────────────────────────────────
-
-@dataclass
-class BenchResult:
-    model: str
-    engine: str
-    seed: int
-    wall_secs: float
-    ess_bulk: dict[str, float] = field(default_factory=dict)
-    ess_tail: dict[str, float] = field(default_factory=dict)
-    r_hat: dict[str, float] = field(default_factory=dict)
-    divergence_rate: float = 0.0
-    ebfmi: list[float] = field(default_factory=list)
-    metric_type: str = "diagonal"
-
-
 # ── Stan model code ───────────────────────────────────────────────────
 
 STAN_STD_NORMAL = """
@@ -126,33 +119,6 @@ model {
   y ~ bernoulli_logit(alpha + X * beta);
 }
 """
-
-
-# ── Data generation ────────────────────────────────────────────────────
-
-def gen_eight_schools_data() -> dict:
-    """Rubin (1981) Eight Schools dataset."""
-    return {
-        "J": 8,
-        "y": [28.0, 8.0, -3.0, 7.0, -1.0, 1.0, 18.0, 12.0],
-        "sigma": [15.0, 10.0, 16.0, 11.0, 9.0, 11.0, 10.0, 18.0],
-    }
-
-
-def gen_glm_logistic_data(n: int = 1000, p: int = 10, seed: int = DATASET_SEED) -> dict:
-    rng = np.random.default_rng(seed)
-    beta_true = rng.normal(0, 1, size=p)
-    alpha_true = 0.5
-    X = rng.normal(0, 1, size=(n, p))
-    logits = alpha_true + X @ beta_true
-    prob = 1.0 / (1.0 + np.exp(-logits))
-    y = rng.binomial(1, prob).tolist()
-    return {
-        "N": n,
-        "P": p,
-        "X": X.tolist(),
-        "y": y,
-    }
 
 
 # ── CmdStan runner ────────────────────────────────────────────────────
@@ -257,157 +223,7 @@ def run_cmdstan(
     )
 
 
-# ── NextStat runner ───────────────────────────────────────────────────
-
-def _ns_available() -> bool:
-    try:
-        import nextstat
-        return hasattr(nextstat, "sample")
-    except ImportError:
-        return False
-
-
-def _assert_nextstat_harness_contract() -> None:
-    """Fail fast when running against stale/mismatched nextstat bindings."""
-    try:
-        import nextstat  # type: ignore
-    except ImportError as exc:
-        raise RuntimeError("nextstat import failed; build/install local ns-py first") from exc
-
-    if not hasattr(nextstat, "sample"):
-        raise RuntimeError("nextstat.sample not found; API mismatch")
-    if not hasattr(nextstat, "Posterior"):
-        raise RuntimeError("nextstat.Posterior not found; API mismatch")
-
-
-def run_nextstat_std_normal(seed: int, dim: int = 10, metric: str = "auto") -> BenchResult:
-    import nextstat
-
-    model = nextstat.StdNormalModel(dim=dim)
-    t0 = time.perf_counter()
-    result = nextstat.sample(
-        model,
-        n_chains=N_CHAINS,
-        n_warmup=N_WARMUP,
-        n_samples=N_SAMPLES,
-        seed=seed,
-        metric=metric,
-    )
-    wall_secs = time.perf_counter() - t0
-
-    return _ns_result_to_bench("std_normal_10d", seed, wall_secs, result, metric)
-
-
-def run_nextstat_eight_schools(seed: int, metric: str = "auto") -> BenchResult:
-    import nextstat
-
-    data = gen_eight_schools_data()
-    model = nextstat.EightSchoolsModel(
-        y=data["y"],
-        sigma=data["sigma"],
-    )
-    t0 = time.perf_counter()
-    result = nextstat.sample(
-        model,
-        n_chains=N_CHAINS,
-        n_warmup=N_WARMUP,
-        n_samples=N_SAMPLES,
-        seed=seed,
-        metric=metric,
-    )
-    wall_secs = time.perf_counter() - t0
-
-    return _ns_result_to_bench("eight_schools", seed, wall_secs, result, metric)
-
-
-def run_nextstat_glm_logistic(
-    seed: int,
-    n: int = 1000,
-    p: int = 10,
-    metric: str = "auto",
-) -> BenchResult:
-    import nextstat
-
-    data = gen_glm_logistic_data(n=n, p=p)
-    model = nextstat.LogisticRegressionModel(
-        x=data["X"],
-        y=data["y"],
-    )
-    # Match Stan priors exactly:
-    # alpha ~ Normal(0, 5), beta_j ~ Normal(0, 2.5)
-    posterior = nextstat.Posterior(model)
-    posterior.set_prior_normal("intercept", 0.0, 5.0)
-    for j in range(p):
-        posterior.set_prior_normal(f"beta{j + 1}", 0.0, 2.5)
-
-    t0 = time.perf_counter()
-    result = nextstat.sample(
-        posterior,
-        n_chains=N_CHAINS,
-        n_warmup=N_WARMUP,
-        n_samples=N_SAMPLES,
-        seed=seed,
-        metric=metric,
-    )
-    wall_secs = time.perf_counter() - t0
-
-    return _ns_result_to_bench("glm_logistic", seed, wall_secs, result, metric)
-
-
-def _ns_result_to_bench(
-    model_name: str,
-    seed: int,
-    wall_secs: float,
-    result: dict,
-    metric: str,
-) -> BenchResult:
-    diag = result.get("diagnostics", {})
-    sample_stats = result.get("sample_stats", {})
-
-    ess_bulk = diag.get("ess_bulk", {})
-    ess_tail = diag.get("ess_tail", {})
-    r_hat = diag.get("r_hat", {})
-    div_rate = diag.get("divergence_rate", 0.0)
-    ebfmi = diag.get("ebfmi", [])
-    mt = sample_stats.get("metric_type", metric)
-
-    return BenchResult(
-        model=model_name,
-        engine="nextstat",
-        seed=seed,
-        wall_secs=wall_secs,
-        ess_bulk=ess_bulk,
-        ess_tail=ess_tail,
-        r_hat=r_hat,
-        divergence_rate=div_rate,
-        ebfmi=ebfmi,
-        metric_type=mt,
-    )
-
-
 # ── Aggregate & report ────────────────────────────────────────────────
-
-def min_ess_per_sec(results: list[BenchResult], ess_key: str = "ess_bulk") -> float:
-    """Minimum ESS/s across parameters and seeds (median over seeds)."""
-    per_seed: list[float] = []
-    for r in results:
-        ess_dict = getattr(r, ess_key, {})
-        if not ess_dict or r.wall_secs <= 0:
-            continue
-        min_ess = min(ess_dict.values())
-        per_seed.append(min_ess / r.wall_secs)
-    return statistics.median(per_seed) if per_seed else 0.0
-
-
-def max_rhat(results: list[BenchResult]) -> float:
-    rhs = [max(r.r_hat.values()) for r in results if r.r_hat]
-    return statistics.median(rhs) if rhs else float("nan")
-
-
-def median_wall(results: list[BenchResult]) -> float:
-    vals = [r.wall_secs for r in results if r.wall_secs > 0]
-    return statistics.median(vals) if vals else 0.0
-
 
 def format_table(ns_results: dict, stan_results: dict, models: list[str]) -> str:
     """Format markdown comparison table."""
@@ -430,79 +246,6 @@ def format_table(ns_results: dict, stan_results: dict, models: list[str]) -> str
             f"| {ns_rhat:.4f} | {stan_rhat:.4f} | {ns_div:.1f}% | {stan_div:.1f}% |"
         )
     return "\n".join(lines)
-
-
-def _safe_git_rev() -> str | None:
-    try:
-        out = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"],
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-        return out or None
-    except Exception:
-        return None
-
-
-def collect_environment(metric: str, glm_n: int, glm_p: int, seeds: list[int]) -> dict[str, Any]:
-    meta: dict[str, Any] = {
-        "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "python": sys.version.replace("\n", " "),
-        "platform": {
-            "system": platform.system(),
-            "release": platform.release(),
-            "version": platform.version(),
-            "machine": platform.machine(),
-            "processor": platform.processor(),
-        },
-        "git_commit": _safe_git_rev(),
-        "benchmark_config": {
-            "models": ["std_normal_10d", "eight_schools", "glm_logistic"],
-            "seeds": seeds,
-            "n_chains": N_CHAINS,
-            "n_warmup": N_WARMUP,
-            "n_samples": N_SAMPLES,
-            "dataset_seed": DATASET_SEED,
-            "metric": metric,
-            "glm_n": glm_n,
-            "glm_p": glm_p,
-        },
-        "target_density_parity": {
-            "std_normal_10d": "Exact match",
-            "eight_schools": "Non-centered in both engines; mu~N(0,5), tau~HalfCauchy(0,5), theta_raw~N(0,1)",
-            "glm_logistic": "alpha~N(0,5), beta_j~N(0,2.5) in both engines",
-        },
-        "thread_env": {
-            k: os.environ.get(k)
-            for k in [
-                "OMP_NUM_THREADS",
-                "OPENBLAS_NUM_THREADS",
-                "MKL_NUM_THREADS",
-                "VECLIB_MAXIMUM_THREADS",
-                "NUMEXPR_NUM_THREADS",
-                "RAYON_NUM_THREADS",
-            ]
-        },
-    }
-
-    try:
-        import nextstat  # type: ignore
-        meta["nextstat_version"] = getattr(nextstat, "__version__", None)
-        meta["nextstat_module"] = getattr(nextstat, "__file__", None)
-    except Exception:
-        meta["nextstat_version"] = None
-        meta["nextstat_module"] = None
-
-    try:
-        from cmdstanpy import cmdstan_path  # type: ignore
-        cpath = cmdstan_path()
-        meta["cmdstan"] = {"path": cpath}
-    except Exception:
-        meta["cmdstan"] = None
-
-    return meta
-
-
 # ── Main ──────────────────────────────────────────────────────────────
 
 def main():
@@ -563,13 +306,25 @@ def main():
             print(f"[ns] version={getattr(nextstat, '__version__', 'unknown')}")
             for seed in seeds:
                 print(f"[ns] std_normal_10d seed={seed} ...", end=" ", flush=True)
-                r = run_nextstat_std_normal(seed, metric=args.metric)
+                r = run_nextstat_std_normal(
+                    seed,
+                    metric=args.metric,
+                    n_chains=args.n_chains,
+                    n_warmup=args.n_warmup,
+                    n_samples=args.n_samples,
+                )
                 ns_by_model["std_normal_10d"].append(r)
                 all_results.append(r.__dict__)
                 print(f"{r.wall_secs:.2f}s")
 
                 print(f"[ns] eight_schools seed={seed} ...", end=" ", flush=True)
-                r = run_nextstat_eight_schools(seed, metric=args.metric)
+                r = run_nextstat_eight_schools(
+                    seed,
+                    metric=args.metric,
+                    n_chains=args.n_chains,
+                    n_warmup=args.n_warmup,
+                    n_samples=args.n_samples,
+                )
                 ns_by_model["eight_schools"].append(r)
                 all_results.append(r.__dict__)
                 print(f"{r.wall_secs:.2f}s")
@@ -580,6 +335,9 @@ def main():
                     n=args.glm_n,
                     p=args.glm_p,
                     metric=args.metric,
+                    n_chains=args.n_chains,
+                    n_warmup=args.n_warmup,
+                    n_samples=args.n_samples,
                 )
                 ns_by_model["glm_logistic"].append(r)
                 all_results.append(r.__dict__)
@@ -613,7 +371,23 @@ def main():
             print(f"{r.wall_secs:.2f}s")
 
     # ── Save JSON artifact ──
-    metadata = collect_environment(args.metric, args.glm_n, args.glm_p, seeds)
+    metadata = collect_environment(
+        args.metric,
+        args.glm_n,
+        args.glm_p,
+        seeds,
+        models=models,
+        methods=["nuts"],
+        n_chains=args.n_chains,
+        n_warmup=args.n_warmup,
+        n_samples=args.n_samples,
+    )
+    try:
+        from cmdstanpy import cmdstan_path  # type: ignore
+
+        metadata["cmdstan"] = {"path": cmdstan_path()}
+    except Exception:
+        metadata["cmdstan"] = None
     summary = {}
     for m in models:
         ns = ns_by_model.get(m, [])

@@ -21,6 +21,8 @@ pub struct Chain {
     pub energies: Vec<f64>,
     /// Number of leapfrog steps per draw.
     pub n_leapfrog: Vec<usize>,
+    /// Total number of leapfrog steps spent during warmup for this chain.
+    pub n_leapfrog_warmup_total: usize,
     /// Configured maximum tree depth for this chain (for diagnostics).
     pub max_treedepth: usize,
     /// Final adapted step size.

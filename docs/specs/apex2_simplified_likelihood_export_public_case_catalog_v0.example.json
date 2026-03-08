@@ -1,0 +1,188 @@
+{
+  "schema_version": "nextstat_simplified_likelihood_export_public_case_catalog_v0",
+  "stability": "apex2",
+  "cases": [
+    {
+      "case_id": "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
+      "title": "ATLAS-style dual-SR plus dual-control-region Gaussian export stable example",
+      "case_kind": "public_reinterpretation_style",
+      "experiment": "ATLAS",
+      "analysis_id": "atlas.public.dual_sr_dual_cr_gaussian.export.stable.example",
+      "source_workspace_format": "pyhf",
+      "source_workspace_schema_version": "pyhf_workspace_v1",
+      "poi_name": "mu",
+      "workspace_json_path": "tests/fixtures/atlas_public_dual_sr_dual_cr_gaussian_workspace.json",
+      "reference": "https://nextstat.io/examples/atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
+      "selection": {
+        "channels": ["SRLow", "SRHigh", "CRTop", "CRZ"],
+        "bins": [
+          "SRLow/bin0",
+          "SRLow/bin1",
+          "SRHigh/bin0",
+          "SRHigh/bin1",
+          "CRTop/bin0",
+          "CRZ/bin0"
+        ]
+      },
+      "output_uncertainty_model": "basis",
+      "basis_method": "eigen",
+      "explained_variance_target": 0.99999,
+      "constraint_covariance_source": "source_model_constraints",
+      "split_stat_covariance": true,
+      "notes": "Curated ATLAS-style exporter evidence case with dual signal regions and two dedicated control regions, restricted to Gaussian-constrained source nuisances so it expands topology coverage without widening the promoted stable exporter boundary."
+    },
+    {
+      "case_id": "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+      "title": "ATLAS-style dual-SR plus validation-region and dual-control-region Gaussian export stable example",
+      "case_kind": "public_reinterpretation_style",
+      "experiment": "ATLAS",
+      "analysis_id": "atlas.public.dual_sr_vr_dual_cr_gaussian.export.stable.example",
+      "source_workspace_format": "pyhf",
+      "source_workspace_schema_version": "pyhf_workspace_v1",
+      "poi_name": "mu",
+      "workspace_json_path": "tests/fixtures/atlas_public_dual_sr_vr_dual_cr_gaussian_workspace.json",
+      "reference": "https://nextstat.io/examples/atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+      "selection": {
+        "channels": ["SRLow", "SRHigh", "VRMix", "CRTop", "CRZ"],
+        "bins": [
+          "SRLow/bin0",
+          "SRLow/bin1",
+          "SRHigh/bin0",
+          "SRHigh/bin1",
+          "VRMix/bin0",
+          "CRTop/bin0",
+          "CRZ/bin0"
+        ]
+      },
+      "output_uncertainty_model": "basis",
+      "basis_method": "eigen",
+      "explained_variance_target": 0.999,
+      "constraint_covariance_source": "source_model_constraints",
+      "split_stat_covariance": true,
+      "notes": "Curated ATLAS-style exporter evidence case with dual signal regions, a mixed-background validation region, and two dedicated control regions, restricted to Gaussian-constrained source nuisances so it adds topology coverage without widening the promoted stable exporter boundary."
+    },
+    {
+      "case_id": "atlas_public_sr_cr_gaussian_export_stable_example",
+      "title": "ATLAS-style SR plus dual control-region Gaussian export stable example",
+      "case_kind": "public_reinterpretation_style",
+      "experiment": "ATLAS",
+      "analysis_id": "atlas.public.sr_cr_gaussian.export.stable.example",
+      "source_workspace_format": "pyhf",
+      "source_workspace_schema_version": "pyhf_workspace_v1",
+      "poi_name": "mu",
+      "workspace_json_path": "tests/fixtures/atlas_public_sr_cr_gaussian_workspace.json",
+      "reference": "https://nextstat.io/examples/atlas_public_sr_cr_gaussian_export_stable_example",
+      "selection": {
+        "channels": ["SR", "CRTop", "CRZ"],
+        "bins": ["SR/bin0", "SR/bin1", "CRTop/bin0", "CRZ/bin0"]
+      },
+      "output_uncertainty_model": "basis",
+      "basis_method": "eigen",
+      "explained_variance_target": 0.999,
+      "constraint_covariance_source": "source_model_constraints",
+      "split_stat_covariance": true,
+      "notes": "Curated ATLAS-style exporter evidence case with one signal region and two control regions, using only Gaussian-constrained source nuisances so the public validation surface stays inside the promoted stable exporter boundary."
+    },
+    {
+      "case_id": "cms_public_sr_cr_export_stable_example",
+      "title": "CMS-style SR+CR public export stable example",
+      "case_kind": "public_reinterpretation_style",
+      "experiment": "CMS",
+      "analysis_id": "cms.public.sr_cr.export.stable.example",
+      "source_workspace_format": "pyhf",
+      "source_workspace_schema_version": "pyhf_workspace_v1",
+      "poi_name": "mu",
+      "workspace_json_path": "tests/fixtures/cms_public_sr_cr_gaussian_workspace.json",
+      "reference": "https://nextstat.io/examples/cms_public_sr_cr_export_stable_example",
+      "selection": {
+        "channels": ["SR", "CR"],
+        "bins": ["SR/bin0", "SR/bin1", "CR/bin0", "CR/bin1"]
+      },
+      "output_uncertainty_model": "basis",
+      "basis_method": "eigen",
+      "explained_variance_target": 0.999,
+      "constraint_covariance_source": "source_model_constraints",
+      "split_stat_covariance": true,
+      "notes": "Curated public-style export case with a realistic signal-plus-control-region workspace while keeping the public validation surface inside the promoted stable exporter boundary and preserving fidelity on nextstat-bench."
+    },
+    {
+      "case_id": "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+      "title": "CMS-style asymmetric SR+CR Gaussian export stable example",
+      "case_kind": "public_reinterpretation_style",
+      "experiment": "CMS",
+      "analysis_id": "cms.public.sr_cr_asymmetric_gaussian.export.stable.example",
+      "source_workspace_format": "pyhf",
+      "source_workspace_schema_version": "pyhf_workspace_v1",
+      "poi_name": "mu",
+      "workspace_json_path": "tests/fixtures/cms_public_sr_cr_asymmetric_gaussian_workspace.json",
+      "reference": "https://nextstat.io/examples/cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+      "selection": {
+        "channels": ["SR", "CR"],
+        "bins": ["SR/bin0", "SR/bin1", "CR/bin0", "CR/bin1"]
+      },
+      "output_uncertainty_model": "basis",
+      "basis_method": "eigen",
+      "explained_variance_target": 0.999,
+      "constraint_covariance_source": "source_model_constraints",
+      "split_stat_covariance": true,
+      "notes": "Curated CMS-style exporter evidence case with asymmetric SR and control-region yields, restricted to Gaussian-constrained source nuisances so it adds a second public CMS SR+CR benchmark lane without widening the promoted stable exporter boundary."
+    },
+    {
+      "case_id": "cms_public_dual_sr_cr_gaussian_export_stable_example",
+      "title": "CMS-style dual-SR plus shared control-region Gaussian export stable example",
+      "case_kind": "public_reinterpretation_style",
+      "experiment": "CMS",
+      "analysis_id": "cms.public.dual_sr_cr_gaussian.export.stable.example",
+      "source_workspace_format": "pyhf",
+      "source_workspace_schema_version": "pyhf_workspace_v1",
+      "poi_name": "mu",
+      "workspace_json_path": "tests/fixtures/cms_public_dual_sr_cr_gaussian_workspace.json",
+      "reference": "https://nextstat.io/examples/cms_public_dual_sr_cr_gaussian_export_stable_example",
+      "selection": {
+        "channels": ["SRLow", "SRHigh", "CRTop"],
+        "bins": [
+          "SRLow/bin0",
+          "SRLow/bin1",
+          "SRHigh/bin0",
+          "SRHigh/bin1",
+          "CRTop/bin0"
+        ]
+      },
+      "output_uncertainty_model": "basis",
+      "basis_method": "eigen",
+      "explained_variance_target": 0.999,
+      "constraint_covariance_source": "source_model_constraints",
+      "split_stat_covariance": true,
+      "notes": "Curated CMS-style exporter evidence case with dual signal regions and a shared control region, restricted to Gaussian-constrained source nuisances so the public validation lane adds new topology coverage without widening the promoted stable exporter boundary."
+    },
+    {
+      "case_id": "cms_public_dual_sr_vr_cr_gaussian_export_stable_example",
+      "title": "CMS-style dual-SR plus validation-region and shared control-region Gaussian export stable example",
+      "case_kind": "public_reinterpretation_style",
+      "experiment": "CMS",
+      "analysis_id": "cms.public.dual_sr_vr_cr_gaussian.export.stable.example",
+      "source_workspace_format": "pyhf",
+      "source_workspace_schema_version": "pyhf_workspace_v1",
+      "poi_name": "mu",
+      "workspace_json_path": "tests/fixtures/cms_public_dual_sr_vr_cr_gaussian_workspace.json",
+      "reference": "https://nextstat.io/examples/cms_public_dual_sr_vr_cr_gaussian_export_stable_example",
+      "selection": {
+        "channels": ["SRLow", "SRHigh", "VRMix", "CRTop"],
+        "bins": [
+          "SRLow/bin0",
+          "SRLow/bin1",
+          "SRHigh/bin0",
+          "SRHigh/bin1",
+          "VRMix/bin0",
+          "CRTop/bin0"
+        ]
+      },
+      "output_uncertainty_model": "basis",
+      "basis_method": "eigen",
+      "explained_variance_target": 0.999,
+      "constraint_covariance_source": "source_model_constraints",
+      "split_stat_covariance": true,
+      "notes": "Curated CMS-style exporter evidence case with dual signal regions, a mixed-background validation region, and a shared control region, restricted to Gaussian-constrained source nuisances so it adds a seventh public topology without widening the promoted stable exporter boundary."
+    }
+  ]
+}

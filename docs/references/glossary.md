@@ -118,6 +118,8 @@ Terms are grouped by domain; general-purpose terms appear first.
 | **HistoSys** | A shape systematic: the bin contents are interpolated between up/down templates as a function of α. |
 | **Ranking plot** | Shows the impact of each nuisance parameter on the POI by comparing fits with that parameter fixed vs free. |
 | **TRExFitter** | A HEP analysis framework for HistFactory-based fits. NextStat can import TRExFitter `.config` files. |
+| **Ghost sample** | A TRExFitter sample with `Type: GHOST` that provides an anchor point for template morphing. Ghost samples are not included in the fit directly; their histograms define the polynomial that replaces the signal nominal. |
+| **TemplateMorphing** | A modifier that replaces a sample's nominal yields with a per-bin polynomial in the POI. Built automatically from TRExFitter ghost samples via Lagrange interpolation. |
 | **RooFit** | ROOT's statistical modeling toolkit. NextStat validates unbinned fits against RooFit as a reference. |
 | **HS3** | HEP Statistics Serialization Standard — a JSON schema for exchanging statistical models between frameworks. |
 

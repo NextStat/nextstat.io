@@ -35,7 +35,10 @@
           "min_ess_bulk": { "type": ["number", "null"], "minimum": 0 },
           "min_ess_tail": { "type": ["number", "null"], "minimum": 0 },
           "max_r_hat": { "type": ["number", "null"], "minimum": 0 },
-          "min_ess_bulk_per_sec": { "type": ["number", "null"], "minimum": 0 }
+          "min_ess_bulk_per_sec": { "type": ["number", "null"], "minimum": 0 },
+          "n_grad_evals": { "type": ["integer", "null"], "minimum": 0 },
+          "ess_per_grad": { "type": ["number", "null"], "minimum": 0 },
+          "grad_per_sec": { "type": ["number", "null"], "minimum": 0 }
         }
       }
     },
