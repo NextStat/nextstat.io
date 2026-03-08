@@ -1,0 +1,69 @@
+{
+  "case_name": "churn_ingest_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_churn_ingest": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_churn_ingest"
+      },
+      "ok": true,
+      "result": {
+        "covariate_names": [
+          "usage_score",
+          "plan_pro"
+        ],
+        "covariates": [
+          [
+            0.2,
+            1.0
+          ],
+          [
+            0.3,
+            0.0
+          ],
+          [
+            0.8,
+            1.0
+          ],
+          [
+            0.5,
+            0.0
+          ]
+        ],
+        "events": [
+          true,
+          false,
+          false,
+          false
+        ],
+        "groups": [
+          0,
+          0,
+          1,
+          1
+        ],
+        "n": 4,
+        "n_dropped": 0,
+        "n_events": 1,
+        "times": [
+          30.0,
+          45.0,
+          60.0,
+          12.0
+        ],
+        "treated": [
+          0,
+          1,
+          0,
+          1
+        ],
+        "warnings": []
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

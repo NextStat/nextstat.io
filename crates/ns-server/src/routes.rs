@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
+use axum::extract::rejection::JsonRejection;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
@@ -98,7 +99,7 @@ impl GpuSelector {
 /// Request body for `/v1/fit`.
 #[derive(Debug, Deserialize)]
 struct FitRequest {
-    /// pyhf or HS3 workspace JSON (the full object, not a string).
+    /// pyhf, HS3, or simplified-likelihood workspace JSON (the full object, not a string).
     /// Can be omitted if `model_id` is provided.
     workspace: Option<serde_json::Value>,
 
@@ -516,7 +517,7 @@ async fn nlme_fit_handler(
 /// Request body for `/v1/ranking`.
 #[derive(Debug, Deserialize)]
 struct RankingRequest {
-    /// pyhf or HS3 workspace JSON. Can be omitted if `model_id` is provided.
+    /// pyhf, HS3, or simplified-likelihood workspace JSON. Can be omitted if `model_id` is provided.
     workspace: Option<serde_json::Value>,
 
     /// Cached model ID (SHA-256 hash).
@@ -630,7 +631,7 @@ async fn ranking_handler(
 /// Request body for `/v1/batch/fit`.
 #[derive(Debug, Deserialize)]
 struct BatchFitRequest {
-    /// Array of pyhf/HS3 workspace JSON objects.
+    /// Array of pyhf, HS3, or simplified-likelihood workspace JSON objects.
     workspaces: Vec<serde_json::Value>,
 
     /// Use GPU if available (default: true). On GPU, fits run sequentially;
@@ -787,7 +788,7 @@ fn fit_one_workspace(
 /// Request body for `/v1/batch/toys`.
 #[derive(Debug, Deserialize)]
 struct BatchToysRequest {
-    /// pyhf or HS3 workspace JSON.
+    /// pyhf, HS3, or simplified-likelihood workspace JSON.
     workspace: serde_json::Value,
 
     /// Parameters to generate toys at (e.g., best-fit or Asimov). If omitted,
@@ -1242,8 +1243,10 @@ async fn tools_schema_handler() -> Json<serde_json::Value> {
 
 async fn tools_execute_handler(
     State(state): State<SharedState>,
-    Json(req): Json<ToolExecuteRequest>,
-) -> Json<ToolResultEnvelope> {
+    req: Result<Json<ToolExecuteRequest>, JsonRejection>,
+) -> Result<Json<ToolResultEnvelope>, AppError> {
+    let Json(req) = req.map_err(tool_execute_json_rejection)?;
+
     state.inflight.fetch_add(1, Ordering::Relaxed);
     let _dec = DecrementOnDrop(&state.inflight);
     state.total_requests.fetch_add(1, Ordering::Relaxed);
@@ -1273,7 +1276,15 @@ async fn tools_execute_handler(
         ToolResultEnvelope::err("unknown", meta, "Panic", "server task panicked".to_string())
     });
 
-    Json(out)
+    Ok(Json(out))
+}
+
+fn tool_execute_json_rejection(err: JsonRejection) -> AppError {
+    let message = err.body_text();
+    match err {
+        JsonRejection::MissingJsonContentType(_) => AppError::unsupported_media_type(message),
+        _ => AppError::bad_request(message),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1303,13 +1314,22 @@ fn resolve_model(
     }
 }
 
-/// Load a HistFactoryModel from a JSON string (auto-detects HS3 vs pyhf).
+/// Load a HistFactoryModel from a JSON string (auto-detects HS3, pyhf, or simplified likelihood).
 fn load_model(json_str: &str) -> Result<ns_translate::pyhf::HistFactoryModel, AppError> {
     let format = ns_translate::hs3::detect::detect_format(json_str);
     match format {
         ns_translate::hs3::detect::WorkspaceFormat::Hs3 => {
             ns_translate::hs3::convert::from_hs3_default(json_str)
                 .map_err(|e| AppError::bad_request(format!("HS3 parse error: {e}")))
+        }
+        ns_translate::hs3::detect::WorkspaceFormat::SimplifiedLikelihood => {
+            let spec: ns_translate::simplified::schema::SimplifiedLikelihoodWorkspace =
+                serde_json::from_str(json_str).map_err(|e| {
+                    AppError::bad_request(format!("simplified-likelihood JSON parse error: {e}"))
+                })?;
+            ns_translate::simplified::convert::simplified_to_model(&spec).map_err(|e| {
+                AppError::bad_request(format!("simplified-likelihood build error: {e}"))
+            })
         }
         ns_translate::hs3::detect::WorkspaceFormat::Pyhf
         | ns_translate::hs3::detect::WorkspaceFormat::Unknown => {
@@ -1335,6 +1355,10 @@ struct AppError {
 impl AppError {
     fn bad_request(msg: String) -> Self {
         Self { status: StatusCode::BAD_REQUEST, message: msg }
+    }
+
+    fn unsupported_media_type(msg: String) -> Self {
+        Self { status: StatusCode::UNSUPPORTED_MEDIA_TYPE, message: msg }
     }
 
     fn internal(msg: String) -> Self {
@@ -1436,6 +1460,34 @@ mod tests {
         (status, val)
     }
 
+    async fn post_raw_json(
+        app: Router<()>,
+        uri: &str,
+        body: &str,
+    ) -> (StatusCode, serde_json::Value) {
+        post_raw_body(app, uri, body, "application/json").await
+    }
+
+    async fn post_raw_body(
+        app: Router<()>,
+        uri: &str,
+        body: &str,
+        content_type: &str,
+    ) -> (StatusCode, serde_json::Value) {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(uri)
+            .header("content-type", content_type)
+            .body(Body::from(body.as_bytes().to_vec()))
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let val: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({}));
+        (status, val)
+    }
+
     async fn get_json(app: Router<()>, uri: &str) -> (StatusCode, serde_json::Value) {
         let req = Request::builder().method(Method::GET).uri(uri).body(Body::empty()).unwrap();
         let resp = app.oneshot(req).await.unwrap();
@@ -1456,6 +1508,27 @@ mod tests {
             .uri(uri)
             .header("authorization", format!("Bearer {token}"))
             .body(Body::empty())
+            .unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+        let val: serde_json::Value =
+            serde_json::from_slice(&bytes).unwrap_or(serde_json::json!({}));
+        (status, val)
+    }
+
+    async fn post_json_with_bearer(
+        app: Router<()>,
+        uri: &str,
+        body: serde_json::Value,
+        token: &str,
+    ) -> (StatusCode, serde_json::Value) {
+        let req = Request::builder()
+            .method(Method::POST)
+            .uri(uri)
+            .header("content-type", "application/json")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
             .unwrap();
         let resp = app.oneshot(req).await.unwrap();
         let status = resp.status();
@@ -1486,6 +1559,14 @@ mod tests {
         assert!(!req.gpu.should_use_gpu(true, Some("metal")).unwrap());
     }
 
+    #[test]
+    fn fit_request_accepts_model_id_without_workspace() {
+        let req: FitRequest =
+            serde_json::from_value(serde_json::json!({"model_id": "sha256:abc"})).unwrap();
+        assert!(req.workspace.is_none());
+        assert_eq!(req.model_id.as_deref(), Some("sha256:abc"));
+    }
+
     // --- Health ---
 
     #[tokio::test]
@@ -1509,6 +1590,291 @@ mod tests {
         assert!(body["paths"]["/v1/unbinned/fit"].is_object());
         assert!(body["paths"]["/v1/nlme/fit"].is_object());
         assert!(body["paths"]["/v1/jobs/submit"].is_object());
+    }
+
+    #[tokio::test]
+    async fn openapi_fit_request_matches_workspace_or_model_id_contract() {
+        let (status, body) = get_json(test_app(), "/v1/openapi.json").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let fit_request = body
+            .pointer("/components/schemas/FitRequest")
+            .and_then(|value| value.as_object())
+            .expect("FitRequest schema must exist");
+        assert!(
+            !fit_request.contains_key("required"),
+            "FitRequest must not require workspace unconditionally"
+        );
+
+        let any_of = fit_request
+            .get("anyOf")
+            .and_then(|value| value.as_array())
+            .expect("FitRequest must declare anyOf workspace/model_id");
+        assert_eq!(any_of.len(), 2);
+        assert_eq!(any_of[0]["required"][0], "workspace");
+        assert_eq!(any_of[1]["required"][0], "model_id");
+    }
+
+    #[tokio::test]
+    async fn openapi_tool_schema_response_includes_capabilities_contract() {
+        let (status, body) = get_json(test_app(), "/v1/openapi.json").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let tool_schema = body
+            .pointer("/components/schemas/ToolSchemaResponse")
+            .and_then(|value| value.as_object())
+            .expect("ToolSchemaResponse schema must exist");
+        let required = tool_schema
+            .get("required")
+            .and_then(|value| value.as_array())
+            .expect("ToolSchemaResponse.required must exist");
+        for field in ["schema_version", "transport", "tools", "capabilities", "guidance"] {
+            assert!(
+                required.iter().any(|value| value.as_str() == Some(field)),
+                "ToolSchemaResponse must require {field}"
+            );
+        }
+
+        let response_schema = body
+            .pointer("/paths/~1v1~1tools~1schema/get/responses/200/content/application~1json/schema/$ref")
+            .and_then(|value| value.as_str())
+            .expect("/v1/tools/schema must reference a response schema");
+        assert_eq!(response_schema, "#/components/schemas/ToolSchemaResponse");
+    }
+
+    #[tokio::test]
+    async fn openapi_tool_execute_path_references_envelope_contract() {
+        let (status, body) = get_json(test_app(), "/v1/openapi.json").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let request_schema = body
+            .pointer("/components/schemas/ToolExecuteRequest")
+            .and_then(|value| value.as_object())
+            .expect("ToolExecuteRequest schema must exist");
+        let request_required = request_schema
+            .get("required")
+            .and_then(|value| value.as_array())
+            .expect("ToolExecuteRequest.required must exist");
+        for field in ["name", "arguments"] {
+            assert!(
+                request_required.iter().any(|value| value.as_str() == Some(field)),
+                "ToolExecuteRequest must require {field}"
+            );
+        }
+
+        let envelope_schema = body
+            .pointer("/components/schemas/ToolResultEnvelope")
+            .and_then(|value| value.as_object())
+            .expect("ToolResultEnvelope schema must exist");
+        let envelope_required = envelope_schema
+            .get("required")
+            .and_then(|value| value.as_array())
+            .expect("ToolResultEnvelope.required must exist");
+        for field in ["schema_version", "ok", "result", "error", "meta"] {
+            assert!(
+                envelope_required.iter().any(|value| value.as_str() == Some(field)),
+                "ToolResultEnvelope must require {field}"
+            );
+        }
+
+        let request_ref = body
+            .pointer(
+                "/paths/~1v1~1tools~1execute/post/requestBody/content/application~1json/schema/$ref",
+            )
+            .and_then(|value| value.as_str())
+            .expect("/v1/tools/execute must reference a request schema");
+        assert_eq!(request_ref, "#/components/schemas/ToolExecuteRequest");
+
+        let response_ref = body
+            .pointer("/paths/~1v1~1tools~1execute/post/responses/200/content/application~1json/schema/$ref")
+            .and_then(|value| value.as_str())
+            .expect("/v1/tools/execute must reference a response schema");
+        assert_eq!(response_ref, "#/components/schemas/ToolResultEnvelope");
+
+        let unauthorized_ref = body
+            .pointer("/paths/~1v1~1tools~1execute/post/responses/401/content/application~1json/schema/$ref")
+            .and_then(|value| value.as_str())
+            .expect("/v1/tools/execute must document 401");
+        assert_eq!(unauthorized_ref, "#/components/schemas/Error");
+
+        let bad_request_ref = body
+            .pointer("/paths/~1v1~1tools~1execute/post/responses/400/content/application~1json/schema/$ref")
+            .and_then(|value| value.as_str())
+            .expect("/v1/tools/execute must document 400");
+        assert_eq!(bad_request_ref, "#/components/schemas/Error");
+
+        let unsupported_media_type_ref = body
+            .pointer("/paths/~1v1~1tools~1execute/post/responses/415/content/application~1json/schema/$ref")
+            .and_then(|value| value.as_str())
+            .expect("/v1/tools/execute must document 415");
+        assert_eq!(unsupported_media_type_ref, "#/components/schemas/Error");
+
+        let rate_limit_ref = body
+            .pointer("/paths/~1v1~1tools~1execute/post/responses/429/content/application~1json/schema/$ref")
+            .and_then(|value| value.as_str())
+            .expect("/v1/tools/execute must document 429");
+        assert_eq!(rate_limit_ref, "#/components/schemas/RateLimitError");
+    }
+
+    #[tokio::test]
+    async fn openapi_tool_discovery_routes_document_operational_guards() {
+        let (status, body) = get_json(test_app(), "/v1/openapi.json").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let tools_schema_401 = body
+            .pointer("/paths/~1v1~1tools~1schema/get/responses/401/content/application~1json/schema/$ref")
+            .and_then(|value| value.as_str())
+            .expect("/v1/tools/schema must document 401");
+        assert_eq!(tools_schema_401, "#/components/schemas/Error");
+
+        let tools_schema_429 = body
+            .pointer("/paths/~1v1~1tools~1schema/get/responses/429/content/application~1json/schema/$ref")
+            .and_then(|value| value.as_str())
+            .expect("/v1/tools/schema must document 429");
+        assert_eq!(tools_schema_429, "#/components/schemas/RateLimitError");
+
+        let openapi_security = body
+            .pointer("/paths/~1v1~1openapi.json/get/security")
+            .and_then(|value| value.as_array());
+        assert!(
+            !matches!(openapi_security, Some(entries) if entries.is_empty()),
+            "/v1/openapi.json must inherit global bearer auth instead of opting out"
+        );
+
+        let openapi_401 = body
+            .pointer(
+                "/paths/~1v1~1openapi.json/get/responses/401/content/application~1json/schema/$ref",
+            )
+            .and_then(|value| value.as_str())
+            .expect("/v1/openapi.json must document 401");
+        assert_eq!(openapi_401, "#/components/schemas/Error");
+
+        let openapi_429 = body
+            .pointer(
+                "/paths/~1v1~1openapi.json/get/responses/429/content/application~1json/schema/$ref",
+            )
+            .and_then(|value| value.as_str())
+            .expect("/v1/openapi.json must document 429");
+        assert_eq!(openapi_429, "#/components/schemas/RateLimitError");
+    }
+
+    #[tokio::test]
+    async fn tools_schema_route_exposes_capability_metadata() {
+        let (status, body) = get_json(test_app(), "/v1/tools/schema").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["schema_version"], "nextstat.tool_schema.v1");
+        assert_eq!(body["transport"], "server");
+
+        let tools = body["tools"].as_array().expect("tools must be an array");
+        let capabilities = body["capabilities"].as_array().expect("capabilities must be an array");
+        let guidance = body["guidance"].as_object().expect("guidance must be an object");
+        assert!(!tools.is_empty());
+        assert!(capabilities.len() >= tools.len());
+        assert!(
+            guidance["hints"].as_array().is_some_and(|items| !items.is_empty()),
+            "guidance.hints must be a non-empty array"
+        );
+        assert!(
+            guidance["recipes"].as_array().is_some_and(|items| !items.is_empty()),
+            "guidance.recipes must be a non-empty array"
+        );
+        assert!(
+            guidance["recipes"]
+                .as_array()
+                .expect("guidance.recipes must be an array")
+                .iter()
+                .all(|recipe| recipe["transport"] == "server"),
+            "server discovery guidance must contain only server recipes"
+        );
+
+        let root_hist = capabilities
+            .iter()
+            .find(|entry| entry["name"] == "nextstat_read_root_histogram")
+            .expect("capabilities must include nextstat_read_root_histogram");
+        assert_eq!(root_hist["local_available"], true);
+        assert_eq!(root_hist["server_available"], true);
+        assert_eq!(root_hist["server_policy"]["availability"], "exposed");
+        assert_eq!(root_hist["server_policy"]["reason_code"], "server_safe_subset");
+    }
+
+    #[tokio::test]
+    async fn tools_schema_route_matches_example_fixture() {
+        let (status, body) = get_json(test_app(), "/v1/tools/schema").await;
+        assert_eq!(status, StatusCode::OK);
+
+        let example: serde_json::Value = serde_json::from_str(include_str!(
+            "../../../docs/specs/nextstat_tool_schema_server_v1.example.json"
+        ))
+        .expect("server tool schema example must parse");
+
+        assert_eq!(body, example, "live /v1/tools/schema drifted from example fixture");
+    }
+
+    #[tokio::test]
+    async fn tools_execute_route_returns_error_envelope_for_unknown_tool() {
+        let (status, body) = post_json(
+            test_app(),
+            "/v1/tools/execute",
+            serde_json::json!({
+                "name": "nextstat_not_a_real_tool",
+                "arguments": {}
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["schema_version"], "nextstat.tool_result.v1");
+        assert_eq!(body["ok"], false);
+        assert_eq!(body["meta"]["tool_name"], "nextstat_not_a_real_tool");
+        assert_eq!(body["error"]["type"], "ToolError");
+        assert!(body["error"]["message"].as_str().unwrap().contains("Unknown tool"));
+    }
+
+    #[tokio::test]
+    async fn tools_execute_route_rejects_malformed_json_body() {
+        let (status, body) = post_raw_json(test_app(), "/v1/tools/execute", "{\"name\":").await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(
+            body["error"].as_str().unwrap().contains("Failed to parse the request body as JSON")
+        );
+    }
+
+    #[tokio::test]
+    async fn tools_execute_route_rejects_missing_name_field() {
+        let (status, body) = post_json(
+            test_app(),
+            "/v1/tools/execute",
+            serde_json::json!({
+                "arguments": {}
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        let msg = body["error"].as_str().unwrap();
+        assert!(msg.contains("Failed to deserialize the JSON body into the target type"));
+        assert!(msg.contains("missing field"));
+        assert!(msg.contains("name"));
+    }
+
+    #[tokio::test]
+    async fn tools_execute_route_rejects_non_json_content_type_with_415() {
+        let (status, body) = post_raw_body(
+            test_app(),
+            "/v1/tools/execute",
+            r#"{"name":"nextstat_not_a_real_tool","arguments":{}}"#,
+            "text/plain",
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+        let msg = body["error"].as_str().unwrap();
+        assert!(msg.contains("Content-Type"));
+        assert!(msg.contains("application/json"));
+    }
+
+    #[test]
+    fn load_model_accepts_simplified_likelihood_workspace() {
+        let json = include_str!("../../../tests/fixtures/sl_basis_two_bin.json");
+        let model = load_model(json).expect("simplified-likelihood fixture should load");
+        assert_eq!(model.parameters().len(), 2, "expected POI plus reduced nuisance");
     }
 
     // --- NLME / PK ---
@@ -1690,6 +2056,85 @@ mod tests {
         assert_eq!(body["openapi"], "3.1.0");
     }
 
+    #[tokio::test]
+    async fn auth_rejects_missing_token_for_tools_schema() {
+        let keys: std::collections::HashSet<String> = ["secret-key".to_string()].into();
+        let (status, body) = get_json(test_app_with_auth(keys), "/v1/tools/schema").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(body["error"].as_str().unwrap().contains("missing"));
+    }
+
+    #[tokio::test]
+    async fn auth_rejects_bad_token_for_tools_schema() {
+        let keys: std::collections::HashSet<String> = ["secret-key".to_string()].into();
+        let (status, body) =
+            get_json_with_bearer(test_app_with_auth(keys), "/v1/tools/schema", "wrong-key").await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(body["error"].as_str().unwrap().contains("invalid"));
+    }
+
+    #[tokio::test]
+    async fn auth_accepts_valid_token_for_tools_schema() {
+        let keys: std::collections::HashSet<String> = ["secret-key".to_string()].into();
+        let (status, body) =
+            get_json_with_bearer(test_app_with_auth(keys), "/v1/tools/schema", "secret-key").await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["schema_version"], "nextstat.tool_schema.v1");
+        assert_eq!(body["transport"], "server");
+    }
+
+    #[tokio::test]
+    async fn auth_rejects_missing_token_for_tools_execute() {
+        let keys: std::collections::HashSet<String> = ["secret-key".to_string()].into();
+        let (status, body) = post_json(
+            test_app_with_auth(keys),
+            "/v1/tools/execute",
+            serde_json::json!({
+                "name": "nextstat_workspace_audit",
+                "arguments": { "workspace_json": include_str!("../../../tests/fixtures/simple_workspace.json") }
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(body["error"].as_str().unwrap().contains("missing"));
+    }
+
+    #[tokio::test]
+    async fn auth_rejects_bad_token_for_tools_execute() {
+        let keys: std::collections::HashSet<String> = ["secret-key".to_string()].into();
+        let (status, body) = post_json_with_bearer(
+            test_app_with_auth(keys),
+            "/v1/tools/execute",
+            serde_json::json!({
+                "name": "nextstat_workspace_audit",
+                "arguments": { "workspace_json": include_str!("../../../tests/fixtures/simple_workspace.json") }
+            }),
+            "wrong-key",
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED);
+        assert!(body["error"].as_str().unwrap().contains("invalid"));
+    }
+
+    #[tokio::test]
+    async fn auth_accepts_valid_token_for_tools_execute() {
+        let keys: std::collections::HashSet<String> = ["secret-key".to_string()].into();
+        let (status, body) = post_json_with_bearer(
+            test_app_with_auth(keys),
+            "/v1/tools/execute",
+            serde_json::json!({
+                "name": "nextstat_workspace_audit",
+                "arguments": { "workspace_json": include_str!("../../../tests/fixtures/simple_workspace.json") }
+            }),
+            "secret-key",
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body["schema_version"], "nextstat.tool_result.v1");
+        assert_eq!(body["ok"], true);
+        assert_eq!(body["meta"]["tool_name"], "nextstat_workspace_audit");
+    }
+
     // --- Rate limiting integration ---
 
     #[tokio::test]
@@ -1714,5 +2159,33 @@ mod tests {
         let (s2, body) = get_json(app, "/v1/health").await;
         assert_eq!(s2, StatusCode::OK);
         assert_eq!(body["status"], "ok");
+    }
+
+    #[tokio::test]
+    async fn rate_limit_blocks_tools_schema_after_budget() {
+        let app = test_app_with_rate_limit(2);
+        let (s1, _) = get_json(app.clone(), "/v1/tools/schema").await;
+        assert_eq!(s1, StatusCode::OK);
+        let (s2, _) = get_json(app.clone(), "/v1/tools/schema").await;
+        assert_eq!(s2, StatusCode::OK);
+        let (s3, body) = get_json(app, "/v1/tools/schema").await;
+        assert_eq!(s3, StatusCode::TOO_MANY_REQUESTS);
+        assert!(body["error"].as_str().unwrap().contains("rate limit"));
+    }
+
+    #[tokio::test]
+    async fn rate_limit_blocks_tools_execute_after_budget() {
+        let app = test_app_with_rate_limit(2);
+        let body = serde_json::json!({
+            "name": "nextstat_not_a_real_tool",
+            "arguments": {}
+        });
+        let (s1, _) = post_json(app.clone(), "/v1/tools/execute", body.clone()).await;
+        assert_eq!(s1, StatusCode::OK);
+        let (s2, _) = post_json(app.clone(), "/v1/tools/execute", body.clone()).await;
+        assert_eq!(s2, StatusCode::OK);
+        let (s3, body) = post_json(app, "/v1/tools/execute", body).await;
+        assert_eq!(s3, StatusCode::TOO_MANY_REQUESTS);
+        assert!(body["error"].as_str().unwrap().contains("rate limit"));
     }
 }

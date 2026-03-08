@@ -1,0 +1,82 @@
+{
+  "aggregate": {
+    "max_calibration_mean_sigma_star_to_sigma_ratio": 1.1413389897265351,
+    "max_fit_sigma_ratio_to_baseline": 457.6276341964417,
+    "n_calibration_neutral_scenarios": 1,
+    "n_scenarios": 3,
+    "near_neutral_calibration_scenarios": [
+      "theory_core_0p5"
+    ]
+  },
+  "baseline_mu_hat": 172.5129258744907,
+  "baseline_sigma": 0.3288481480456227,
+  "ci_level": 0.68,
+  "dominant_calibration_scenario": "jes_family_0p5",
+  "dominant_fit_scenario": "theory_core_0p5",
+  "poi": "m_top",
+  "scenarios": [
+    {
+      "bartlett_improves_mean_q_fraction": 0.0,
+      "calibration_mean_sigma_star_to_sigma_ratio_center": 1.0013270333919873,
+      "calibration_mean_sigma_star_to_sigma_ratio_span": 1.096276114331829e-8,
+      "calibration_min_sigma_star_ge_sigma_fraction": 1.0,
+      "calibration_rank_by_sigma_ratio": 2,
+      "fit_interval_width_ratio_to_baseline": 1.5666791009501655,
+      "fit_rank_by_sigma": 3,
+      "fit_sigma_delta_from_baseline": 0.5579963823999099,
+      "fit_sigma_ratio_to_baseline": 1.55799638239991,
+      "label": "secondary:bjes_0p5",
+      "n_assignments": 1,
+      "name": "bjes_0p5",
+      "supported_systematics": [
+        "b-JES"
+      ]
+    },
+    {
+      "bartlett_improves_mean_q_fraction": 1.0,
+      "calibration_mean_sigma_star_to_sigma_ratio_center": 1.0000000084976666,
+      "calibration_mean_sigma_star_to_sigma_ratio_span": 2.967870393888461e-11,
+      "calibration_min_sigma_star_ge_sigma_fraction": 0.375,
+      "calibration_rank_by_sigma_ratio": 3,
+      "fit_interval_width_ratio_to_baseline": 460.17799438561383,
+      "fit_rank_by_sigma": 1,
+      "fit_sigma_delta_from_baseline": 456.6276341964417,
+      "fit_sigma_ratio_to_baseline": 457.6276341964417,
+      "label": "dominant-fit",
+      "n_assignments": 4,
+      "name": "theory_core_0p5",
+      "supported_systematics": [
+        "b-JES",
+        "QCD radiation",
+        "Hadronization",
+        "Color reconnection"
+      ]
+    },
+    {
+      "bartlett_improves_mean_q_fraction": 0.0,
+      "calibration_mean_sigma_star_to_sigma_ratio_center": 1.1410068937692488,
+      "calibration_mean_sigma_star_to_sigma_ratio_span": 0.0006641919145728981,
+      "calibration_min_sigma_star_ge_sigma_fraction": 0.625,
+      "calibration_rank_by_sigma_ratio": 1,
+      "fit_interval_width_ratio_to_baseline": 9.56309244580615,
+      "fit_rank_by_sigma": 2,
+      "fit_sigma_delta_from_baseline": 8.510092670595863,
+      "fit_sigma_ratio_to_baseline": 9.510092670595863,
+      "label": "dominant-calibration",
+      "n_assignments": 7,
+      "name": "jes_family_0p5",
+      "supported_systematics": [
+        "JES 1",
+        "JES 2",
+        "JES 3",
+        "b-JES",
+        "g-JES",
+        "l-JES",
+        "CMS JES 1"
+      ]
+    }
+  ],
+  "schema_version": "nextstat_measurement_combination_calibration_campaign_summary_v0",
+  "source_schema_version": "nextstat_measurement_combination_calibration_campaign_v0",
+  "stability": "research-grade"
+}

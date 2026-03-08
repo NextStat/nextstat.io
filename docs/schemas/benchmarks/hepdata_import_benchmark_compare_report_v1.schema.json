@@ -1,0 +1,533 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/hepdata_import_benchmark_compare_report_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HEPData Import Benchmark Compare Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "status",
+    "ok",
+    "requires_review",
+    "baseline_path",
+    "current_path",
+    "policy",
+    "artifacts",
+    "environment_checks",
+    "summary",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.hepdata_import_benchmark_compare_report.v1"
+    },
+    "suite": {
+      "const": "hepdata_import"
+    },
+    "status": {
+      "enum": [
+        "passed",
+        "review",
+        "failed"
+      ]
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "requires_review": {
+      "type": "boolean"
+    },
+    "baseline_path": {
+      "type": "string"
+    },
+    "current_path": {
+      "type": "string"
+    },
+    "policy": {
+      "$ref": "#/$defs/policy"
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline",
+        "current"
+      ],
+      "properties": {
+        "baseline": {
+          "$ref": "#/$defs/artifact"
+        },
+        "current": {
+          "$ref": "#/$defs/artifact"
+        }
+      }
+    },
+    "environment_checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host_policy",
+        "non_smoke",
+        "case_set"
+      ],
+      "properties": {
+        "host_policy": {
+          "$ref": "#/$defs/check"
+        },
+        "non_smoke": {
+          "$ref": "#/$defs/check"
+        },
+        "case_set": {
+          "$ref": "#/$defs/case_set"
+        }
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/case_report"
+      }
+    }
+  },
+  "$defs": {
+    "number_or_null": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema_version",
+        "suite",
+        "deterministic",
+        "host_policy",
+        "node",
+        "smoke",
+        "fit_enabled",
+        "repeat",
+        "fit_repeat",
+        "case_ids"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suite": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "host_policy": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "node": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "smoke": {
+          "type": "boolean"
+        },
+        "fit_enabled": {
+          "type": "boolean"
+        },
+        "repeat": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "fit_repeat": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "baseline",
+        "current",
+        "matches"
+      ],
+      "properties": {
+        "required": {},
+        "baseline": {},
+        "current": {},
+        "matches": {
+          "type": "boolean"
+        }
+      }
+    },
+    "case_set": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "baseline",
+        "current",
+        "matches"
+      ],
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "baseline": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "current": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "matches": {
+          "type": "boolean"
+        }
+      }
+    },
+    "policy_threshold": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "review_ratio",
+        "min_baseline_s"
+      ],
+      "properties": {
+        "review_ratio": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fail_ratio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "min_baseline_s": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "required_host_policy",
+        "require_non_smoke",
+        "case_ids",
+        "import_total_s",
+        "fit_s",
+        "stage_metrics"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "nextstat.hepdata_import_benchmark_compare_policy.v1"
+        },
+        "required_host_policy": {
+          "type": "string"
+        },
+        "require_non_smoke": {
+          "type": "boolean"
+        },
+        "case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "import_total_s": {
+          "$ref": "#/$defs/policy_threshold"
+        },
+        "fit_s": {
+          "$ref": "#/$defs/policy_threshold"
+        },
+        "stage_metrics": {
+          "$ref": "#/$defs/policy_threshold"
+        }
+      }
+    },
+    "metric_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "status",
+        "baseline_s",
+        "current_s",
+        "ratio",
+        "review_ratio",
+        "fail_ratio",
+        "min_baseline_s",
+        "reasons"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "review",
+            "failed",
+            "skipped_floor",
+            "not_applicable"
+          ]
+        },
+        "baseline_s": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "current_s": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "ratio": {
+          "$ref": "#/$defs/number_or_null"
+        },
+        "review_ratio": {
+          "type": "number",
+          "minimum": 0
+        },
+        "fail_ratio": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "min_baseline_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "field_compare": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline",
+        "current",
+        "matches"
+      ],
+      "properties": {
+        "baseline": {},
+        "current": {},
+        "matches": {
+          "type": "boolean"
+        }
+      }
+    },
+    "case_side": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "timing",
+        "stages"
+      ],
+      "properties": {
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timing": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "stages": {
+          "type": [
+            "object",
+            "null"
+          ]
+        }
+      }
+    },
+    "case_reasons": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "errors",
+        "warnings"
+      ],
+      "properties": {
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "case_report": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "status",
+        "ok",
+        "requires_review",
+        "reasons",
+        "identity",
+        "baseline",
+        "current",
+        "metrics"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "review",
+            "failed"
+          ]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "requires_review": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "$ref": "#/$defs/case_reasons"
+        },
+        "identity": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/field_compare"
+          }
+        },
+        "baseline": {
+          "$ref": "#/$defs/case_side"
+        },
+        "current": {
+          "$ref": "#/$defs/case_side"
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metric_report"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "passed_cases",
+        "review_cases",
+        "failed_cases",
+        "metric_count",
+        "passed_metrics",
+        "review_metrics",
+        "failed_metrics",
+        "skipped_metrics",
+        "top_level_errors"
+      ],
+      "properties": {
+        "passed_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "review_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_cases": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "metric_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed_metrics": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "review_metrics": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_metrics": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped_metrics": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "top_level_errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

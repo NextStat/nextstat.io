@@ -107,9 +107,26 @@ pub enum Modifier {
         data: Option<serde_json::Value>,
     },
 
+    /// Template morphing — per-bin polynomial in a POI (TRExFitter ghost samples).
+    #[serde(rename = "template_morphing")]
+    TemplateMorphing {
+        /// Modifier name (parameter name, e.g. "Ytsq").
+        name: String,
+        /// Per-bin polynomial coefficients: `coefficients[bin][power]`.
+        /// `morphed_nominal[b] = Σ_k coefficients[b][k] * poi^k`
+        data: TemplateMorphingData,
+    },
+
     /// Unrecognized modifier type — preserved for diagnostics / audit.
     #[serde(untagged)]
     Unknown(serde_json::Value),
+}
+
+/// Data payload for template morphing modifier.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TemplateMorphingData {
+    /// Per-bin polynomial coefficients: `coefficients[bin][power]`.
+    pub coefficients: Vec<Vec<f64>>,
 }
 
 /// normsys data (hi/lo factors)
@@ -215,7 +232,8 @@ impl Modifier {
             | Modifier::ShapeSys { name, .. }
             | Modifier::ShapeFactor { name, .. }
             | Modifier::StatError { name, .. }
-            | Modifier::Lumi { name, .. } => name,
+            | Modifier::Lumi { name, .. }
+            | Modifier::TemplateMorphing { name, .. } => name,
             Modifier::Unknown(val) => val.get("name").and_then(|n| n.as_str()).unwrap_or("unknown"),
         }
     }
@@ -230,6 +248,7 @@ impl Modifier {
             Modifier::ShapeFactor { .. } => "shapefactor",
             Modifier::StatError { .. } => "staterror",
             Modifier::Lumi { .. } => "lumi",
+            Modifier::TemplateMorphing { .. } => "template_morphing",
             Modifier::Unknown(_) => "unknown",
         }
     }
@@ -408,6 +427,10 @@ impl Workspace {
                 Modifier::Lumi { name, data } => {
                     Modifier::Lumi { name: rename_str(name, modifiers), data: data.clone() }
                 }
+                Modifier::TemplateMorphing { name, data } => Modifier::TemplateMorphing {
+                    name: rename_str(name, modifiers),
+                    data: data.clone(),
+                },
                 Modifier::Unknown(val) => Modifier::Unknown(val.clone()),
             }
         };

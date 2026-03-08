@@ -1,0 +1,46 @@
+{
+  "accepted_bundle_dir": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted",
+  "accepted_snapshot_index_path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/snapshot_index.json",
+  "actions": {
+    "accepted_snapshot_index_path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/snapshot_index.json",
+    "accepted_snapshot_index_written": true,
+    "accepted_updated": true,
+    "archived_previous_accepted": true,
+    "archived_previous_accepted_path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/history/accepted_previous_previous",
+    "archived_promoted_bundle": true,
+    "archived_promoted_bundle_path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/history/accepted_exporter-20260311T170606Z-public-floor-six-refresh2_promoted"
+  },
+  "benchmark_artifact_source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
+  "dry_run": false,
+  "generated_at_utc": "1970-01-01T00:00:00Z",
+  "history_dir": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/history",
+  "promoted": true,
+  "schema_version": "nextstat_simplified_likelihood_exporter_promotion_bundle_promotion_report_v0",
+  "source_bundle_check_path": "/private/tmp/nextstat_sl_exporter_public_expand6_bundle_refresh2/promotion_evidence_check.json",
+  "source_bundle_dir": "/private/tmp/nextstat_sl_exporter_public_expand6_bundle_refresh2",
+  "source_bundle_json_path": "/private/tmp/nextstat_sl_exporter_public_expand6_bundle_refresh2/promotion_evidence.json",
+  "source_bundle_summary": {
+    "artifact_count": 28,
+    "benchmark_host": "nextstat-bench",
+    "required_artifact_count": 28,
+    "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_bundle_v0",
+    "status": "ok",
+    "support_class": "research-grade",
+    "supports_committed_snapshot": true,
+    "supports_future_stable_review": true
+  },
+  "source_check_summary": {
+    "actual_benchmark_host": "nextstat-bench",
+    "actual_min_net_end_to_end_upper_limit_speedup": 2.0581999472135606,
+    "ok": true,
+    "require_promotion_ready": true,
+    "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_check_v0",
+    "status": "passed",
+    "top_level_errors": []
+  },
+  "status": "promoted",
+  "summary": {
+    "top_level_errors": []
+  },
+  "surface": "simplified_likelihood_exporter"
+}

@@ -1,0 +1,57 @@
+{
+  "schema_version": "nextstat_normal_normal_design_v0",
+  "design_id": "continuous_superiority_demo",
+  "control_prior": {
+    "mean": 0.0,
+    "sd": 10.0
+  },
+  "treatment_prior": {
+    "mean": 0.0,
+    "sd": 10.0
+  },
+  "likelihood": {
+    "known_sd_control": 1.0,
+    "known_sd_treatment": 1.0
+  },
+  "looks": [
+    {
+      "id": "interim",
+      "n_control": 10,
+      "n_treatment": 10
+    },
+    {
+      "id": "final",
+      "n_control": 20,
+      "n_treatment": 20
+    }
+  ],
+  "decision_rules": {
+    "success": {
+      "posterior_probability_threshold": 0.975,
+      "treatment_effect_margin": 0.0
+    },
+    "futility": {
+      "posterior_probability_threshold": 0.1,
+      "treatment_effect_margin": 0.0
+    }
+  },
+  "analysis": {
+    "credible_interval_level": 0.95
+  },
+  "simulation": {
+    "n_replicates": 32,
+    "seed": 456,
+    "scenarios": [
+      {
+        "id": "null",
+        "mean_control": 0.0,
+        "mean_treatment": 0.0
+      },
+      {
+        "id": "alt",
+        "mean_control": 0.0,
+        "mean_treatment": 0.75
+      }
+    ]
+  }
+}

@@ -16,7 +16,8 @@ set -euo pipefail
 #   - APEX2_ALLOW_DIRTY: set to 1 to skip git-clean check
 #   - APEX2_SKIP_CARGO: set to 1 to skip cargo build/test
 #   - APEX2_SKIP_PYTEST: set to 1 to skip pytest
-#   - APEX2_SKIP_MATURIN: set to 1 to skip `maturin develop --release`
+#   - APEX2_SKIP_MATURIN: set to 1 to skip local wheelhouse build+install (dev/debug only;
+#       NOT a valid canonical prerelease path — compiled nextstat must come from wheelhouse)
 #   - APEX2_PYTEST_MARKER: pytest -m expression (default: "not slow")
 #   - APEX2_PYTEST_PATHS: space-separated paths (default: "tests/python")
 #   - APEX2_PYTEST_EXTRA_ARGS: extra pytest args (default: empty)
@@ -55,6 +56,14 @@ trex_manifest="tmp/baselines/latest_trex_analysis_spec_manifest.json"
 trex_report="tmp/trex_analysis_spec_compare_report.json"
 root_manifest="tmp/baselines/latest_root_manifest.json"
 root_report="tmp/root_suite_compare_report.json"
+surface_report="tmp/release_surface_matrix_report.json"
+surface_report_md="tmp/release_surface_matrix_report.md"
+release_manifest="tmp/release_manifest.json"
+release_manifest_md="tmp/release_manifest.md"
+release_candidate_bundle_dir="tmp/release_candidate_bundle"
+release_dry_run_dir="tmp/release_full_fidelity_simulation"
+release_dry_run_report="tmp/release_full_fidelity_simulation_report.json"
+release_dry_run_report_md="tmp/release_full_fidelity_simulation_report.md"
 
 if [[ "${allow_dirty}" != "1" ]]; then
   if command -v git >/dev/null 2>&1; then
@@ -66,11 +75,54 @@ if [[ "${allow_dirty}" != "1" ]]; then
   fi
 fi
 
+echo "Validating release surface matrix..."
+PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.release_surface_matrix \
+  --check \
+  --out-json "${surface_report}" \
+  --out-md "${surface_report_md}"
+echo "OK. Release surface report: ${surface_report}"
+echo "OK. Release surface summary: ${surface_report_md}"
+echo
+
+version="$(grep '^version' Cargo.toml | head -1 | sed 's/.*\"\(.*\)\"/\1/')"
+release_tag="v${version}"
+echo "Rendering release manifest..."
+PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.release_manifest \
+  --release-tag "${release_tag}" \
+  --mode prepare \
+  --out-json "${release_manifest}" \
+  --out-md "${release_manifest_md}"
+echo "OK. Release manifest: ${release_manifest}"
+echo "OK. Release manifest summary: ${release_manifest_md}"
+echo
+
+echo "Running local full-fidelity release simulation..."
+PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.release_full_fidelity_simulation \
+  --release-tag "${release_tag}" \
+  --mode prepare \
+  --out-dir "${release_dry_run_dir}" \
+  --out-json "${release_dry_run_report}" \
+  --out-md "${release_dry_run_report_md}"
+echo "OK. Release dry-run report: ${release_dry_run_report}"
+echo "OK. Release dry-run summary: ${release_dry_run_report_md}"
+echo
+
 if [[ "${skip_cargo}" != "1" ]]; then
   if ! command -v cargo >/dev/null 2>&1; then
     echo "Missing cargo in PATH; set APEX2_SKIP_CARGO=1 to skip." >&2
     exit 6
   fi
+
+  # ── CI-parity: cargo fmt (catches formatting drift before CI) ──
+  echo "Running cargo fmt --all --check..."
+  cargo fmt --all --check
+  echo
+
+  # ── CI-parity: clippy -D warnings (exact same flags as release-candidate.yml) ──
+  echo "Running cargo clippy --workspace --all-targets -- -D warnings..."
+  cargo clippy --workspace --all-targets -- -D warnings
+  echo
+
   echo "Running cargo build (${cargo_build_args})..."
   cargo build ${cargo_build_args}
   echo
@@ -84,11 +136,39 @@ if [[ "${skip_maturin}" != "1" ]]; then
     echo "Missing ./.venv/bin/maturin; set APEX2_SKIP_MATURIN=1 to skip." >&2
     exit 7
   fi
-  echo "Rebuilding Python bindings (maturin develop --release)..."
-  # Build in an isolated target dir to avoid contention with other cargo builds (and
-  # to be resilient if `target/release` is cleaned mid-run in local dev workflows).
-  (cd bindings/ns-py && CARGO_TARGET_DIR="${repo_root}/tmp/cargo_target_maturin" ../../.venv/bin/maturin develop --release)
+
+  # ── Local wheelhouse install (no PyPI dependency) ────────────────────────
+  # Pre-release runs BEFORE packages are published to PyPI, so we cannot
+  # rely on `maturin develop` resolving `nextstat-cli==X.Y.Z` from the index.
+  # Instead: build both wheels locally → install from a local wheelhouse
+  # with --no-index.  This keeps pyproject.toml metadata honest while making
+  # the gate fully offline-capable.
+  wheelhouse="${repo_root}/tmp/wheelhouse"
+  rm -rf "${wheelhouse}"
+  mkdir -p "${wheelhouse}"
+
+  echo "Building nextstat-cli wheel (bindings/ns-cli-py)..."
+  (cd bindings/ns-cli-py && \
+    CARGO_TARGET_DIR="${repo_root}/tmp/cargo_target_maturin" \
+    ../../.venv/bin/maturin build --release -o "${wheelhouse}")
   echo
+
+  echo "Building nextstat wheel (bindings/ns-py)..."
+  (cd bindings/ns-py && \
+    CARGO_TARGET_DIR="${repo_root}/tmp/cargo_target_maturin" \
+    ../../.venv/bin/maturin build --release -o "${wheelhouse}")
+  echo
+
+  echo "Installing from local wheelhouse (--no-index, no PyPI)..."
+  "${py}" -m pip install --force-reinstall --no-deps --no-index \
+    --find-links "${wheelhouse}" \
+    "nextstat-cli==${version}" "nextstat==${version}"
+  echo
+
+  # After local install, nextstat + _core.so live in venv site-packages.
+  # Clear py_path so PYTHONPATH does NOT shadow the installed package with
+  # the source-only wrapper at bindings/ns-py/python/.
+  py_path=""
 fi
 
 if [[ "${skip_pytest}" != "1" ]]; then
@@ -216,3 +296,18 @@ if [[ "${skip_root_suite}" != "1" ]]; then
   echo "OK. ROOT suite report: ${root_report}"
   echo "OK. ROOT suite perf:   ${root_perf_report}"
 fi
+
+echo
+echo "Building release candidate bundle..."
+PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.release_candidate_bundle \
+  --release-tag "${release_tag}" \
+  --mode prepare \
+  --surface-report-json "${surface_report}" \
+  --surface-report-md "${surface_report_md}" \
+  --release-manifest-json "${release_manifest}" \
+  --release-manifest-md "${release_manifest_md}" \
+  --baseline-report-json "${report}" \
+  --trex-report-json "${trex_report}" \
+  --root-report-json "${root_report}" \
+  --out-dir "${release_candidate_bundle_dir}"
+echo "OK. Release candidate bundle: ${release_candidate_bundle_dir}"

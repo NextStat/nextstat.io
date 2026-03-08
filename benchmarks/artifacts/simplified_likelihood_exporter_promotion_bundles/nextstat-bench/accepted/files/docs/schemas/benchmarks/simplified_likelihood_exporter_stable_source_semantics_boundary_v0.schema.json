@@ -1,0 +1,209 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/simplified_likelihood_exporter_stable_source_semantics_boundary_v0.schema.json",
+  "title": "NextStat Simplified Likelihood Exporter Stable Source Semantics Boundary v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "surface",
+    "support_class",
+    "target_support_class",
+    "automatic_stable_promotion",
+    "status",
+    "generated_at_utc",
+    "bundle_dir",
+    "future_stable_boundary",
+    "research_grade_only_or_rejected",
+    "alignment_documents",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_simplified_likelihood_exporter_stable_source_semantics_boundary_v0"
+    },
+    "surface": {
+      "const": "simplified_likelihood_exporter"
+    },
+    "support_class": {
+      "const": "research-grade"
+    },
+    "target_support_class": {
+      "const": "stable"
+    },
+    "automatic_stable_promotion": {
+      "type": "boolean"
+    },
+    "status": {
+      "const": "published"
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bundle_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "future_stable_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_workspace_formats",
+        "poi_scope",
+        "required_output_source_format",
+        "supported_constraint_covariance_source",
+        "supported_source_constraint_families",
+        "source_level_nuisance_identity_preserved",
+        "ranking_source_level_breakdown_supported",
+        "requires_explicit_provenance",
+        "requires_partial_bin_selection_reject",
+        "canonical_claims"
+      ],
+      "properties": {
+        "source_workspace_formats": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["pyhf"]
+          },
+          "minItems": 1
+        },
+        "poi_scope": {
+          "type": "string",
+          "enum": ["single_poi"]
+        },
+        "required_output_source_format": {
+          "type": "string",
+          "enum": ["derived_from_workspace"]
+        },
+        "supported_constraint_covariance_source": {
+          "type": "string",
+          "enum": ["source_model_constraints"]
+        },
+        "supported_source_constraint_families": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["gaussian"]
+          },
+          "minItems": 1
+        },
+        "source_level_nuisance_identity_preserved": {
+          "type": "boolean"
+        },
+        "ranking_source_level_breakdown_supported": {
+          "type": "boolean"
+        },
+        "requires_explicit_provenance": {
+          "type": "boolean"
+        },
+        "requires_partial_bin_selection_reject": {
+          "type": "boolean"
+        },
+        "canonical_claims": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "minItems": 1
+        }
+      }
+    },
+    "research_grade_only_or_rejected": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/boundaryItem"
+      },
+      "minItems": 1
+    },
+    "alignment_documents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "boundary_doc",
+        "acceptance_doc",
+        "runtime_gate_doc",
+        "promotion_runbook_doc",
+        "stable_review_checklist_doc",
+        "support_matrix_doc",
+        "release_notes_doc",
+        "artifact_reference_doc",
+        "cli_doc",
+        "python_api_doc",
+        "server_api_doc",
+        "rust_api_doc",
+        "schema_path",
+        "example_path"
+      ],
+      "properties": {
+        "boundary_doc": { "type": "string", "minLength": 1 },
+        "acceptance_doc": { "type": "string", "minLength": 1 },
+        "runtime_gate_doc": { "type": "string", "minLength": 1 },
+        "promotion_runbook_doc": { "type": "string", "minLength": 1 },
+        "stable_review_checklist_doc": { "type": "string", "minLength": 1 },
+        "support_matrix_doc": { "type": "string", "minLength": 1 },
+        "release_notes_doc": { "type": "string", "minLength": 1 },
+        "artifact_reference_doc": { "type": "string", "minLength": 1 },
+        "cli_doc": { "type": "string", "minLength": 1 },
+        "python_api_doc": { "type": "string", "minLength": 1 },
+        "server_api_doc": { "type": "string", "minLength": 1 },
+        "rust_api_doc": { "type": "string", "minLength": 1 },
+        "schema_path": { "type": "string", "minLength": 1 },
+        "example_path": { "type": "string", "minLength": 1 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "alignment_document_count",
+        "automatic_stable_promotion",
+        "blocker_resolution_supported",
+        "next_action"
+      ],
+      "properties": {
+        "status": {
+          "const": "published"
+        },
+        "alignment_document_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "automatic_stable_promotion": {
+          "type": "boolean"
+        },
+        "blocker_resolution_supported": {
+          "type": "boolean"
+        },
+        "next_action": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  },
+  "$defs": {
+    "boundaryItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "status", "detail"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

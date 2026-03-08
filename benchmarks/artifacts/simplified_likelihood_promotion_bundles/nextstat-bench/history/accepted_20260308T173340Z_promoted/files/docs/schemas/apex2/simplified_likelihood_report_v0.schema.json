@@ -1,0 +1,558 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/apex2/simplified_likelihood_report_v0.schema.json",
+  "title": "Apex2 Simplified Likelihood Report v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "stability", "params", "cases", "summary"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat_apex2_simplified_likelihood_report_v0"
+    },
+    "stability": {
+      "type": "string",
+      "const": "apex2"
+    },
+    "environment": {
+      "$ref": "#/$defs/environment"
+    },
+    "params": {
+      "$ref": "#/$defs/params"
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    },
+    "public_fixture_matrix": {
+      "$ref": "#/$defs/public_fixture_matrix"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    }
+  },
+  "$defs": {
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["python", "platform", "hostname", "cwd", "nextstat_version", "timestamp"],
+      "properties": {
+        "python": { "type": "string", "minLength": 1 },
+        "platform": { "type": "string", "minLength": 1 },
+        "hostname": { "type": "string", "minLength": 1 },
+        "cwd": { "type": "string", "minLength": 1 },
+        "nextstat_version": { "type": "string", "minLength": 1 },
+        "timestamp": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "params": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "suite",
+        "scan",
+        "fit_repeat",
+        "upper_limit_repeat",
+        "alpha",
+        "limit_hi",
+        "limit_rtol",
+        "limit_max_iter",
+        "gates"
+      ],
+      "properties": {
+        "suite": {
+          "type": "string",
+          "enum": ["smoke", "ci", "bench"]
+        },
+        "scan": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number" }
+        },
+        "fit_repeat": { "type": "integer", "minimum": 1 },
+        "upper_limit_repeat": { "type": "integer", "minimum": 1 },
+        "alpha": { "type": "number", "exclusiveMinimum": 0.0, "exclusiveMaximum": 1.0 },
+        "limit_hi": { "type": "number", "exclusiveMinimum": 0.0 },
+        "limit_rtol": { "type": "number", "exclusiveMinimum": 0.0 },
+        "limit_max_iter": { "type": "integer", "minimum": 1 },
+        "gates": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "delta_mu_hat_over_sigma_full_max",
+            "max_abs_q_mu_diff",
+            "upper_limit_ratio_min",
+            "upper_limit_ratio_max",
+            "reduced_nuisance_fraction_max",
+            "json_size_fraction_max",
+            "end_to_end_upper_limit_speedup_min"
+          ],
+          "properties": {
+            "delta_mu_hat_over_sigma_full_max": { "type": "number", "minimum": 0.0 },
+            "max_abs_q_mu_diff": { "type": "number", "minimum": 0.0 },
+            "upper_limit_ratio_min": { "type": "number", "minimum": 0.0 },
+            "upper_limit_ratio_max": { "type": "number", "minimum": 0.0 },
+            "reduced_nuisance_fraction_max": { "type": "number", "minimum": 0.0 },
+            "json_size_fraction_max": { "type": "number", "minimum": 0.0 },
+            "end_to_end_upper_limit_speedup_min": { "type": "number", "minimum": 0.0 }
+          }
+        }
+      }
+    },
+    "full_model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "measurement_name",
+        "channel_count",
+        "total_bins",
+        "parameter_count",
+        "nuisance_count",
+        "json_bytes"
+      ],
+      "properties": {
+        "measurement_name": { "type": "string", "minLength": 1 },
+        "channel_count": { "type": "integer", "minimum": 1 },
+        "total_bins": { "type": "integer", "minimum": 1 },
+        "parameter_count": { "type": "integer", "minimum": 1 },
+        "nuisance_count": { "type": "integer", "minimum": 1 },
+        "json_bytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "simplified_model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "channel_count",
+        "total_bins",
+        "parameter_count",
+        "reduced_nuisance_count",
+        "latent_rank_target",
+        "json_bytes",
+        "reduced_nuisance_fraction",
+        "json_size_fraction"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "string",
+          "const": "nextstat_simplified_likelihood_v0"
+        },
+        "channel_count": { "type": "integer", "minimum": 1 },
+        "total_bins": { "type": "integer", "minimum": 1 },
+        "parameter_count": { "type": "integer", "minimum": 1 },
+        "reduced_nuisance_count": { "type": "integer", "minimum": 1 },
+        "latent_rank_target": { "type": "integer", "minimum": 1 },
+        "json_bytes": { "type": "integer", "minimum": 1 },
+        "reduced_nuisance_fraction": { "type": "number", "minimum": 0.0 },
+        "json_size_fraction": { "type": "number", "minimum": 0.0 }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_audit_ok",
+        "jsonschema_available",
+        "input_schema_valid",
+        "audit_schema_valid",
+        "schema_valid"
+      ],
+      "properties": {
+        "runtime_audit_ok": { "type": "boolean" },
+        "jsonschema_available": { "type": "boolean" },
+        "input_schema_valid": { "type": ["boolean", "null"] },
+        "audit_schema_valid": { "type": ["boolean", "null"] },
+        "schema_valid": { "type": "boolean" }
+      }
+    },
+    "factorization": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "method",
+        "original_rank",
+        "retained_rank",
+        "explained_variance_fraction",
+        "frobenius_residual"
+      ],
+      "properties": {
+        "method": { "type": "string", "minLength": 1 },
+        "original_rank": { "type": "integer", "minimum": 0 },
+        "retained_rank": { "type": "integer", "minimum": 0 },
+        "explained_variance_fraction": { "type": "number" },
+        "frobenius_residual": { "type": "number", "minimum": 0.0 }
+      }
+    },
+    "fidelity_passes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mu_hat", "q_mu", "upper_limit"],
+      "properties": {
+        "mu_hat": { "type": "boolean" },
+        "q_mu": { "type": "boolean" },
+        "upper_limit": { "type": "boolean" }
+      }
+    },
+    "performance_passes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reduced_nuisance_fraction",
+        "json_size_fraction",
+        "end_to_end_upper_limit_speedup"
+      ],
+      "properties": {
+        "reduced_nuisance_fraction": { "type": "boolean" },
+        "json_size_fraction": { "type": "boolean" },
+        "end_to_end_upper_limit_speedup": { "type": "boolean" }
+      }
+    },
+    "fidelity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mu_hat_full",
+        "mu_hat_simplified",
+        "sigma_mu_full",
+        "delta_mu_hat",
+        "delta_mu_hat_over_sigma_full",
+        "scan_mu_values",
+        "q_mu_full",
+        "q_mu_simplified",
+        "max_abs_q_mu_diff",
+        "upper_limit_full",
+        "upper_limit_simplified",
+        "upper_limit_ratio",
+        "passes"
+      ],
+      "properties": {
+        "mu_hat_full": { "type": "number" },
+        "mu_hat_simplified": { "type": "number" },
+        "sigma_mu_full": { "type": "number", "minimum": 0.0 },
+        "delta_mu_hat": { "type": "number" },
+        "delta_mu_hat_over_sigma_full": { "type": "number", "minimum": 0.0 },
+        "scan_mu_values": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number" }
+        },
+        "q_mu_full": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number", "minimum": 0.0 }
+        },
+        "q_mu_simplified": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number", "minimum": 0.0 }
+        },
+        "max_abs_q_mu_diff": { "type": "number", "minimum": 0.0 },
+        "upper_limit_full": { "type": "number", "minimum": 0.0 },
+        "upper_limit_simplified": { "type": "number", "minimum": 0.0 },
+        "upper_limit_ratio": { "type": "number", "minimum": 0.0 },
+        "passes": { "$ref": "#/$defs/fidelity_passes" }
+      }
+    },
+    "bench": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "build_wall_s",
+        "fit_wall_s",
+        "upper_limit_wall_s",
+        "end_to_end_upper_limit_wall_s",
+        "speedup"
+      ],
+      "properties": {
+        "build_wall_s": { "$ref": "#/$defs/engine_pair" },
+        "fit_wall_s": { "$ref": "#/$defs/engine_pair" },
+        "upper_limit_wall_s": { "$ref": "#/$defs/engine_pair" },
+        "end_to_end_upper_limit_wall_s": { "$ref": "#/$defs/engine_pair" },
+        "speedup": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["build", "fit", "upper_limit", "end_to_end_upper_limit"],
+          "properties": {
+            "build": { "type": "number", "minimum": 0.0 },
+            "fit": { "type": "number", "minimum": 0.0 },
+            "upper_limit": { "type": "number", "minimum": 0.0 },
+            "end_to_end_upper_limit": { "type": "number", "minimum": 0.0 }
+          }
+        }
+      }
+    },
+    "engine_pair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["full", "simplified"],
+      "properties": {
+        "full": { "type": "number", "minimum": 0.0 },
+        "simplified": { "type": "number", "minimum": 0.0 }
+      }
+    },
+    "gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fidelity", "performance"],
+      "properties": {
+        "fidelity": { "$ref": "#/$defs/fidelity_passes" },
+        "performance": { "$ref": "#/$defs/performance_passes" }
+      }
+    },
+    "public_fixture_runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fit_success",
+        "hypotest_pvalue",
+        "upper_limit_observed",
+        "scan_mu_values",
+        "scan_q_mu",
+        "scan_mu_hat"
+      ],
+      "properties": {
+        "fit_success": { "type": "boolean" },
+        "hypotest_pvalue": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+        "upper_limit_observed": { "type": "number", "minimum": 0.0 },
+        "scan_mu_values": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number" }
+        },
+        "scan_q_mu": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number", "minimum": 0.0 }
+        },
+        "scan_mu_hat": { "type": "number" }
+      }
+    },
+    "public_fixture_diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["factorization", "fidelity"],
+      "properties": {
+        "factorization": {
+          "anyOf": [
+            { "$ref": "#/$defs/factorization" },
+            { "type": "null" }
+          ]
+        },
+        "fidelity": {
+          "anyOf": [
+            {
+              "type": "object",
+              "additionalProperties": true
+            },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "public_fixture_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "full_vs_simplified_fidelity_supported",
+        "embedded_fidelity_diagnostics_present"
+      ],
+      "properties": {
+        "full_vs_simplified_fidelity_supported": { "type": "boolean" },
+        "embedded_fidelity_diagnostics_present": { "type": "boolean" }
+      }
+    },
+    "public_fixture_gates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "runtime", "stable_surface", "derived_fidelity"],
+      "properties": {
+        "schema": { "type": "boolean" },
+        "runtime": { "type": "boolean" },
+        "stable_surface": { "type": "boolean" },
+        "derived_fidelity": { "type": "boolean" }
+      }
+    },
+    "public_fixture_case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_id",
+        "title",
+        "experiment",
+        "analysis_id",
+        "reference",
+        "source_format",
+        "provenance_kind",
+        "ranking_semantics",
+        "workspace_json_path",
+        "stable_commands",
+        "research_grade_commands",
+        "validation",
+        "runtime",
+        "diagnostics",
+        "evidence",
+        "gates",
+        "status"
+      ],
+      "properties": {
+        "fixture_id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "experiment": { "type": "string", "minLength": 1 },
+        "analysis_id": { "type": "string", "minLength": 1 },
+        "reference": { "type": "string", "minLength": 1 },
+        "source_format": {
+          "type": "string",
+          "enum": ["basis", "covariance", "derived_from_workspace"]
+        },
+        "provenance_kind": { "type": "string", "minLength": 1 },
+        "ranking_semantics": { "type": "string", "minLength": 1 },
+        "workspace_json_path": { "type": "string", "minLength": 1 },
+        "stable_commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "research_grade_commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "validation": { "$ref": "#/$defs/validation" },
+        "runtime": { "$ref": "#/$defs/public_fixture_runtime" },
+        "diagnostics": { "$ref": "#/$defs/public_fixture_diagnostics" },
+        "evidence": { "$ref": "#/$defs/public_fixture_evidence" },
+        "gates": { "$ref": "#/$defs/public_fixture_gates" },
+        "status": { "type": "string", "enum": ["ok", "fail"] }
+      }
+    },
+    "public_fixture_matrix_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "catalog_schema_valid",
+        "jsonschema_available",
+        "fixture_count",
+        "all_schema_valid",
+        "all_runtime_gates_pass",
+        "all_stable_surface_gates_pass",
+        "all_derived_fidelity_gates_pass",
+        "derived_fixture_count",
+        "fixtures_with_embedded_fidelity_evidence",
+        "source_formats"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "fail"] },
+        "catalog_schema_valid": { "type": "boolean" },
+        "jsonschema_available": { "type": "boolean" },
+        "fixture_count": { "type": "integer", "minimum": 1 },
+        "all_schema_valid": { "type": "boolean" },
+        "all_runtime_gates_pass": { "type": "boolean" },
+        "all_stable_surface_gates_pass": { "type": "boolean" },
+        "all_derived_fidelity_gates_pass": { "type": "boolean" },
+        "derived_fixture_count": { "type": "integer", "minimum": 0 },
+        "fixtures_with_embedded_fidelity_evidence": { "type": "integer", "minimum": 0 },
+        "source_formats": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": ["basis", "covariance", "derived_from_workspace"]
+          }
+        }
+      }
+    },
+    "public_fixture_matrix": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["catalog_schema_version", "catalog_path", "cases", "summary"],
+      "properties": {
+        "catalog_schema_version": {
+          "type": "string",
+          "const": "nextstat_simplified_likelihood_public_fixture_catalog_v0"
+        },
+        "catalog_path": { "type": "string", "minLength": 1 },
+        "cases": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/public_fixture_case" }
+        },
+        "summary": { "$ref": "#/$defs/public_fixture_matrix_summary" }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "full",
+        "simplified",
+        "validation",
+        "factorization",
+        "fidelity",
+        "gates",
+        "status"
+      ],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "full": { "$ref": "#/$defs/full_model" },
+        "simplified": { "$ref": "#/$defs/simplified_model" },
+        "validation": { "$ref": "#/$defs/validation" },
+        "factorization": { "$ref": "#/$defs/factorization" },
+        "fidelity": { "$ref": "#/$defs/fidelity" },
+        "gates": { "$ref": "#/$defs/gates" },
+        "bench": { "$ref": "#/$defs/bench" },
+        "status": { "type": "string", "enum": ["ok", "fail"] }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "case_count",
+        "all_schema_valid",
+        "all_fidelity_gates_pass",
+        "all_performance_gates_pass",
+        "max_delta_mu_hat_over_sigma_full",
+        "max_abs_q_mu_diff",
+        "max_upper_limit_ratio_deviation",
+        "max_reduced_nuisance_fraction",
+        "max_json_size_fraction"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "fail"] },
+        "case_count": { "type": "integer", "minimum": 1 },
+        "all_schema_valid": { "type": "boolean" },
+        "all_fidelity_gates_pass": { "type": "boolean" },
+        "all_performance_gates_pass": { "type": "boolean" },
+        "max_delta_mu_hat_over_sigma_full": { "type": "number", "minimum": 0.0 },
+        "max_abs_q_mu_diff": { "type": "number", "minimum": 0.0 },
+        "max_upper_limit_ratio_deviation": { "type": "number", "minimum": 0.0 },
+        "max_reduced_nuisance_fraction": { "type": "number", "minimum": 0.0 },
+        "max_json_size_fraction": { "type": "number", "minimum": 0.0 },
+        "public_fixture_matrix_included": { "type": "boolean" },
+        "public_fixture_matrix_status": { "type": "string", "enum": ["ok", "fail"] },
+        "public_fixture_matrix_fixture_count": { "type": "integer", "minimum": 1 },
+        "bench": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "min_speedup_end_to_end_upper_limit",
+            "min_speedup_fit",
+            "min_speedup_upper_limit"
+          ],
+          "properties": {
+            "min_speedup_end_to_end_upper_limit": { "type": "number", "minimum": 0.0 },
+            "min_speedup_fit": { "type": "number", "minimum": 0.0 },
+            "min_speedup_upper_limit": { "type": "number", "minimum": 0.0 }
+          }
+        }
+      }
+    }
+  }
+}

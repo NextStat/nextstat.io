@@ -1,0 +1,222 @@
+{
+  "case_catalog": [
+    {
+      "case": "neal_funnel_10d_centered",
+      "case_tier": "pathological_control",
+      "description": "Centered 10D funnel hard-geometry control.",
+      "parity_scope": "informational"
+    },
+    {
+      "case": "neal_funnel_ncp_10d",
+      "case_tier": "supported",
+      "description": "Non-centered 10D funnel supported repeatability case.",
+      "parity_scope": "required"
+    },
+    {
+      "case": "hier_random_intercept_non_centered",
+      "case_tier": "supported",
+      "description": "Hierarchical logistic random intercept stress case.",
+      "parity_scope": "required"
+    }
+  ],
+  "cases": [
+    {
+      "backend": "nextstat_mams",
+      "case": "neal_funnel_10d_centered",
+      "case_tier": "pathological_control",
+      "ess_per_grad": 0.015187544835112803,
+      "ess_per_sec": 5293.353552610598,
+      "max_r_hat": 1.3540802037395665,
+      "min_ess_bulk": 2217.3815459264692,
+      "n_grad_evals": 146000,
+      "path": "cases/neal_funnel_10d_centered__nextstat_mams__s42.json",
+      "seed": 42,
+      "sha256": "63094e5e69276c86bf878727e06eda6801ab7aa92b80b98fabfca25846322b3d",
+      "status": "ok",
+      "wall_time_s": 0.4188991957344115
+    },
+    {
+      "backend": "nextstat_nuts",
+      "case": "neal_funnel_10d_centered",
+      "case_tier": "pathological_control",
+      "ess_per_grad": 1.4025832431213941e-05,
+      "ess_per_sec": 9.146015990749232,
+      "max_r_hat": 1.2874443365813615,
+      "min_ess_bulk": 14.421248699114724,
+      "n_grad_evals": 1028192,
+      "path": "cases/neal_funnel_10d_centered__nextstat_nuts__s42.json",
+      "seed": 42,
+      "sha256": "bac8030b2186752ab5b04e975c5481b9f947091a022dea755e62144f69a60ba1",
+      "status": "ok",
+      "wall_time_s": 1.5767793008126318
+    },
+    {
+      "backend": "nextstat_mams",
+      "case": "neal_funnel_ncp_10d",
+      "case_tier": "supported",
+      "ess_per_grad": 0.29673423519838205,
+      "ess_per_sec": 71457.30768617328,
+      "max_r_hat": 1.005591092223184,
+      "min_ess_bulk": 7121.62164476117,
+      "n_grad_evals": 24000,
+      "path": "cases/neal_funnel_ncp_10d__nextstat_mams__s42.json",
+      "seed": 42,
+      "sha256": "28f3fb277f70ab4ea6f76b422ec35a55a61e6e9b5d821b14a0729eb3d5a8f793",
+      "status": "ok",
+      "wall_time_s": 0.09966260800138116
+    },
+    {
+      "backend": "nextstat_nuts",
+      "case": "neal_funnel_ncp_10d",
+      "case_tier": "supported",
+      "ess_per_grad": 0.0698909700866648,
+      "ess_per_sec": 34279.17155119483,
+      "max_r_hat": 1.0012319054310461,
+      "min_ess_bulk": 8000.0,
+      "n_grad_evals": 114464,
+      "path": "cases/neal_funnel_ncp_10d__nextstat_nuts__s42.json",
+      "seed": 42,
+      "sha256": "9f3e1c123bc30970f7b9ea1c6dc0ee362a865e29dc2cb5402800f6c90928231f",
+      "status": "ok",
+      "wall_time_s": 0.23337786877527833
+    },
+    {
+      "backend": "nextstat_mams",
+      "case": "hier_random_intercept_non_centered",
+      "case_tier": "supported",
+      "ess_per_grad": 0.049825570813902945,
+      "ess_per_sec": 819.7153776679663,
+      "max_r_hat": 1.0158000312342303,
+      "min_ess_bulk": 2092.6739741839237,
+      "n_grad_evals": 42000,
+      "path": "cases/hier_random_intercept_non_centered__nextstat_mams__s42.json",
+      "seed": 42,
+      "sha256": "cc57b649e303047394ec080b875936afef6583a84bee270f219a20daecf540aa",
+      "status": "ok",
+      "wall_time_s": 2.5529275541193783
+    },
+    {
+      "backend": "nextstat_nuts",
+      "case": "hier_random_intercept_non_centered",
+      "case_tier": "supported",
+      "ess_per_grad": 0.015429514944689216,
+      "ess_per_sec": 473.897068810922,
+      "max_r_hat": 1.001587123720053,
+      "min_ess_bulk": 3639.3905490337347,
+      "n_grad_evals": 235872,
+      "path": "cases/hier_random_intercept_non_centered__nextstat_nuts__s42.json",
+      "seed": 42,
+      "sha256": "f9b9837d3bcd46f09810fb82e4f2eeaf4858014c33a981e7f13feecfe53f8a8b",
+      "status": "ok",
+      "wall_time_s": 7.679706815164536
+    }
+  ],
+  "config": {
+    "backends": [
+      "nextstat_mams",
+      "nextstat_nuts"
+    ],
+    "dataset_seed": 12345,
+    "n_chains": 4,
+    "n_groups": 20,
+    "n_per_group": 20,
+    "n_samples": 2000,
+    "n_warmup": 3500,
+    "parity_fail_z": 12.0,
+    "parity_warn_z": 8.0,
+    "seeds": [
+      42
+    ],
+    "target_accept": 0.985
+  },
+  "deterministic": true,
+  "meta": {
+    "nextstat_version": "0.9.9",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "parity": {
+    "fail_z": 12.0,
+    "method": "mean_zscore",
+    "note": "Compares NextStat MAMS vs NextStat NUTS posterior means per case/seed; supported cases require parity, pathological controls are informational only.",
+    "rows": [
+      {
+        "case": "neal_funnel_10d_centered",
+        "case_tier": "pathological_control",
+        "max_z": 5.176594441219025,
+        "parity_scope": "informational",
+        "seed": 42,
+        "status": "ok",
+        "worst": [
+          {
+            "param": "y",
+            "z": 5.176594441219025
+          },
+          {
+            "param": "x[9]",
+            "z": 2.680535397858223
+          },
+          {
+            "param": "x[5]",
+            "z": 2.5283767533210413
+          }
+        ]
+      },
+      {
+        "case": "neal_funnel_ncp_10d",
+        "case_tier": "supported",
+        "max_z": 1.2717084660494444,
+        "parity_scope": "required",
+        "seed": 42,
+        "status": "ok",
+        "worst": [
+          {
+            "param": "z[8]",
+            "z": 1.2717084660494444
+          },
+          {
+            "param": "z[7]",
+            "z": 1.1713103226675248
+          },
+          {
+            "param": "v",
+            "z": 0.7846994452475983
+          }
+        ]
+      },
+      {
+        "case": "hier_random_intercept_non_centered",
+        "case_tier": "supported",
+        "max_z": 3.505237584734605,
+        "parity_scope": "required",
+        "seed": 42,
+        "status": "ok",
+        "worst": [
+          {
+            "param": "sigma_alpha",
+            "z": 3.505237584734605
+          },
+          {
+            "param": "z_alpha10",
+            "z": 1.5027706853357203
+          },
+          {
+            "param": "beta1",
+            "z": 1.4314572825724552
+          }
+        ]
+      }
+    ],
+    "warn_z": 8.0
+  },
+  "schema_version": "nextstat.mams_stress_benchmark_suite_result.v1",
+  "suite": "mams_stress",
+  "summary": {
+    "n_failed": 0,
+    "n_ok": 6,
+    "n_parity_fail": 0,
+    "n_parity_warn": 0,
+    "n_total": 6,
+    "n_warn": 0
+  }
+}

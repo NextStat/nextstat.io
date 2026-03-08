@@ -1,0 +1,222 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/pharma/normal_normal_prior_sensitivity_report_v0.schema.json",
+  "title": "Normal-Normal Prior Sensitivity Report v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "stability",
+    "design_id",
+    "look",
+    "observed",
+    "n_replicates",
+    "seed",
+    "variants"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat_normal_normal_prior_sensitivity_report_v0"
+    },
+    "stability": {
+      "type": "string",
+      "const": "research-grade"
+    },
+    "design_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "look": {
+      "$ref": "#/$defs/look"
+    },
+    "observed": {
+      "$ref": "#/$defs/observed"
+    },
+    "n_replicates": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "seed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "variants": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/variant_result"
+      }
+    }
+  },
+  "$defs": {
+    "look": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "n_control", "n_treatment"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "n_control": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n_treatment": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "observed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["look_id", "control_sample_mean", "treatment_sample_mean"],
+      "properties": {
+        "look_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "control_sample_mean": {
+          "type": "number"
+        },
+        "treatment_sample_mean": {
+          "type": "number"
+        }
+      }
+    },
+    "prior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mean", "sd"],
+      "properties": {
+        "mean": {
+          "type": "number"
+        },
+        "sd": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        }
+      }
+    },
+    "predictive_look_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "look_id",
+        "conditional_stop_probability",
+        "conditional_success_probability",
+        "conditional_futility_probability"
+      ],
+      "properties": {
+        "look_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conditional_stop_probability": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "conditional_success_probability": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "conditional_futility_probability": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        }
+      }
+    },
+    "variant_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "variant_id",
+        "is_baseline",
+        "control_prior",
+        "treatment_prior",
+        "posterior_mean",
+        "posterior_probability_gt_margin",
+        "recommended_action",
+        "eventual_success_probability",
+        "eventual_futility_probability",
+        "eventual_no_decision_probability",
+        "expected_total_sample_size",
+        "expected_remaining_sample_size",
+        "future_look_summaries",
+        "posterior_probability_delta_vs_baseline",
+        "eventual_success_probability_delta_vs_baseline",
+        "expected_total_sample_size_delta_vs_baseline"
+      ],
+      "properties": {
+        "variant_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "is_baseline": {
+          "type": "boolean"
+        },
+        "control_prior": {
+          "$ref": "#/$defs/prior"
+        },
+        "treatment_prior": {
+          "$ref": "#/$defs/prior"
+        },
+        "posterior_mean": {
+          "type": "number"
+        },
+        "posterior_probability_gt_margin": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "recommended_action": {
+          "type": "string",
+          "enum": ["continue", "stop_for_success", "stop_for_futility"]
+        },
+        "eventual_success_probability": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "eventual_futility_probability": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "eventual_no_decision_probability": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "expected_total_sample_size": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "expected_remaining_sample_size": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "future_look_summaries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/predictive_look_summary"
+          }
+        },
+        "posterior_probability_delta_vs_baseline": {
+          "type": "number"
+        },
+        "eventual_success_probability_delta_vs_baseline": {
+          "type": "number"
+        },
+        "expected_total_sample_size_delta_vs_baseline": {
+          "type": "number"
+        }
+      }
+    }
+  }
+}

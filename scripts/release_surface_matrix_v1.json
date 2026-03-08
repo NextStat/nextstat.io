@@ -1,0 +1,112 @@
+{
+  "schema_version": "nextstat.release_surface_matrix.v1",
+  "surfaces": [
+    {
+      "id": "gvm_stable_first",
+      "name": "GVM Stable-First",
+      "required_for_release": true,
+      "make_target": "gvm-stable-first-gate",
+      "workflow_job": "gvm-stable-first",
+      "docs": [
+        "docs/benchmarks/gvm-stable-first-release-pr-checklist-2026-03-07.md",
+        "docs/benchmarks/gvm-stable-first-launch-checklist-2026-03-07.md",
+        "docs/benchmarks/gvm-stable-first-support-matrix-2026-03-07.md"
+      ],
+      "path_globs": [
+        "crates/ns-inference/src/measurement_combine.rs",
+        "crates/ns-inference/benches/measurement_combine_benchmark.rs",
+        "scripts/gvm/**",
+        "docs/examples/gvm-stable-first/**",
+        "docs/benchmarks/gvm-*",
+        "docs/quickstarts/hep-gvm-stable-first.md",
+        "docs/tutorials/hep-gvm-measurement-combinations.md"
+      ]
+    },
+    {
+      "id": "simplified_likelihood_stable_surface",
+      "name": "Simplified Likelihood Stable Surface",
+      "required_for_release": true,
+      "make_target": "simplified-likelihood-stable-surface-gate",
+      "workflow_job": "simplified-likelihood-stable-surface",
+      "docs": [
+        "docs/benchmarks/simplified-likelihood-release-pr-checklist-2026-03-08.md",
+        "docs/benchmarks/simplified-likelihood-promotion-runbook-2026-03-08.md",
+        "docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08.md"
+      ],
+      "path_globs": [
+        "scripts/benchmarks/simplified_likelihood_stable_surface_gate.sh",
+        "scripts/benchmarks/_simplified_likelihood_promotion_bundle.py",
+        "scripts/benchmarks/build_simplified_likelihood_promotion_evidence_bundle.py",
+        "scripts/benchmarks/promote_simplified_likelihood_promotion_bundle.py",
+        "docs/benchmarks/simplified-likelihood-*",
+        "docs/specs/benchmarks/simplified_likelihood_*",
+        "tests/python/test_simplified_likelihood_*",
+        "tests/python/_simplified_likelihood_*"
+      ]
+    },
+    {
+      "id": "simplified_likelihood_exporter_surface",
+      "name": "Simplified Likelihood Exporter Surface",
+      "required_for_release": true,
+      "make_target": "simplified-likelihood-exporter-surface-gate",
+      "workflow_job": "simplified-likelihood-exporter-surface",
+      "docs": [
+        "docs/benchmarks/simplified-likelihood-exporter-release-pr-checklist-2026-03-09.md",
+        "docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md",
+        "docs/benchmarks/simplified-likelihood-exporter-stable-review-checklist-2026-03-09.md"
+      ],
+      "path_globs": [
+        "scripts/benchmarks/simplified_likelihood_exporter_surface_gate.sh",
+        "scripts/benchmarks/_simplified_likelihood_export_benchmark.py",
+        "scripts/benchmarks/_simplified_likelihood_export_public_validation.py",
+        "scripts/benchmarks/_simplified_likelihood_exporter_*",
+        "scripts/benchmarks/build_simplified_likelihood_export*",
+        "scripts/benchmarks/promote_simplified_likelihood_export*",
+        "scripts/benchmarks/assess_simplified_likelihood_exporter_*",
+        "docs/benchmarks/simplified-likelihood-exporter-*",
+        "docs/specs/benchmarks/simplified_likelihood_export*",
+        "tests/python/test_simplified_likelihood_export*",
+        "tests/python/_simplified_likelihood_export*"
+      ]
+    },
+    {
+      "id": "m15_reporting_stable_surface",
+      "name": "M15 Reporting Stable Surface",
+      "required_for_release": true,
+      "make_target": "m15-reporting-stable-surface-gate",
+      "workflow_job": "m15-reporting-stable-surface",
+      "docs": [
+        "docs/references/m15-reporting.md",
+        "docs/benchmarks/m15-reporting-runtime-gate.md"
+      ],
+      "path_globs": [
+        "scripts/benchmarks/m15_reporting_stable_surface_gate.sh",
+        "scripts/benchmarks/bench_m15_reporting.py",
+        "scripts/benchmarks/compare_m15_reporting_benchmark.py",
+        "docs/references/m15-reporting.md",
+        "docs/benchmarks/m15-reporting-runtime-gate.md",
+        "docs/specs/m15_*",
+        "tests/python/test_m15_*",
+        "crates/ns-cli/tests/cli_m15_*",
+        "validation-pack/**"
+      ]
+    },
+    {
+      "id": "root_trexfitter_parity",
+      "name": "ROOT / TRExFitter parity",
+      "required_for_release": false,
+      "make_target": "",
+      "workflow_job": "",
+      "docs": [
+        "docs/tutorials/root-trexfitter-parity.md"
+      ],
+      "path_globs": [
+        "tests/fixtures/trex_parity_pack/**",
+        "tests/compare_trex_analysis_spec_with_latest_baseline.py",
+        "tests/apex2_root_suite_report.py",
+        "docs/tutorials/root-trexfitter-parity.md",
+        "scripts/condor/**"
+      ]
+    }
+  ]
+}

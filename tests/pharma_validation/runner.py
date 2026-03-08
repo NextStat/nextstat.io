@@ -11,10 +11,61 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import platform
 import sys
 import time
 from pathlib import Path
+
+
+def _ensure_repo_root_on_syspath() -> None:
+    """Make direct script execution behave like repo-root package execution.
+
+    The validation-pack workflow runs this file as:
+      python tests/pharma_validation/runner.py
+
+    In that mode Python puts ``tests/pharma_validation`` on ``sys.path[0]``,
+    which is enough for ``pharma_validation.*`` imports but not for
+    ``tests._tool_contract_helpers`` used by PQ-REF-011.  Release validation
+    must not depend on an external PYTHONPATH tweak, so normalize the import
+    root here.
+    """
+
+    tests_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[2]
+    tests_root_str = str(tests_root)
+    repo_root_str = str(repo_root)
+    if tests_root_str not in sys.path:
+        sys.path.insert(0, tests_root_str)
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
+
+
+_ensure_repo_root_on_syspath()
+
+
+def _json_safe(value):  # type: ignore[no-untyped-def]
+    """Convert Python objects into strict JSON-safe values.
+
+    Validation-pack artifacts are consumed by Rust/serde_json in release CI.
+    Python's default ``json.dump`` allows ``Infinity``/``NaN`` literals, but
+    those are invalid JSON and break the release pipeline. Preserve the fact
+    that the value was non-finite, but encode it as a string.
+    """
+
+    if isinstance(value, float):
+        if math.isnan(value):
+            return "NaN"
+        if math.isinf(value):
+            return "Infinity" if value > 0 else "-Infinity"
+        return value
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    if isinstance(value, tuple):
+        return [_json_safe(v) for v in value]
+    return value
 
 
 def main() -> int:
@@ -104,6 +155,7 @@ def main() -> int:
         },
         "cases": all_cases,
     }
+    report = _json_safe(report)
 
     # Compute per-category summaries
     for cat in ("IQ", "OQ", "PQ"):
@@ -118,7 +170,7 @@ def main() -> int:
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "w") as f:
-        json.dump(report, f, indent=2, sort_keys=False)
+        json.dump(report, f, indent=2, sort_keys=False, allow_nan=False)
 
     print(f"Wrote: {args.out}")
     print(f"  Total: {len(all_cases)} | OK: {n_ok} | FAIL: {n_fail} | SKIP: {n_skip}")

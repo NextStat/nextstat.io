@@ -1,0 +1,36 @@
+{
+  "schema_version": "nextstat_simplified_likelihood_audit_v0",
+  "input_schema_version": "nextstat_simplified_likelihood_v0",
+  "experiment": "CMS",
+  "analysis_id": "sl_covariance_three_bin_public_example",
+  "source_format": "covariance",
+  "poi_name": "mu",
+  "channel_names": ["SR_low", "SR_high"],
+  "channel_count": 2,
+  "total_bins": 3,
+  "has_signal": true,
+  "uncertainty_model_kind": "covariance",
+  "reduced_nuisance_count": 3,
+  "parameter_count_estimate": 4,
+  "total_observed_yield": 27.0,
+  "total_background_yield": 27.0,
+  "total_signal_yield": 2.7,
+  "input_has_factorization_diagnostics": false,
+  "input_has_fidelity_diagnostics": false,
+  "diagnostics": {
+    "factorization": {
+      "method": "symmetric_eigendecomposition",
+      "original_rank": 3,
+      "retained_rank": 3,
+      "explained_variance_fraction": 1.0,
+      "frobenius_residual": 0.0,
+      "clipped_negative_eigenvalues": 0,
+      "max_clipped_negative_eigenvalue_magnitude": 0.0,
+      "input_trace": 0.8625,
+      "retained_trace": 0.8625,
+      "stat_covariance_trace": 0.29,
+      "shared_systematic_trace": 0.5725
+    },
+    "fidelity": null
+  }
+}

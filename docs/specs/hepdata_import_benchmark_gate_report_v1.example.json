@@ -1,0 +1,133 @@
+{
+  "accepted_baseline_path": "/benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+  "allow_review": false,
+  "artifacts": {
+    "accepted_after": {
+      "case_ids": [
+        "curated_catalog",
+        "direct_patch_catalog_cached",
+        "curated_materialize_offline",
+        "direct_materialize_network"
+      ],
+      "deterministic": true,
+      "fit_enabled": true,
+      "fit_repeat": 1,
+      "host_policy": "nextstat-bench",
+      "node": "nextstat-bench",
+      "path": "/benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+      "repeat": 3,
+      "schema_version": "nextstat.hepdata_import_benchmark_result.v1",
+      "smoke": false,
+      "suite": "hepdata_import"
+    },
+    "accepted_before": {
+      "case_ids": [
+        "curated_catalog",
+        "direct_patch_catalog_cached",
+        "curated_materialize_offline",
+        "direct_materialize_network"
+      ],
+      "deterministic": true,
+      "fit_enabled": true,
+      "fit_repeat": 1,
+      "host_policy": "nextstat-bench",
+      "node": "nextstat-bench",
+      "path": "/benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+      "repeat": 3,
+      "schema_version": "nextstat.hepdata_import_benchmark_result.v1",
+      "smoke": false,
+      "suite": "hepdata_import"
+    },
+    "current": {
+      "case_ids": [
+        "curated_catalog",
+        "direct_patch_catalog_cached",
+        "curated_materialize_offline",
+        "direct_materialize_network"
+      ],
+      "deterministic": true,
+      "fit_enabled": true,
+      "fit_repeat": 1,
+      "host_policy": "nextstat-bench",
+      "node": "nextstat-bench",
+      "path": "benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+      "repeat": 3,
+      "schema_version": "nextstat.hepdata_import_benchmark_result.v1",
+      "smoke": false,
+      "suite": "hepdata_import"
+    }
+  },
+  "compare_report_path": "docs/specs/hepdata_import_benchmark_compare_report_v1.example.json",
+  "current_artifact_path": "benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+  "ok": true,
+  "promotion_mode": "dry_run",
+  "promotion_report_path": "docs/specs/hepdata_import_benchmark_baseline_promotion_report_v1.example.json",
+  "requires_review": false,
+  "schema_version": "nextstat.hepdata_import_benchmark_gate_report.v1",
+  "status": "passed",
+  "steps": {
+    "benchmark": {
+      "artifact_dir": "benchmarks/artifacts/hepdata_import_baselines/nextstat-bench",
+      "artifact_path": "benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+      "command": [],
+      "errors": [],
+      "exit_code": null,
+      "message": "using provided current artifact",
+      "mode": "provided_artifact",
+      "ok": true,
+      "status": "skipped"
+    },
+    "compare": {
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "/scripts/benchmarks/compare_hepdata_import_benchmark.py",
+        "--baseline",
+        "/benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+        "--current",
+        "benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+        "--out",
+        "docs/specs/hepdata_import_benchmark_compare_report_v1.example.json"
+      ],
+      "compare_status": "passed",
+      "errors": [],
+      "exit_code": 0,
+      "message": "compare status=passed",
+      "ok": true,
+      "report_path": "docs/specs/hepdata_import_benchmark_compare_report_v1.example.json",
+      "status": "passed"
+    },
+    "promotion": {
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "/scripts/benchmarks/promote_hepdata_import_benchmark_baseline.py",
+        "--accepted",
+        "/benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+        "--current",
+        "benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/accepted.json",
+        "--compare-report",
+        "docs/specs/hepdata_import_benchmark_compare_report_v1.example.json",
+        "--report",
+        "docs/specs/hepdata_import_benchmark_baseline_promotion_report_v1.example.json",
+        "--history-dir",
+        "/benchmarks/artifacts/hepdata_import_baselines/nextstat-bench/history",
+        "--dry-run"
+      ],
+      "errors": [],
+      "exit_code": 0,
+      "message": "promotion status=dry_run",
+      "mode": "dry_run",
+      "ok": true,
+      "promotion_status": "dry_run",
+      "report_path": "docs/specs/hepdata_import_benchmark_baseline_promotion_report_v1.example.json",
+      "status": "passed"
+    }
+  },
+  "suite": "hepdata_import",
+  "summary": {
+    "benchmark_status": "skipped",
+    "compare_status": "passed",
+    "promotion_status": "dry_run",
+    "top_level_errors": []
+  },
+  "timestamp_utc": "2026-03-08T16:12:10Z"
+}

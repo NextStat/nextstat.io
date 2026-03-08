@@ -8,6 +8,11 @@ status: stable
 NextStat uses a block-based text configuration format for defining statistical analyses.
 The format is compatible with TRExFitter configs (common subset), but is a **first-class NextStat feature** — not a compatibility shim.
 
+Boundary note:
+- ads variance-reduction helpers (`CUPED` / `CURE`) are not configured through
+  `analysis.yaml` or TREx-style config blocks. They are exposed as shared
+  inference primitives and through the Python/tool/server tool-runtime surfaces.
+
 ## Quick Start
 
 ```bash

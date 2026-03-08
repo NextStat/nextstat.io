@@ -9,7 +9,8 @@ This directory contains templates and a runbook. The actual publication step req
 For each snapshot, publish a zipped artifact set that contains at least:
 
 - `baseline_manifest.json`
-- `snapshot_index.json` (hash inventory of the artifact set)
+- `snapshot_index.json` (hash inventory of the artifact set plus any normalized `suite_health` verdicts exposed by assessment artifacts)
+- `snapshot_registry.json` when publishing a collection/release catalog rather than a single snapshot; generate it from committed snapshot indices via `scripts/write_snapshot_registry.py`
 - `nextstat_wheel.whl` (recommended: self-contained exact build)
 - suite outputs (e.g. `hep/hep_suite.json` and per-case JSONs)
 - `README_snippet.md` (human summary table)

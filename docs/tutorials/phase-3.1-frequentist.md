@@ -278,6 +278,15 @@ Fetch + materialize (writes under `tests/hepdata/`; not committed):
 make hepdata-fetch
 ```
 
+Equivalent direct CLI invocation:
+
+```bash
+cargo run -p ns-cli -- import hepdata \
+  --out-dir tests/hepdata/workspaces \
+  --cache-dir tests/hepdata/_cache \
+  --lock tests/hepdata/workspaces.lock.json
+```
+
 Run the fast parity checks (NLL only):
 
 ```bash

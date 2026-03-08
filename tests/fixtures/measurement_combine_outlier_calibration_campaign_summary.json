@@ -1,0 +1,71 @@
+{
+  "aggregate": {
+    "max_calibration_mean_sigma_star_to_sigma_ratio": 1.0533792807306075,
+    "max_fit_sigma_ratio_to_baseline": 1.0,
+    "n_calibration_neutral_scenarios": 0,
+    "n_scenarios": 3,
+    "near_neutral_calibration_scenarios": []
+  },
+  "baseline_mu_hat": 0.10829486729121182,
+  "baseline_sigma": 0.1420263928287512,
+  "ci_level": 0.68,
+  "dominant_calibration_scenario": "new_0p5",
+  "dominant_fit_scenario": "new_0p3",
+  "poi": "mu",
+  "scenarios": [
+    {
+      "bartlett_improves_mean_q_fraction": 1.0,
+      "calibration_mean_sigma_star_to_sigma_ratio_center": 1.0034174016378195,
+      "calibration_mean_sigma_star_to_sigma_ratio_span": 1.896739087570154e-6,
+      "calibration_min_sigma_star_ge_sigma_fraction": 1.0,
+      "calibration_rank_by_sigma_ratio": 3,
+      "fit_interval_width_ratio_to_baseline": 0.9948666533654276,
+      "fit_rank_by_sigma": 3,
+      "fit_sigma_delta_from_baseline": -0.005133346634572433,
+      "fit_sigma_ratio_to_baseline": 0.9948666533654276,
+      "label": "secondary:new_0p1",
+      "n_assignments": 1,
+      "name": "new_0p1",
+      "supported_systematics": [
+        "new"
+      ]
+    },
+    {
+      "bartlett_improves_mean_q_fraction": 1.0,
+      "calibration_mean_sigma_star_to_sigma_ratio_center": 1.0250143504646574,
+      "calibration_mean_sigma_star_to_sigma_ratio_span": 0.0009820476914053078,
+      "calibration_min_sigma_star_ge_sigma_fraction": 1.0,
+      "calibration_rank_by_sigma_ratio": 2,
+      "fit_interval_width_ratio_to_baseline": 1.0,
+      "fit_rank_by_sigma": 1,
+      "fit_sigma_delta_from_baseline": 0.0,
+      "fit_sigma_ratio_to_baseline": 1.0,
+      "label": "dominant-fit",
+      "n_assignments": 1,
+      "name": "new_0p3",
+      "supported_systematics": [
+        "new"
+      ]
+    },
+    {
+      "bartlett_improves_mean_q_fraction": 1.0,
+      "calibration_mean_sigma_star_to_sigma_ratio_center": 1.0518142083188844,
+      "calibration_mean_sigma_star_to_sigma_ratio_span": 0.0031301448234462015,
+      "calibration_min_sigma_star_ge_sigma_fraction": 1.0,
+      "calibration_rank_by_sigma_ratio": 1,
+      "fit_interval_width_ratio_to_baseline": 0.9961787439969008,
+      "fit_rank_by_sigma": 2,
+      "fit_sigma_delta_from_baseline": -0.003821256003099238,
+      "fit_sigma_ratio_to_baseline": 0.9961787439969008,
+      "label": "dominant-calibration",
+      "n_assignments": 1,
+      "name": "new_0p5",
+      "supported_systematics": [
+        "new"
+      ]
+    }
+  ],
+  "schema_version": "nextstat_measurement_combination_calibration_campaign_summary_v0",
+  "source_schema_version": "nextstat_measurement_combination_calibration_campaign_v0",
+  "stability": "research-grade"
+}

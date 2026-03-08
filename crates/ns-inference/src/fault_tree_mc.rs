@@ -105,6 +105,13 @@ pub enum FailureMode {
 pub enum Gate {
     And,
     Or,
+    /// k-of-n voting gate: TOP fires when at least k children fire.
+    Voting {
+        k: usize,
+    },
+    /// IEC 61025 inhibit gate: semantically AND with exactly 2 inputs
+    /// (one primary, one conditioning event). Evaluated identically to AND.
+    Inhibit,
 }
 
 /// A node in the fault tree.
@@ -151,7 +158,7 @@ impl FaultTreeSpec {
                         )));
                     }
                 }
-                FaultTreeNode::Gate { children, .. } => {
+                FaultTreeNode::Gate { gate, children } => {
                     if children.is_empty() {
                         return Err(Error::Validation(format!(
                             "node {} is a gate with no children",
@@ -167,6 +174,23 @@ impl FaultTreeSpec {
                                 self.nodes.len()
                             )));
                         }
+                    }
+                    if let Gate::Voting { k } = gate
+                        && (*k == 0 || *k > children.len())
+                    {
+                        return Err(Error::Validation(format!(
+                            "node {} is Voting(k={}) but has {} children (k must be 1..=n)",
+                            i,
+                            k,
+                            children.len()
+                        )));
+                    }
+                    if *gate == Gate::Inhibit && children.len() != 2 {
+                        return Err(Error::Validation(format!(
+                            "node {} is Inhibit gate but has {} children (must be exactly 2)",
+                            i,
+                            children.len()
+                        )));
                     }
                 }
             }
@@ -225,8 +249,9 @@ fn evaluate_tree(node_states: &mut [bool], spec: &FaultTreeSpec, comp_states: &[
         node_states[i] = match &spec.nodes[i] {
             FaultTreeNode::Component(idx) => comp_states[*idx],
             FaultTreeNode::Gate { gate, children } => match gate {
-                Gate::And => children.iter().all(|&c| node_states[c]),
+                Gate::And | Gate::Inhibit => children.iter().all(|&c| node_states[c]),
                 Gate::Or => children.iter().any(|&c| node_states[c]),
+                Gate::Voting { k } => children.iter().filter(|&&c| node_states[c]).count() >= *k,
             },
         };
     }
@@ -253,11 +278,15 @@ fn evaluate_tree_soft(node_soft: &mut [f64], spec: &FaultTreeSpec, comp_states: 
                 }
             }
             FaultTreeNode::Gate { gate, children } => match gate {
-                Gate::And => {
+                Gate::And | Gate::Inhibit => {
                     let sum: f64 = children.iter().map(|&c| node_soft[c]).sum();
                     sum / children.len() as f64
                 }
                 Gate::Or => children.iter().map(|&c| node_soft[c]).fold(0.0f64, f64::max),
+                Gate::Voting { k } => {
+                    let sum: f64 = children.iter().map(|&c| node_soft[c]).sum();
+                    (sum / *k as f64).min(1.0)
+                }
             },
         };
     }
@@ -354,10 +383,14 @@ pub fn flatten_spec_for_gpu(
             }
             FaultTreeNode::Gate { gate, children } => {
                 node_types.push(match gate {
-                    Gate::And => 1i32,
+                    Gate::And | Gate::Inhibit => 1i32,
                     Gate::Or => 2i32,
+                    Gate::Voting { .. } => 3i32,
                 });
-                node_data.push(0i32);
+                node_data.push(match gate {
+                    Gate::Voting { k } => *k as i32,
+                    _ => 0i32,
+                });
                 for &c in children {
                     children_flat.push(c as i32);
                 }
@@ -962,6 +995,178 @@ mod tests {
             ],
             top_event: 2,
         }
+    }
+
+    /// Helper: 2-of-3 voting gate tree.
+    fn voting_2_of_3_tree(p0: f64, p1: f64, p2: f64) -> FaultTreeSpec {
+        FaultTreeSpec {
+            components: vec![
+                FailureMode::Bernoulli { p: p0 },
+                FailureMode::Bernoulli { p: p1 },
+                FailureMode::Bernoulli { p: p2 },
+            ],
+            nodes: vec![
+                FaultTreeNode::Component(0),
+                FaultTreeNode::Component(1),
+                FaultTreeNode::Component(2),
+                FaultTreeNode::Gate { gate: Gate::Voting { k: 2 }, children: vec![0, 1, 2] },
+            ],
+            top_event: 3,
+        }
+    }
+
+    /// Helper: inhibit gate tree (AND with exactly 2 inputs).
+    fn inhibit_tree(p_primary: f64, p_condition: f64) -> FaultTreeSpec {
+        FaultTreeSpec {
+            components: vec![
+                FailureMode::Bernoulli { p: p_primary },
+                FailureMode::Bernoulli { p: p_condition },
+            ],
+            nodes: vec![
+                FaultTreeNode::Component(0),
+                FaultTreeNode::Component(1),
+                FaultTreeNode::Gate { gate: Gate::Inhibit, children: vec![0, 1] },
+            ],
+            top_event: 2,
+        }
+    }
+
+    #[test]
+    fn test_voting_2_of_3_mc() {
+        // 2-of-3 with p=0.5 each: P(TOP) = C(3,2)*0.5^3 + C(3,3)*0.5^3 = 3*0.125 + 0.125 = 0.5
+        let spec = voting_2_of_3_tree(0.5, 0.5, 0.5);
+        let result = fault_tree_mc_cpu(&spec, 1_000_000, 42, 0).unwrap();
+        assert!(
+            (result.p_failure - 0.5).abs() < 4.0 * result.se,
+            "voting 2/3 p={} expected=0.5 se={}",
+            result.p_failure,
+            result.se
+        );
+    }
+
+    #[test]
+    fn test_voting_2_of_3_asymmetric() {
+        // 2-of-3 with p0=0.1, p1=0.2, p2=0.3:
+        // P(TOP) = p0*p1*(1-p2) + p0*(1-p1)*p2 + (1-p0)*p1*p2 + p0*p1*p2
+        let (p0, p1, p2) = (0.1, 0.2, 0.3);
+        let expected =
+            p0 * p1 * (1.0 - p2) + p0 * (1.0 - p1) * p2 + (1.0 - p0) * p1 * p2 + p0 * p1 * p2;
+        let spec = voting_2_of_3_tree(p0, p1, p2);
+        let result = fault_tree_mc_cpu(&spec, 2_000_000, 42, 0).unwrap();
+        assert!(
+            (result.p_failure - expected).abs() < 4.0 * result.se,
+            "voting 2/3 asym p={} expected={} se={}",
+            result.p_failure,
+            expected,
+            result.se
+        );
+    }
+
+    #[test]
+    fn test_voting_1_of_n_equals_or() {
+        // Voting(k=1) = OR gate
+        let spec_voting = FaultTreeSpec {
+            components: vec![
+                FailureMode::Bernoulli { p: 0.1 },
+                FailureMode::Bernoulli { p: 0.2 },
+                FailureMode::Bernoulli { p: 0.3 },
+            ],
+            nodes: vec![
+                FaultTreeNode::Component(0),
+                FaultTreeNode::Component(1),
+                FaultTreeNode::Component(2),
+                FaultTreeNode::Gate { gate: Gate::Voting { k: 1 }, children: vec![0, 1, 2] },
+            ],
+            top_event: 3,
+        };
+        let spec_or = FaultTreeSpec {
+            components: spec_voting.components.clone(),
+            nodes: vec![
+                FaultTreeNode::Component(0),
+                FaultTreeNode::Component(1),
+                FaultTreeNode::Component(2),
+                FaultTreeNode::Gate { gate: Gate::Or, children: vec![0, 1, 2] },
+            ],
+            top_event: 3,
+        };
+        let r_v = fault_tree_mc_cpu(&spec_voting, 500_000, 42, 0).unwrap();
+        let r_o = fault_tree_mc_cpu(&spec_or, 500_000, 42, 0).unwrap();
+        // Same seed → same RNG → identical results
+        assert_eq!(r_v.p_failure, r_o.p_failure);
+    }
+
+    #[test]
+    fn test_voting_n_of_n_equals_and() {
+        // Voting(k=n) = AND gate
+        let spec_voting = FaultTreeSpec {
+            components: vec![FailureMode::Bernoulli { p: 0.3 }, FailureMode::Bernoulli { p: 0.4 }],
+            nodes: vec![
+                FaultTreeNode::Component(0),
+                FaultTreeNode::Component(1),
+                FaultTreeNode::Gate { gate: Gate::Voting { k: 2 }, children: vec![0, 1] },
+            ],
+            top_event: 2,
+        };
+        let spec_and = simple_and_tree(0.3, 0.4);
+        let r_v = fault_tree_mc_cpu(&spec_voting, 500_000, 42, 0).unwrap();
+        let r_a = fault_tree_mc_cpu(&spec_and, 500_000, 42, 0).unwrap();
+        assert_eq!(r_v.p_failure, r_a.p_failure);
+    }
+
+    #[test]
+    fn test_inhibit_equals_and() {
+        // Inhibit gate is semantically AND.
+        let spec_inh = inhibit_tree(0.3, 0.2);
+        let spec_and = simple_and_tree(0.3, 0.2);
+        let r_i = fault_tree_mc_cpu(&spec_inh, 500_000, 42, 0).unwrap();
+        let r_a = fault_tree_mc_cpu(&spec_and, 500_000, 42, 0).unwrap();
+        assert_eq!(r_i.p_failure, r_a.p_failure);
+    }
+
+    #[test]
+    fn test_validate_voting_k_bounds() {
+        // k=0 should fail
+        let spec = FaultTreeSpec {
+            components: vec![FailureMode::Bernoulli { p: 0.1 }],
+            nodes: vec![
+                FaultTreeNode::Component(0),
+                FaultTreeNode::Gate { gate: Gate::Voting { k: 0 }, children: vec![0] },
+            ],
+            top_event: 1,
+        };
+        assert!(spec.validate().is_err());
+
+        // k > n should fail
+        let spec2 = FaultTreeSpec {
+            components: vec![FailureMode::Bernoulli { p: 0.1 }, FailureMode::Bernoulli { p: 0.2 }],
+            nodes: vec![
+                FaultTreeNode::Component(0),
+                FaultTreeNode::Component(1),
+                FaultTreeNode::Gate { gate: Gate::Voting { k: 3 }, children: vec![0, 1] },
+            ],
+            top_event: 2,
+        };
+        assert!(spec2.validate().is_err());
+    }
+
+    #[test]
+    fn test_validate_inhibit_children_count() {
+        // Inhibit with 3 children should fail
+        let spec = FaultTreeSpec {
+            components: vec![
+                FailureMode::Bernoulli { p: 0.1 },
+                FailureMode::Bernoulli { p: 0.2 },
+                FailureMode::Bernoulli { p: 0.3 },
+            ],
+            nodes: vec![
+                FaultTreeNode::Component(0),
+                FaultTreeNode::Component(1),
+                FaultTreeNode::Component(2),
+                FaultTreeNode::Gate { gate: Gate::Inhibit, children: vec![0, 1, 2] },
+            ],
+            top_event: 3,
+        };
+        assert!(spec.validate().is_err());
     }
 
     #[test]

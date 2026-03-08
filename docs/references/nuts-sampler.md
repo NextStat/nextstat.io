@@ -101,9 +101,11 @@ result = nextstat.sample(
 )
 ```
 
-Returns a dict with keys: `draws`, `sample_stats` (tree depths, accept probs,
-step sizes, energies, divergences), `diagnostics` (R-hat, ESS bulk/tail, E-BFMI,
-divergence rate).
+Returns a dict with keys: `posterior`, `sample_stats`, `diagnostics`,
+`param_names`, `n_chains`, `n_warmup`, `n_samples`. `sample_stats` includes
+per-draw tree depths, accept probs, step sizes, energies, divergences, and
+`n_leapfrog`, plus per-chain `n_leapfrog_warmup_total` telemetry for honest
+end-to-end sampler accounting.
 
 ## Benchmarks
 

@@ -1,0 +1,50 @@
+{
+  "aggregate": {
+    "max_calibration_ratio_center_abs_diff": 0.00009780819244942228,
+    "max_fit_mu_abs_diff": 0.005697092810805771,
+    "max_fit_q_star_abs_diff": 333.7482528347566,
+    "max_fit_sigma_rel_diff": 0.009982408573757031,
+    "n_scenarios": 1,
+    "n_toy_generation_method_mismatch_scenarios": 0,
+    "toy_generation_method_mismatch_scenarios": []
+  },
+  "baseline": {
+    "chi2_abs_diff": 0.0,
+    "lhs_optimizer_method": "closed_form_blue",
+    "mu_abs_diff": 0.0,
+    "q_star_abs_diff": null,
+    "rhs_optimizer_method": "closed_form_blue",
+    "sigma_abs_diff": 0.0,
+    "sigma_rel_diff": 0.0
+  },
+  "ci_level": 0.68,
+  "dominant_calibration_gap_scenario": "bjes_0p05",
+  "dominant_fit_gap_scenario": "bjes_0p05",
+  "lhs_solver": "numerical-paper",
+  "n_toys": 8,
+  "poi": "m_top",
+  "rhs_solver": "analytic-perturbative",
+  "scenarios": [
+    {
+      "bartlett_improves_mean_q_fraction_abs_diff": 1.0,
+      "calibration_gap_rank": 1,
+      "calibration_ratio_center_abs_diff": 0.00009780819244942228,
+      "fit_gap_rank": 1,
+      "fit_mu_abs_diff": 0.005697092810805771,
+      "fit_q_star_abs_diff": 333.7482528347566,
+      "fit_sigma_rel_diff": 0.009982408573757031,
+      "label": "dominant-fit-and-calibration-gap",
+      "n_assignments": 1,
+      "name": "bjes_0p05",
+      "same_toy_generation_method": true,
+      "sigma_star_ge_sigma_fraction_abs_diff": 0.0
+    }
+  ],
+  "schema_version": "nextstat_measurement_combination_calibration_campaign_solver_parity_digest_v0",
+  "seeds": [
+    2026,
+    2027
+  ],
+  "source_schema_version": "nextstat_measurement_combination_calibration_campaign_solver_parity_v0",
+  "stability": "research-grade"
+}

@@ -1,0 +1,57 @@
+{
+  "case_name": "ads_cure_adjust_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_ads_cure_adjust": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_ads_cure_adjust"
+      },
+      "ok": true,
+      "result": {
+        "adjusted_mean_control": 108.10351257445936,
+        "adjusted_mean_variant": 110.56315409220731,
+        "adjusted_variance": 0.6668368106901984,
+        "condition_number": 86.3605629797203,
+        "covariate_provenance": [
+          {
+            "name": "pre_clicks",
+            "source_dataset": "ads_preperiod_daily",
+            "timing": "pre_treatment"
+          },
+          {
+            "name": "pre_impressions",
+            "source_dataset": "ads_preperiod_daily",
+            "timing": "pre_treatment"
+          }
+        ],
+        "effect": 2.4596415177479543,
+        "effective_sample_multiplier": 42.80574195491696,
+        "mean_control": 107.5,
+        "mean_variant": 111.16666666666667,
+        "method": "cure",
+        "num_covariates": 2,
+        "original_variance": 28.544444444444444,
+        "pre_treatment_only": true,
+        "provenance_validated": true,
+        "r_squared": 0.9766386481268517,
+        "regression_rank": 2,
+        "ridge_lambda": null,
+        "selected_covariates": [
+          "pre_clicks",
+          "pre_impressions"
+        ],
+        "solver": "svd",
+        "theta": [
+          1.2562765742321091,
+          -0.004546285413543474
+        ],
+        "variance_reduction_factor": 0.02336135187314825
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

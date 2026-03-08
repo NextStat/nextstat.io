@@ -1,0 +1,37 @@
+{
+  "aggregate": {
+    "calibration_order": [
+      "topmass_only"
+    ],
+    "families_with_mixed_pois": [],
+    "family_with_highest_joint_severity": "topmass_only",
+    "fit_order": [
+      "topmass_only"
+    ],
+    "joint_order": [
+      "topmass_only"
+    ],
+    "n_families": 1
+  },
+  "families": [
+    {
+      "calibration_rank": 1,
+      "fit_rank": 1,
+      "has_mixed_pois": false,
+      "highest_calibration_inflation_value": 1.1413389897265351,
+      "highest_fit_inflation_value": 457.6276341964417,
+      "joint_rank": 1,
+      "joint_severity_score": 522.3082616847112,
+      "label": "topmass_only",
+      "n_artifacts": 1
+    }
+  ],
+  "pairwise": [],
+  "pois": [
+    "m_top"
+  ],
+  "schema_version": "nextstat_measurement_combination_calibration_campaign_family_matrix_v0",
+  "shared_poi": "m_top",
+  "source_schema_version": "nextstat_measurement_combination_calibration_campaign_family_report_v0",
+  "stability": "research-grade"
+}

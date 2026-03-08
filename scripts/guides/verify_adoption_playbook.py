@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke-check for Adoption Playbook routes (A/B/C).
+"""Smoke-check for Adoption Playbook routes (A/B/C/D).
 
 Runs quickstart-like commands and compares generated artifacts with
 `docs/guides/fixtures/*` references.
@@ -522,6 +522,81 @@ def route_c() -> tuple[list[CompareResult], dict[str, Any]]:
     return results, parity
 
 
+def route_d(ns_cli: Path) -> list[CompareResult]:
+    out = TMP_DIR / "route_d"
+    out.mkdir(parents=True, exist_ok=True)
+
+    run_cli(
+        ns_cli,
+        [
+            "combine-measurements-build-spec",
+            "--manifest",
+            "docs/examples/gvm-stable-first/manifest.yaml",
+            "--output",
+            str(out / "spec.json"),
+        ],
+    )
+    run_cli(
+        ns_cli,
+        [
+            "combine-measurements",
+            "--input",
+            str(out / "spec.json"),
+            "--output",
+            str(out / "result.json"),
+            "--solver",
+            "auto",
+            "--threads",
+            "1",
+        ],
+    )
+    run_cli(
+        ns_cli,
+        [
+            "combine-measurements-calibrate",
+            "--input",
+            str(out / "spec.json"),
+            "--output",
+            str(out / "calibration.json"),
+            "--solver",
+            "auto",
+            "--n-toys",
+            "4",
+            "--seed",
+            "42",
+            "--threads",
+            "1",
+        ],
+    )
+    run_cli(
+        ns_cli,
+        [
+            "combine-measurements-calibrate-study",
+            "--input",
+            str(out / "spec.json"),
+            "--output",
+            str(out / "calibration_study.json"),
+            "--solver",
+            "auto",
+            "--n-toys",
+            "4",
+            "--seeds",
+            "42,43",
+            "--threads",
+            "1",
+        ],
+    )
+
+    fixture = FIXTURES_DIR / "route_d"
+    out_pairs_json = [
+        (out / "spec.json", fixture / "spec.json"),
+        (out / "result.json", fixture / "result.json"),
+        (out / "calibration.json", fixture / "calibration.json"),
+        (out / "calibration_study.json", fixture / "calibration_study.json"),
+    ]
+    return compare_pairs_json(out_pairs_json)
+
+
 def results_to_dict(results: list[CompareResult]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for item in results:
@@ -561,8 +636,9 @@ def main() -> int:
     route_a_results = route_a(ns_cli)
     route_b_results = route_b(ns_cli)
     route_c_results, route_c_parity = route_c()
+    route_d_results = route_d(ns_cli)
 
-    all_results = route_a_results + route_b_results + route_c_results
+    all_results = route_a_results + route_b_results + route_c_results + route_d_results
     all_ok = all(r.ok for r in all_results) and route_c_parity["ok"]
 
     report = {
@@ -580,6 +656,10 @@ def main() -> int:
             "ok": all(r.ok for r in route_c_results) and route_c_parity["ok"],
             "comparisons": results_to_dict(route_c_results),
             "from_arrow_large_offsets_parity": route_c_parity,
+        },
+        "route_d": {
+            "ok": all(r.ok for r in route_d_results),
+            "comparisons": results_to_dict(route_d_results),
         },
     }
 

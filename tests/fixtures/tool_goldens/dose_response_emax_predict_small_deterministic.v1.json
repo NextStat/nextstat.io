@@ -1,0 +1,30 @@
+{
+  "case_name": "dose_response_emax_predict_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_dose_response": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_dose_response"
+      },
+      "ok": true,
+      "result": {
+        "e0": 5.0,
+        "ec50": 2.0,
+        "emax": 50.0,
+        "model": "emax",
+        "predictions": [
+          5.0,
+          21.666666666666668,
+          30.0,
+          38.333333333333336,
+          45.0
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

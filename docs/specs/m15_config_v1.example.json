@@ -1,0 +1,110 @@
+{
+  "schema_version": "m15_config_v1",
+  "deterministic": true,
+  "jurisdiction_profile": "ich_core",
+  "product_context": {
+    "program_name": "NST-101 Renal PK Bridge",
+    "compound_name": "NST-101",
+    "indication": "Dose optimization in moderate renal impairment",
+    "sponsor": "NextStat Biotech"
+  },
+  "context_of_use": "Support model-informed dose selection and simulation-backed regulatory briefing materials for adults with moderate renal impairment.",
+  "questions_of_interest": [
+    {
+      "qoi_id": "QOI-001",
+      "question": "Can the population PK model support dose adjustment recommendations for adults with moderate renal impairment?",
+      "context_of_use": "Support model-informed dose selection for the renal impairment section of the clinical pharmacology package.",
+      "model_influence": "high",
+      "consequence_of_wrong_decision": "high",
+      "decision_impact": "high"
+    },
+    {
+      "qoi_id": "QOI-002",
+      "question": "Can exposure simulations justify that a reduced maintenance dose preserves target exposure in the evaluated subgroup?",
+      "context_of_use": "Support simulation-backed dosing rationale in regulatory briefing materials.",
+      "model_influence": "medium",
+      "consequence_of_wrong_decision": "high",
+      "decision_impact": "high"
+    }
+  ],
+  "planned_datasets": [
+    {
+      "dataset_id": "DS-001",
+      "description": "Population PK analysis dataset and workspace fingerprint.",
+      "purpose": "Primary estimation dataset for subgroup dose evaluation."
+    },
+    {
+      "dataset_id": "DS-002",
+      "description": "Validation evidence pack including unified validation report and pharma IQ/OQ/PQ output.",
+      "purpose": "Qualification evidence for regulated reporting."
+    }
+  ],
+  "methods": [
+    {
+      "method_id": "AM-001",
+      "description": "Population PK base model with covariate evaluation and exposure simulation for the renal impairment subgroup.",
+      "software_ref": "nextstat m15 assessment-table / validation-report"
+    }
+  ],
+  "authors": [
+    {
+      "name": "Elena Voss",
+      "role": "Lead Pharmacometrician",
+      "organization": "NextStat Biotech"
+    },
+    {
+      "name": "Martin Hale",
+      "role": "Regulatory QA Reviewer",
+      "organization": "NextStat Biotech"
+    }
+  ],
+  "technical_acceptance_criteria": [
+    {
+      "criterion_id": "TC-001",
+      "description": "All required pharma IQ/OQ/PQ suites must pass without unresolved failures.",
+      "rationale": "Operational evidence must confirm validated model execution for regulated reporting.",
+      "target": "pharma_validation.status == ok",
+      "source": "regulatory",
+      "applies_to_qoi": ["QOI-001", "QOI-002"]
+    },
+    {
+      "criterion_id": "TC-002",
+      "description": "Unified validation report must remain deterministic and pass all configured suite checks.",
+      "rationale": "Traceable, reproducible evidence is mandatory for review readiness.",
+      "target": "validation_report.apex2_summary.overall == pass",
+      "source": "operational",
+      "applies_to_qoi": ["QOI-001", "QOI-002"]
+    }
+  ],
+  "supporting_artifacts": [
+    {
+      "artifact_type": "validation_report",
+      "path": "artifacts/validation_report.json",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "role": "core validation evidence"
+    },
+    {
+      "artifact_type": "pharma_validation",
+      "path": "artifacts/pharma_validation.json",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "role": "pharma IQ/OQ/PQ evidence"
+    },
+    {
+      "artifact_type": "workspace",
+      "path": "artifacts/workspace.json",
+      "sha256": "3333333333333333333333333333333333333333333333333333333333333333",
+      "role": "workspace fingerprint source"
+    }
+  ],
+  "review_plan": {
+    "primary_author": "Elena Voss",
+    "qa_reviewer": "Martin Hale",
+    "approver": "Priya Nair",
+    "status": "review_ready"
+  },
+  "reporting_strategy": {
+    "assessment_table_required": true,
+    "map_required": true,
+    "mar_required": true
+  }
+}

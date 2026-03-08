@@ -1,0 +1,63 @@
+{
+  "schema_version": "nextstat_measurement_combination_v0",
+  "poi": "mu",
+  "measurements": [
+    {
+      "name": "m1",
+      "value": 0.0
+    },
+    {
+      "name": "m2",
+      "value": 0.1
+    },
+    {
+      "name": "m3",
+      "value": 3.0
+    }
+  ],
+  "stat_covariance": [
+    [
+      0.04,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.04,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      0.04
+    ]
+  ],
+  "systematics": [
+    {
+      "name": "new",
+      "magnitudes": [
+        0.0,
+        0.0,
+        0.2
+      ],
+      "corr": [
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ],
+      "error_on_error": 0.3
+    }
+  ]
+}

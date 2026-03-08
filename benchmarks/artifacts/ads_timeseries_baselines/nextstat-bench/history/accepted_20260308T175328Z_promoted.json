@@ -1,0 +1,189 @@
+{
+  "binary": {
+    "build_profile": "release",
+    "path": "tmp/ads_timeseries_surface_target_20260308T172943Z/release/nextstat",
+    "sha256": "0c5a215b0d213aec33732c1048cf213eda3dfae2f401ed8fc40c14f6d322ee1f",
+    "version": "nextstat 0.9.9"
+  },
+  "derived": {
+    "all_cases_ok": true,
+    "case_count": 7,
+    "cli_case_count": 2,
+    "python_case_count": 5,
+    "slowest_case_id": "cli_kalman_local_level_weekly_filter",
+    "slowest_median_s": 0.009866
+  },
+  "host": {
+    "cpu_model": "AMD EPYC 7502P 32-Core Processor",
+    "hostname": "nextstat-bench",
+    "machine": "x86_64",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "processor": "x86_64",
+    "python_version": "3.12.3"
+  },
+  "meta": {
+    "deterministic": true,
+    "generated_at_utc": "2026-03-08T17:53:28Z",
+    "git_commit": "95e7c009dc51e8632c6869dc6c421ab6bccdc3ec",
+    "host_policy": "nextstat-bench",
+    "runner": "scripts/benchmarks/bench_ads_timeseries_surface.py",
+    "smoke": false
+  },
+  "protocol": {
+    "runs": 5,
+    "warmups": 1
+  },
+  "python": {
+    "nextstat_version": "0.9.9"
+  },
+  "results": [
+    {
+      "case_id": "python_beta_binomial_fit_from_counts",
+      "details": {
+        "alpha": 151.0,
+        "beta": 8449.0,
+        "mean": 0.01755814,
+        "overdispersion": 0.00011627,
+        "posterior_alpha": 168.0,
+        "posterior_beta": 8542.0
+      },
+      "max_s": 3.4e-05,
+      "median_s": 1.9e-05,
+      "min_s": 1.8e-05,
+      "samples_s": [
+        3.4e-05,
+        2.1e-05,
+        1.9e-05,
+        1.8e-05,
+        1.8e-05
+      ],
+      "status": "ok",
+      "surface": "python"
+    },
+    {
+      "case_id": "python_delay_correction_fit_from_lag_buckets",
+      "details": {
+        "corrected_3d": 63.961848,
+        "lambda": 0.35632667,
+        "lambda_se": 0.01167374,
+        "observed_fraction_3d": 0.65664144,
+        "uncertainty_3d": 9.93879
+      },
+      "max_s": 0.000258,
+      "median_s": 0.000248,
+      "min_s": 0.000244,
+      "samples_s": [
+        0.000258,
+        0.000248,
+        0.000244,
+        0.000246,
+        0.000248
+      ],
+      "status": "ok",
+      "surface": "python"
+    },
+    {
+      "case_id": "python_response_curve_helpers",
+      "details": {
+        "adstock_last": 25.0,
+        "adstock_len": 3,
+        "hill_high": 0.69673045,
+        "hill_low": 0.12660394
+      },
+      "max_s": 2.1e-05,
+      "median_s": 1.5e-05,
+      "min_s": 1.4e-05,
+      "samples_s": [
+        2.1e-05,
+        1.7e-05,
+        1.5e-05,
+        1.5e-05,
+        1.4e-05
+      ],
+      "status": "ok",
+      "surface": "python"
+    },
+    {
+      "case_id": "python_kalman_local_level_weekly_filter",
+      "details": {
+        "log_likelihood": -11.676318,
+        "state_dim": 7,
+        "steps": 7
+      },
+      "max_s": 0.000319,
+      "median_s": 0.000184,
+      "min_s": 0.000182,
+      "samples_s": [
+        0.000319,
+        0.000208,
+        0.000183,
+        0.000184,
+        0.000182
+      ],
+      "status": "ok",
+      "surface": "python"
+    },
+    {
+      "case_id": "python_kalman_local_linear_trend_weekly_filter",
+      "details": {
+        "log_likelihood": -12.99012,
+        "state_dim": 8,
+        "steps": 7
+      },
+      "max_s": 0.000213,
+      "median_s": 0.000198,
+      "min_s": 0.00019,
+      "samples_s": [
+        0.000213,
+        0.000198,
+        0.000198,
+        0.000192,
+        0.00019
+      ],
+      "status": "ok",
+      "surface": "python"
+    },
+    {
+      "case_id": "cli_kalman_local_level_weekly_filter",
+      "details": {
+        "log_likelihood": -11.676318,
+        "state_dim": 7,
+        "steps": 7
+      },
+      "max_s": 0.01284,
+      "median_s": 0.009866,
+      "min_s": 0.008723,
+      "samples_s": [
+        0.008862,
+        0.011816,
+        0.01284,
+        0.008723,
+        0.009866
+      ],
+      "status": "ok",
+      "surface": "cli"
+    },
+    {
+      "case_id": "cli_kalman_local_linear_trend_weekly_filter",
+      "details": {
+        "log_likelihood": -12.99012,
+        "state_dim": 8,
+        "steps": 7
+      },
+      "max_s": 0.011539,
+      "median_s": 0.009081,
+      "min_s": 0.008851,
+      "samples_s": [
+        0.008851,
+        0.011539,
+        0.009008,
+        0.010279,
+        0.009081
+      ],
+      "status": "ok",
+      "surface": "cli"
+    }
+  ],
+  "schema_version": "nextstat.ads_timeseries_benchmark_result.v1",
+  "suite": "ads_timeseries_surface"
+}

@@ -16,14 +16,14 @@
     "id": "generated:glm_logistic_n=200_p=5_seed=12345",
     "sha256": "04117bfe1f5c2af45e84f7150872c10aa96ded80ad0c7ad4dfd72f6dba94c540"
   },
-  "deterministic": false,
+  "deterministic": true,
   "diagnostics": {
     "divergence_rate": 0.0,
     "ebfmi": [
-      1.010520573805396,
-      1.036195093221433,
-      1.0503889209796151,
-      1.0972428112039139
+      1.0297539725768428,
+      1.0184777755680248,
+      1.041772338024428,
+      1.0973191908174
     ],
     "ess_bulk": {
       "beta1": 8000.0,
@@ -34,44 +34,103 @@
       "intercept": 8000.0
     },
     "ess_tail": {
-      "beta1": 5981.831109614522,
-      "beta2": 6387.639991952915,
-      "beta3": 5641.959144444397,
-      "beta4": 6600.94643926649,
-      "beta5": 5957.317482432136,
-      "intercept": 5938.275490936019
+      "beta1": 5843.396523713032,
+      "beta2": 6154.525349536708,
+      "beta3": 6122.718575536881,
+      "beta4": 6385.405526678065,
+      "beta5": 6110.55048495293,
+      "intercept": 6343.709418746921
     },
     "max_treedepth_rate": 0.0,
+    "posterior_summary": {
+      "params": [
+        {
+          "ess_bulk": 8000.0,
+          "mean": -0.27566318135244117,
+          "name": "intercept",
+          "sd": 0.18444025226646113
+        },
+        {
+          "ess_bulk": 8000.0,
+          "mean": 0.5286278732908432,
+          "name": "beta1",
+          "sd": 0.2004973023955849
+        },
+        {
+          "ess_bulk": 8000.0,
+          "mean": -1.5177005401994683,
+          "name": "beta2",
+          "sd": 0.2530880970563376
+        },
+        {
+          "ess_bulk": 8000.0,
+          "mean": 0.3306311527730286,
+          "name": "beta3",
+          "sd": 0.19205944008921397
+        },
+        {
+          "ess_bulk": 8000.0,
+          "mean": 0.4679806998065718,
+          "name": "beta4",
+          "sd": 0.18483458849902848
+        },
+        {
+          "ess_bulk": 8000.0,
+          "mean": 0.932591120572611,
+          "name": "beta5",
+          "sd": 0.2039177915320602
+        }
+      ],
+      "status": "ok"
+    },
     "quality": {
       "enabled": true,
       "failures": [],
-      "max_r_hat": 1.000730207921698,
-      "min_ebfmi": 1.010520573805396,
+      "max_r_hat": 1.001136892309482,
+      "min_ebfmi": 1.0184777755680248,
       "min_ess_bulk": 8000.0,
-      "min_ess_tail": 5641.959144444397,
+      "min_ess_tail": 5843.396523713032,
       "status": "ok",
       "total_draws": 8000,
       "warnings": []
     },
     "r_hat": {
-      "beta1": 1.0005974152847124,
-      "beta2": 0.9997478010217195,
-      "beta3": 1.0006203201233033,
-      "beta4": 0.9997782214087884,
-      "beta5": 1.0000320822039155,
-      "intercept": 1.000730207921698
+      "beta1": 1.001136892309482,
+      "beta2": 1.0003582921378738,
+      "beta3": 1.0002555140409166,
+      "beta4": 1.000032013314363,
+      "beta5": 0.9998693378317678,
+      "intercept": 1.0006401704405632
     }
   },
   "diagnostics_summary": {
     "divergence_rate": 0.0,
-    "max_r_hat": 1.000730207921698,
+    "max_r_hat": 1.001136892309482,
     "max_treedepth_rate": 0.0,
-    "min_ebfmi": 1.010520573805396,
+    "min_ebfmi": 1.0184777755680248,
     "min_ess_bulk": 8000.0,
-    "min_ess_tail": 5641.959144444397
+    "min_ess_tail": 5843.396523713032
+  },
+  "environment": {
+    "cpu": "AMD EPYC 7502P 32-Core Processor",
+    "machine": "x86_64",
+    "nextstat_version": "0.9.9",
+    "node": "nextstat-bench",
+    "packages": {
+      "arviz": "0.23.4",
+      "cmdstanpy": "1.3.0",
+      "numpy": "2.4.2",
+      "pymc": "5.28.1",
+      "scipy": "1.17.1"
+    },
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python_full": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "python_version": "3.12.3",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "system": "Linux"
   },
   "meta": {
-    "nextstat_version": "0.9.0",
+    "nextstat_version": "0.9.9",
     "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
     "python": "3.12.3"
   },
@@ -92,13 +151,16 @@
   "suite": "bayesian",
   "timing": {
     "ess_bulk_per_sec": {
-      "median": 29472.298096786497,
-      "min": 29472.298096786497
+      "median": 14261.559636214164,
+      "min": 14261.559636214164
     },
+    "ess_per_grad": 0.16390083999180496,
     "ess_tail_per_sec": {
-      "median": 21992.134145414246,
-      "min": 20785.18771936947
+      "median": 10943.290400361564,
+      "min": 10416.993500122493
     },
-    "wall_time_s": 0.2714413370049442
+    "grad_per_sec": 87013.34073045167,
+    "n_grad_evals": 48810,
+    "wall_time_s": 0.5609484659507871
   }
 }

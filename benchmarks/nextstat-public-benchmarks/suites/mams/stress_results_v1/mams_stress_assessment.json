@@ -1,0 +1,181 @@
+{
+  "pathological_control_health": {
+    "failures": [],
+    "passed": true,
+    "policy": {
+      "allow_warn_statuses": true,
+      "fail_on_backend_status_failed": true,
+      "require_complete_seed_coverage": true
+    },
+    "review_summary": {
+      "failing_cases": [],
+      "n_failing_cases": 0,
+      "n_failures": 0,
+      "n_reviewed_cases": 1,
+      "worst_accept_rate": {
+        "case": "neal_funnel_10d_centered",
+        "value": 0.9775364380223933
+      },
+      "worst_ess_per_sec": {
+        "case": "neal_funnel_10d_centered",
+        "value": 706.068010394322
+      },
+      "worst_max_r_hat": {
+        "case": "neal_funnel_10d_centered",
+        "value": 1.8610555778144373
+      },
+      "worst_min_ess_bulk": {
+        "case": "neal_funnel_10d_centered",
+        "value": 1418.9246551796984
+      },
+      "worst_min_ess_tail": {
+        "case": "neal_funnel_10d_centered",
+        "value": 34.693559116792414
+      }
+    },
+    "reviewed_cases": [
+      {
+        "backend": "nextstat_mams",
+        "case": "neal_funnel_10d_centered",
+        "case_tier": "pathological_control",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_accept_rate": 0.9775364380223933,
+        "worst_ess_per_sec": 706.068010394322,
+        "worst_max_r_hat": 1.8610555778144373,
+        "worst_min_ess_bulk": 1418.9246551796984,
+        "worst_min_ess_tail": 34.693559116792414
+      }
+    ],
+    "status": "passed",
+    "target_backend": "nextstat_mams"
+  },
+  "schema_version": "nextstat.mams_stress_assessment.v1",
+  "source_summary_path": "mams_stress_multiseed_summary.json",
+  "source_summary_sha256": "f6e8b2766875892be5fc511f04e8e42bc6cbc70c60ed4f18ec1752e631331c0a",
+  "stress_readiness": {
+    "components": {
+      "pathological_control_health": "passed",
+      "supported_repeatability_gate": "failed"
+    },
+    "passed": false,
+    "status": "failed"
+  },
+  "suite": "mams_stress",
+  "supported_repeatability_gate": {
+    "failures": [
+      {
+        "case": "hier_random_intercept_non_centered",
+        "observed": 1.0158000312342303,
+        "reason": "max_r_hat_exceeds_threshold",
+        "threshold": 1.01
+      }
+    ],
+    "passed": false,
+    "policy": {
+      "max_r_hat": 1.01,
+      "parity_fail_z": 12.0,
+      "parity_warn_z": 8.0,
+      "require_all_backend_statuses_ok": true,
+      "require_all_parity_statuses_ok": true,
+      "require_complete_seed_coverage": true
+    },
+    "review_summary": {
+      "failing_cases": [
+        "hier_random_intercept_non_centered"
+      ],
+      "n_failing_cases": 1,
+      "n_failures": 1,
+      "n_reviewed_cases": 2,
+      "n_reviewed_parity_cases": 2,
+      "worst_accept_rate": {
+        "case": "hier_random_intercept_non_centered",
+        "value": 0.9801267108820219
+      },
+      "worst_ess_per_sec": {
+        "case": "hier_random_intercept_non_centered",
+        "value": 709.6651609117806
+      },
+      "worst_max_r_hat": {
+        "case": "hier_random_intercept_non_centered",
+        "value": 1.0158000312342303
+      },
+      "worst_min_ess_bulk": {
+        "case": "hier_random_intercept_non_centered",
+        "value": 2041.2782750024833
+      },
+      "worst_min_ess_tail": {
+        "case": "hier_random_intercept_non_centered",
+        "value": 863.1118969820802
+      },
+      "worst_parity_max_z": {
+        "case": "hier_random_intercept_non_centered",
+        "value": 4.089853468089003
+      }
+    },
+    "reviewed_cases": [
+      {
+        "backend": "nextstat_mams",
+        "case": "hier_random_intercept_non_centered",
+        "case_tier": "supported",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_accept_rate": 0.9801267108820219,
+        "worst_ess_per_sec": 709.6651609117806,
+        "worst_max_r_hat": 1.0158000312342303,
+        "worst_min_ess_bulk": 2041.2782750024833,
+        "worst_min_ess_tail": 863.1118969820802
+      },
+      {
+        "backend": "nextstat_mams",
+        "case": "neal_funnel_ncp_10d",
+        "case_tier": "supported",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_accept_rate": 0.9815496173518312,
+        "worst_ess_per_sec": 56539.5226715023,
+        "worst_max_r_hat": 1.006634429836915,
+        "worst_min_ess_bulk": 6334.553929204518,
+        "worst_min_ess_tail": 5967.699099141655
+      }
+    ],
+    "reviewed_parity_cases": [
+      {
+        "case": "hier_random_intercept_non_centered",
+        "case_tier": "supported",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_max_z": 4.089853468089003
+      },
+      {
+        "case": "neal_funnel_ncp_10d",
+        "case_tier": "supported",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_max_z": 1.2717084660494444
+      }
+    ],
+    "status": "failed",
+    "target_backend": "nextstat_mams"
+  }
+}

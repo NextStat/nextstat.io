@@ -1,0 +1,72 @@
+{
+  "case_name": "churn_bootstrap_hr_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_churn_bootstrap_hr": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_churn_bootstrap_hr"
+      },
+      "ok": true,
+      "result": {
+        "ci_diagnostics": [
+          {
+            "acceleration": null,
+            "alpha_high": 0.975,
+            "alpha_high_adj": null,
+            "alpha_low": 0.025000000000000022,
+            "alpha_low_adj": null,
+            "effective_method": "percentile",
+            "fallback_reason": null,
+            "n_bootstrap": 8,
+            "n_jackknife": 0,
+            "requested_method": "percentile",
+            "z0": null
+          },
+          {
+            "acceleration": null,
+            "alpha_high": 0.975,
+            "alpha_high_adj": null,
+            "alpha_low": 0.025000000000000022,
+            "alpha_low_adj": null,
+            "effective_method": "percentile",
+            "fallback_reason": null,
+            "n_bootstrap": 8,
+            "n_jackknife": 0,
+            "requested_method": "percentile",
+            "z0": null
+          }
+        ],
+        "ci_method_effective": [
+          "percentile",
+          "percentile"
+        ],
+        "ci_method_requested": "percentile",
+        "hr_ci_lower": [
+          6505.289837765118,
+          5.372135947452215e-18
+        ],
+        "hr_ci_upper": [
+          2.3494870799950882e+33,
+          246017.88837171343
+        ],
+        "hr_point": [
+          13531.447950449461,
+          0.0021634913545292914
+        ],
+        "n_bootstrap": 8,
+        "n_converged": 8,
+        "n_jackknife_attempted": 0,
+        "n_jackknife_requested": 0,
+        "names": [
+          "x1",
+          "x2"
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "schema_version": "nextstat_simplified_likelihood_v0",
+  "metadata": {
+    "experiment": "CMS",
+    "analysis_id": "sl_covariance_three_bin_smoke",
+    "source_format": "covariance",
+    "reference": "internal-test"
+  },
+  "poi": {
+    "name": "mu",
+    "init": 1.0,
+    "bounds": [0.0, 10.0]
+  },
+  "bins": [
+    { "channel": "SR_low", "name": "bin0" },
+    { "channel": "SR_low", "name": "bin1" },
+    { "channel": "SR_high", "name": "bin0" }
+  ],
+  "observed": [13.0, 8.0, 6.0],
+  "background_nominal": [12.0, 9.0, 6.0],
+  "signal_nominal": [1.5, 0.8, 0.4],
+  "uncertainty_model": {
+    "kind": "covariance",
+    "total_covariance": [
+      [0.44, 0.16, 0.11],
+      [0.16, 0.19, 0.005],
+      [0.11, 0.005, 0.2325]
+    ],
+    "stat_covariance": [
+      [0.04, 0.0, 0.0],
+      [0.0, 0.09, 0.0],
+      [0.0, 0.0, 0.16]
+    ]
+  }
+}

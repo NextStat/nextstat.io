@@ -1,0 +1,286 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/pharma/bayesian_robust_mixture_prior_policy_v0.schema.json",
+  "title": "NextStat Bayesian Robust Mixture Prior Policy v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "stability",
+    "policy_id",
+    "design_family",
+    "mixture_model",
+    "prior_target",
+    "mixture_components",
+    "eligibility",
+    "weight_schedule",
+    "conflict_response"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_bayesian_robust_mixture_prior_policy_v0"
+    },
+    "stability": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "design_family": {
+      "enum": [
+        "beta_binomial",
+        "normal_normal"
+      ]
+    },
+    "mixture_model": {
+      "enum": [
+        "robust_mixture_beta",
+        "robust_mixture_normal"
+      ]
+    },
+    "prior_target": {
+      "enum": [
+        "control_prior",
+        "treatment_prior"
+      ]
+    },
+    "mixture_components": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum_information_fraction",
+        "disallow_recommended_action_flip"
+      ],
+      "properties": {
+        "minimum_information_fraction": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "disallow_recommended_action_flip": {
+          "type": "boolean"
+        }
+      }
+    },
+    "weight_schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "retain_informative_weight",
+        "tapered_informative_weight",
+        "fallback_informative_weight"
+      ],
+      "properties": {
+        "retain_informative_weight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "tapered_informative_weight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "fallback_informative_weight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        }
+      }
+    },
+    "conflict_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "retain_max_conflict_severity",
+        "tapered_max_conflict_severity",
+        "max_eventual_success_probability_range_for_retain",
+        "max_expected_total_sample_size_range_fraction_for_retain"
+      ],
+      "properties": {
+        "retain_max_conflict_severity": {
+          "enum": [
+            "low",
+            "moderate",
+            "high"
+          ]
+        },
+        "tapered_max_conflict_severity": {
+          "enum": [
+            "low",
+            "moderate",
+            "high"
+          ]
+        },
+        "max_eventual_success_probability_range_for_retain": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "max_expected_total_sample_size_range_fraction_for_retain": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "properties": {
+        "mixture_components": {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "component_role": {
+                "const": "informative"
+              }
+            },
+            "required": [
+              "component_role"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "properties": {
+        "mixture_components": {
+          "contains": {
+            "type": "object",
+            "properties": {
+              "component_role": {
+                "const": "weak_reference"
+              }
+            },
+            "required": [
+              "component_role"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "design_family": {
+            "const": "beta_binomial"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mixture_model": {
+            "const": "robust_mixture_beta"
+          },
+          "mixture_components": {
+            "items": {
+              "$ref": "#/$defs/beta_component"
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "design_family": {
+            "const": "normal_normal"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "mixture_model": {
+            "const": "robust_mixture_normal"
+          },
+          "mixture_components": {
+            "items": {
+              "$ref": "#/$defs/normal_component"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "beta_component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_id",
+        "component_role",
+        "base_weight",
+        "alpha",
+        "beta"
+      ],
+      "properties": {
+        "component_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "component_role": {
+          "enum": [
+            "informative",
+            "weak_reference"
+          ]
+        },
+        "base_weight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "alpha": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        },
+        "beta": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        }
+      }
+    },
+    "normal_component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "component_id",
+        "component_role",
+        "base_weight",
+        "mean",
+        "sd"
+      ],
+      "properties": {
+        "component_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "component_role": {
+          "enum": [
+            "informative",
+            "weak_reference"
+          ]
+        },
+        "base_weight": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "mean": {
+          "type": "number"
+        },
+        "sd": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        }
+      }
+    }
+  }
+}

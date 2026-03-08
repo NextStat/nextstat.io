@@ -1,0 +1,39 @@
+{
+  "schema_version": "nextstat_bayesian_robust_mixture_prior_policy_v0",
+  "stability": "research-grade",
+  "policy_id": "continuous_superiority_demo_robust_mixture_policy_v0",
+  "design_family": "normal_normal",
+  "mixture_model": "robust_mixture_normal",
+  "prior_target": "treatment_prior",
+  "mixture_components": [
+    {
+      "component_id": "historical_informative",
+      "component_role": "informative",
+      "base_weight": 0.65,
+      "mean": 0.6,
+      "sd": 0.3
+    },
+    {
+      "component_id": "weak_reference",
+      "component_role": "weak_reference",
+      "base_weight": 0.35,
+      "mean": 0.0,
+      "sd": 10.0
+    }
+  ],
+  "eligibility": {
+    "minimum_information_fraction": 0.5,
+    "disallow_recommended_action_flip": true
+  },
+  "weight_schedule": {
+    "retain_informative_weight": 0.65,
+    "tapered_informative_weight": 0.25,
+    "fallback_informative_weight": 0.0
+  },
+  "conflict_response": {
+    "retain_max_conflict_severity": "low",
+    "tapered_max_conflict_severity": "moderate",
+    "max_eventual_success_probability_range_for_retain": 0.12,
+    "max_expected_total_sample_size_range_fraction_for_retain": 0.1
+  }
+}

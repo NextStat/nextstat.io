@@ -143,9 +143,17 @@ pub mod fault_tree_cuda;
 #[cfg(feature = "cuda")]
 pub mod cuda_mams;
 
+/// CUDA internal StdNormal HMC stepper prototype used to validate tree-HMC GPU seams.
+#[cfg(feature = "cuda")]
+pub mod cuda_hmc_stdnormal;
+
 /// cuBLAS batched GLM logistic evaluator (requires `cuda` feature).
 #[cfg(feature = "cuda")]
 pub mod cuda_glm_cublas;
+
+/// cuBLAS-backed interval-censored Weibull AFT evaluator (requires `cuda` feature).
+#[cfg(feature = "cuda")]
+pub mod cuda_weibull_aft_cublas;
 
 /// NVRTC JIT compiler for user-defined MAMS models on GPU (requires `cuda` feature).
 #[cfg(feature = "cuda")]

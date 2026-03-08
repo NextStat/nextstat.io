@@ -1,0 +1,276 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/ads_variance_reduction_benchmark_gate_report_v1.schema.json",
+  "title": "Ads variance-reduction benchmark gate report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "timestamp_utc",
+    "status",
+    "ok",
+    "requires_review",
+    "promotion_mode",
+    "allow_review",
+    "accepted_baseline_path",
+    "current_artifact_path",
+    "compare_report_path",
+    "promotion_report_path",
+    "steps",
+    "artifacts",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.ads_variance_reduction_benchmark_gate_report.v1"
+    },
+    "suite": {
+      "const": "ads_variance_reduction_matrix"
+    },
+    "timestamp_utc": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["passed", "review", "failed"]
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "requires_review": {
+      "type": "boolean"
+    },
+    "promotion_mode": {
+      "type": "string",
+      "enum": ["none", "dry_run", "apply"]
+    },
+    "allow_review": {
+      "type": "boolean"
+    },
+    "accepted_baseline_path": {
+      "type": "string"
+    },
+    "current_artifact_path": {
+      "type": ["string", "null"]
+    },
+    "compare_report_path": {
+      "type": "string"
+    },
+    "promotion_report_path": {
+      "type": ["string", "null"]
+    },
+    "steps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["benchmark", "compare", "promotion"],
+      "properties": {
+        "benchmark": {
+          "$ref": "#/$defs/benchmarkStep"
+        },
+        "compare": {
+          "$ref": "#/$defs/compareStep"
+        },
+        "promotion": {
+          "$ref": "#/$defs/promotionStep"
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted_before", "current", "accepted_after"],
+      "properties": {
+        "accepted_before": {
+          "$ref": "#/$defs/artifactSummary"
+        },
+        "current": {
+          "$ref": "#/$defs/artifactSummary"
+        },
+        "accepted_after": {
+          "$ref": "#/$defs/artifactSummary"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["top_level_errors"],
+      "properties": {
+        "top_level_errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "artifactSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema_version",
+        "suite",
+        "host_policy",
+        "hostname",
+        "build_profile",
+        "smoke",
+        "deterministic",
+        "runs",
+        "warmups",
+        "case_ids"
+      ],
+      "properties": {
+        "path": {
+          "type": ["string", "null"]
+        },
+        "schema_version": {
+          "type": ["string", "null"]
+        },
+        "suite": {
+          "type": ["string", "null"]
+        },
+        "host_policy": {
+          "type": ["string", "null"]
+        },
+        "hostname": {
+          "type": ["string", "null"]
+        },
+        "build_profile": {
+          "type": ["string", "null"]
+        },
+        "smoke": {
+          "type": "boolean"
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "runs": {
+          "type": ["integer", "null"]
+        },
+        "warmups": {
+          "type": ["integer", "null"]
+        },
+        "case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "benchmarkStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "status",
+        "ok",
+        "exit_code",
+        "command",
+        "artifact_dir",
+        "artifact_path",
+        "message",
+        "errors"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["provided_artifact", "runner"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["skipped", "passed", "failed"]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "exit_code": {
+          "type": ["integer", "null"]
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "artifact_dir": {
+          "type": ["string", "null"]
+        },
+        "artifact_path": {
+          "type": ["string", "null"]
+        },
+        "message": {
+          "type": "string"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "compareStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "ok", "exit_code", "command", "errors"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["skipped", "passed", "review", "failed"]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "exit_code": {
+          "type": ["integer", "null"]
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "promotionStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "ok", "exit_code", "command", "errors"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["skipped", "dry_run", "promoted", "failed"]
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "exit_code": {
+          "type": ["integer", "null"]
+        },
+        "command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

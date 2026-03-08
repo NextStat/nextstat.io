@@ -115,6 +115,11 @@ pub fn workspace_to_xml(ws: &Workspace, output_prefix: &str) -> XmlExportSet {
                         ));
                         xml.push_str("    <!-- lumi modifier -->\n");
                     }
+                    Modifier::TemplateMorphing { .. } => {
+                        xml.push_str(
+                            "    <!-- template_morphing modifier (no XML representation) -->\n",
+                        );
+                    }
                     Modifier::Unknown(_) => {
                         xml.push_str("    <!-- unknown modifier type (skipped) -->\n");
                     }

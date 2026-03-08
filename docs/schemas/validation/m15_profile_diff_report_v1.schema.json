@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/validation/m15_profile_diff_report_v1.schema.json",
+  "title": "NextStat ICH M15 Profile Diff Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "deterministic",
+    "selected_profile",
+    "compared_profiles",
+    "source_config_sha256",
+    "documents",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "m15_profile_diff_report_v1"
+    },
+    "generated_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "deterministic": {
+      "type": "boolean"
+    },
+    "selected_profile": {
+      "$ref": "#/$defs/jurisdiction_profile"
+    },
+    "compared_profiles": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/jurisdiction_profile"
+      }
+    },
+    "source_config_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "documents": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "$ref": "#/$defs/document"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    }
+  },
+  "$defs": {
+    "jurisdiction_profile": {
+      "type": "string",
+      "enum": ["ich_core", "ema_step5_2026", "fda_draft_2024"]
+    },
+    "document_kind": {
+      "type": "string",
+      "enum": ["assessment_table", "map", "mar"]
+    },
+    "profile_view": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "jurisdiction_profile",
+        "profile_label",
+        "canonical_reference",
+        "framing_heading",
+        "framing_text",
+        "mandatory_sections",
+        "profile_only_sections",
+        "missing_sections_vs_union"
+      ],
+      "properties": {
+        "jurisdiction_profile": {
+          "$ref": "#/$defs/jurisdiction_profile"
+        },
+        "profile_label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "framing_heading": {
+          "type": "string",
+          "minLength": 1
+        },
+        "framing_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mandatory_sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "profile_only_sections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "missing_sections_vs_union": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "section_presence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["section_name", "present_in_profiles", "present_in_all_profiles"],
+      "properties": {
+        "section_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "present_in_profiles": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/jurisdiction_profile"
+          }
+        },
+        "present_in_all_profiles": {
+          "type": "boolean"
+        }
+      }
+    },
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["document_kind", "common_sections", "section_presence", "profile_views"],
+      "properties": {
+        "document_kind": {
+          "$ref": "#/$defs/document_kind"
+        },
+        "common_sections": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "section_presence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/section_presence"
+          }
+        },
+        "profile_views": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/profile_view"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "documents_compared",
+        "profiles_compared",
+        "sections_with_profile_specific_diff"
+      ],
+      "properties": {
+        "documents_compared": {
+          "type": "integer",
+          "minimum": 3
+        },
+        "profiles_compared": {
+          "type": "integer",
+          "minimum": 3
+        },
+        "sections_with_profile_specific_diff": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

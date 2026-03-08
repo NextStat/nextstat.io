@@ -1,0 +1,79 @@
+{
+  "backend": "nextstat_mams",
+  "case": "neal_funnel_2d",
+  "config": {
+    "dataset_seed": 12345,
+    "n_chains": 4,
+    "n_samples": 2000,
+    "n_warmup": 3500,
+    "seed": 0,
+    "target_accept": 0.985
+  },
+  "dataset": {
+    "id": "neal_funnel_2d",
+    "sha256": "d36019ff523ce6cd5a961497fda1e1b4f94ebac42f65774a4975852bd7ffb6aa"
+  },
+  "deterministic": true,
+  "environment": {
+    "cpu": "AMD EPYC 7502P 32-Core Processor",
+    "machine": "x86_64",
+    "nextstat_version": "0.9.9",
+    "node": "nextstat-bench",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python_full": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "python_version": "3.12.3",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "system": "Linux"
+  },
+  "meta": {
+    "nextstat_version": "0.9.9",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "metrics": {
+    "accept_rate": 0.9725724476343856,
+    "cold_start_s": 0.41718860110267997,
+    "ess_per_grad": 0.0007752112968377997,
+    "ess_per_sec": 2712.470059639224,
+    "ess_per_sec_warm": 3053.728673924412,
+    "jit_overhead_s": 0.046621432062238455,
+    "max_r_hat": 1.0087217815047962,
+    "min_ess_bulk": 1131.6115897137909,
+    "min_ess_tail": 650.2013160171126,
+    "n_grad_evals": 1459746,
+    "n_integration_steps": null,
+    "posterior_summary": {
+      "n_draws": 8000,
+      "params": [
+        {
+          "ess_bulk": 2897.5626125897356,
+          "ess_tail": 874.010448785464,
+          "mean": -0.26103793259950836,
+          "name": "y",
+          "r_hat": 1.0035616062567427,
+          "sd": 3.1682047294080404
+        },
+        {
+          "ess_bulk": 1131.6115897137909,
+          "ess_tail": 650.2013160171126,
+          "mean": 0.1235668025842653,
+          "name": "x[1]",
+          "r_hat": 1.0087217815047962,
+          "sd": 4.995886164904226
+        }
+      ],
+      "status": "ok"
+    },
+    "wall_time_s": 0.41718860110267997,
+    "warm_start_s": 0.3705671690404415
+  },
+  "schema_version": "nextstat.mams_benchmark_result.v1",
+  "status": "ok",
+  "suite": "mams",
+  "timing": {
+    "cold_start_s": 0.41718860110267997,
+    "jit_overhead_s": 0.046621432062238455,
+    "wall_time_s": 0.41718860110267997,
+    "warm_start_s": 0.3705671690404415
+  }
+}

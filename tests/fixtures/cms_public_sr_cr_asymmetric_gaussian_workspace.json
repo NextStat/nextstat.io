@@ -1,0 +1,104 @@
+{
+  "channels": [
+    {
+      "name": "SR",
+      "samples": [
+        {
+          "name": "signal",
+          "data": [9.0, 7.0],
+          "modifiers": [
+            {
+              "name": "mu",
+              "type": "normfactor",
+              "data": null
+            },
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            }
+          ]
+        },
+        {
+          "name": "background",
+          "data": [92.0, 124.0],
+          "modifiers": [
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            },
+            {
+              "name": "ttbar_norm",
+              "type": "normsys",
+              "data": {
+                "hi": 1.04,
+                "lo": 0.96
+              }
+            },
+            {
+              "name": "bkg_shape",
+              "type": "histosys",
+              "data": {
+                "hi_data": [100.0, 130.0],
+                "lo_data": [84.0, 118.0]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CR",
+      "samples": [
+        {
+          "name": "background",
+          "data": [460.0, 575.0],
+          "modifiers": [
+            {
+              "name": "lumi",
+              "type": "lumi",
+              "data": null
+            },
+            {
+              "name": "ttbar_norm",
+              "type": "normsys",
+              "data": {
+                "hi": 1.04,
+                "lo": 0.96
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "name": "SR",
+      "data": [101.0, 131.0]
+    },
+    {
+      "name": "CR",
+      "data": [468.0, 582.0]
+    }
+  ],
+  "measurements": [
+    {
+      "name": "measurement",
+      "config": {
+        "poi": "mu",
+        "parameters": [
+          {
+            "name": "lumi",
+            "inits": [1.0],
+            "bounds": [[0.9, 1.1]],
+            "auxdata": [1.0],
+            "sigmas": [0.02]
+          }
+        ]
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

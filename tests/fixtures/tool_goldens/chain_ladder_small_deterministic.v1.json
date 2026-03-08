@@ -1,0 +1,65 @@
+{
+  "case_name": "chain_ladder_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_chain_ladder": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_chain_ladder"
+      },
+      "ok": true,
+      "result": {
+        "conf_level": 0.95,
+        "cv": [
+          0.0,
+          0.1601187199194697,
+          0.08056940856138507
+        ],
+        "development_factors": [
+          1.4761904761904763,
+          1.2
+        ],
+        "ibnr": [
+          0.0,
+          32.0,
+          92.57142857142858
+        ],
+        "latest": [
+          180.0,
+          160.0,
+          120.0
+        ],
+        "pi_lower": [
+          180.0,
+          21.955330411688944,
+          77.94996962368339
+        ],
+        "pi_upper": [
+          180.0,
+          42.04466958831105,
+          107.19288751917378
+        ],
+        "se": [
+          0.0,
+          5.12379903742303,
+          7.458425249682505
+        ],
+        "sigma_sq": [
+          0.10822510822510803,
+          0.10822510822510803
+        ],
+        "total_ibnr": 124.57142857142858,
+        "total_se": 10.083211683607908,
+        "ultimates": [
+          180.0,
+          192.0,
+          212.57142857142858
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

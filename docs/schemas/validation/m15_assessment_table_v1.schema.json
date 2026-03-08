@@ -1,0 +1,249 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/validation/m15_assessment_table_v1.schema.json",
+  "title": "NextStat ICH M15 Assessment Table v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "deterministic",
+    "jurisdiction_profile",
+    "profile_requirements",
+    "source_config_sha256",
+    "product_context",
+    "entries",
+    "summary",
+    "review_status"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "m15_assessment_table_v1"
+    },
+    "generated_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "deterministic": {
+      "type": "boolean"
+    },
+    "jurisdiction_profile": {
+      "type": "string",
+      "enum": ["ich_core", "ema_step5_2026", "fda_draft_2024"]
+    },
+    "profile_requirements": {
+      "$ref": "#/$defs/profile_requirements"
+    },
+    "source_config_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "product_context": {
+      "$ref": "#/$defs/product_context"
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/entry"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "review_status": {
+      "type": "string",
+      "enum": ["draft", "reviewed", "approved"]
+    }
+  },
+  "$defs": {
+    "rating": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "reporting_level": {
+      "type": "string",
+      "enum": ["basic", "enhanced", "full"]
+    },
+    "artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_type", "path", "sha256"],
+      "properties": {
+        "artifact_type": {
+          "type": "string",
+          "enum": [
+            "validation_report",
+            "pharma_validation",
+            "workspace",
+            "assessment_table",
+            "map",
+            "mar",
+            "other"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "role": {
+          "type": "string"
+        }
+      }
+    },
+    "product_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["program_name", "compound_name", "indication", "sponsor"],
+      "properties": {
+        "program_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compound_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "indication": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sponsor": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "profile_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "profile_label",
+        "canonical_reference",
+        "framing_heading",
+        "framing_text",
+        "mandatory_sections"
+      ],
+      "properties": {
+        "profile_label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "framing_heading": {
+          "type": "string",
+          "minLength": 1
+        },
+        "framing_text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mandatory_sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qoi_id",
+        "question_of_interest",
+        "context_of_use",
+        "model_influence",
+        "consequence_of_wrong_decision",
+        "model_impact",
+        "model_risk",
+        "recommended_reporting_level",
+        "justification",
+        "evidence_refs"
+      ],
+      "properties": {
+        "qoi_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question_of_interest": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context_of_use": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_influence": {
+          "$ref": "#/$defs/rating"
+        },
+        "consequence_of_wrong_decision": {
+          "$ref": "#/$defs/rating"
+        },
+        "model_impact": {
+          "$ref": "#/$defs/rating"
+        },
+        "model_risk": {
+          "$ref": "#/$defs/rating"
+        },
+        "recommended_reporting_level": {
+          "$ref": "#/$defs/reporting_level"
+        },
+        "justification": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/artifact_ref"
+          }
+        },
+        "review_notes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "n_entries",
+        "highest_model_impact",
+        "highest_model_risk",
+        "unresolved_items"
+      ],
+      "properties": {
+        "n_entries": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "highest_model_impact": {
+          "$ref": "#/$defs/rating"
+        },
+        "highest_model_risk": {
+          "$ref": "#/$defs/rating"
+        },
+        "unresolved_items": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

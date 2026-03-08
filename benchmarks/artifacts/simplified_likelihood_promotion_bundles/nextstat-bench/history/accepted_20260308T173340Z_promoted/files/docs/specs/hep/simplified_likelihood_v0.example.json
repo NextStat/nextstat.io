@@ -1,0 +1,32 @@
+{
+  "schema_version": "nextstat_simplified_likelihood_v0",
+  "metadata": {
+    "experiment": "ATLAS",
+    "analysis_id": "sl_two_bin_public_example",
+    "source_format": "basis",
+    "reference": "https://nextstat.io/examples/sl_two_bin_public_example",
+    "description": "Two-bin basis-form simplified likelihood example"
+  },
+  "poi": {
+    "name": "mu",
+    "init": 1.0,
+    "bounds": [0.0, 10.0]
+  },
+  "bins": [
+    { "channel": "SR", "name": "bin0" },
+    { "channel": "SR", "name": "bin1" }
+  ],
+  "observed": [12.0, 8.0],
+  "background_nominal": [10.5, 7.8],
+  "signal_nominal": [1.8, 0.9],
+  "uncertainty_model": {
+    "kind": "basis",
+    "components": [
+      {
+        "name": "sl_np_000",
+        "hi": [11.1, 8.2],
+        "lo": [9.9, 7.4]
+      }
+    ]
+  }
+}

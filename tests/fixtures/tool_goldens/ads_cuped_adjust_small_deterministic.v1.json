@@ -1,0 +1,49 @@
+{
+  "case_name": "ads_cuped_adjust_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_ads_cuped_adjust": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_ads_cuped_adjust"
+      },
+      "ok": true,
+      "result": {
+        "adjusted_mean_control": 11.257575757575758,
+        "adjusted_mean_variant": 11.742424242424242,
+        "adjusted_variance": 0.026936026936026924,
+        "condition_number": 1.0,
+        "covariate_provenance": [
+          {
+            "name": "pre_clicks",
+            "source_dataset": "ads_preperiod_daily",
+            "timing": "pre_treatment"
+          }
+        ],
+        "effect": 0.4848484848484844,
+        "effective_sample_multiplier": 37.125000000000014,
+        "mean_control": 11.0,
+        "mean_variant": 12.0,
+        "method": "cuped",
+        "num_covariates": 1,
+        "original_variance": 1.0,
+        "pre_treatment_only": true,
+        "provenance_validated": true,
+        "r_squared": 0.9730639730639731,
+        "regression_rank": 1,
+        "rho": 0.9864400504156211,
+        "ridge_lambda": null,
+        "selected_covariates": [
+          "pre_clicks"
+        ],
+        "solver": "svd",
+        "theta": 1.03030303030303,
+        "variance_reduction_factor": 0.026936026936026924
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

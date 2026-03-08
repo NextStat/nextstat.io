@@ -343,11 +343,11 @@ than H100 due to RTX 4090 FP64 = 1.3 TFLOPS (1:64 ratio of FP32).
   Unified memory eliminates PCIe roundtrip. **7–9× speedup at 100k**.
 - **CUDA (discrete GPU, current branch snapshot)**: route is topology/flag
   dependent (`host` vs `cuda_gpu_native`), and CUDA now outperforms CPU in
-  measured Gauss+Exp / CB / DCB toy benchmarks on GEX44.
+  measured Gauss+Exp / CB / DCB toy benchmarks on dedicated-bench.
 - **CUDA multi-GPU**: dispatch is **numerically correct** (results match
   CPU to 15 digits), both GPUs reach 99–100% utilization, but wall-time
   scaling is ~1.03–1.32× due to lockstep synchronization.
-- **GEX44 recovery matrix (2026-02-13)**:
+- **dedicated-bench recovery matrix (2026-02-13)**:
   - 10k-event spec, 1000 toys: CPU 7.36 s vs CUDA 1.16-1.26 s (**5.8-6.3× faster**)
   - 10k-event spec, 10000 toys: CPU 73.98 s vs CUDA 14.61-14.68 s (**~5.0× faster**)
   - 10k-event spec, 50000 toys: CPU 382.29 s vs CUDA 82.26 s (**~4.6× faster**)
@@ -458,7 +458,7 @@ than H100 due to RTX 4090 FP64 = 1.3 TFLOPS (1:64 ratio of FP32).
 ## 4. Cross-Framework Comparison (same data, same hardware)
 
 All frameworks fit the **same deterministic toy dataset** (seed 42/43, median
-of 2 runs). Measured on Hetzner GEX44 (i5-13500, 20T, Ubuntu 24.04).
+of 2 runs). Measured on Hetzner dedicated-bench (i5-13500, 20T, Ubuntu 24.04).
 Script: `benchmarks/unbinned/run_suite.py`.
 
 **Measurement notes**:

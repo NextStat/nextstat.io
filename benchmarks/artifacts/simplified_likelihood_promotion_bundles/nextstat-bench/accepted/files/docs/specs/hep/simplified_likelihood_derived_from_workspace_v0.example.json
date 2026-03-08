@@ -1,0 +1,73 @@
+{
+  "schema_version": "nextstat_simplified_likelihood_v0",
+  "metadata": {
+    "experiment": "ATLAS",
+    "analysis_id": "sl_derived_workspace_public_example",
+    "source_format": "derived_from_workspace",
+    "reference": "https://nextstat.io/examples/sl_derived_workspace_public_example",
+    "description": "Research-grade example of a simplified likelihood derived from a fitted workspace"
+  },
+  "poi": {
+    "name": "mu",
+    "init": 1.0,
+    "bounds": [0.0, 10.0]
+  },
+  "bins": [
+    { "channel": "SR", "name": "bin0" },
+    { "channel": "SR", "name": "bin1" }
+  ],
+  "observed": [12.0, 8.0],
+  "background_nominal": [10.4, 7.7],
+  "signal_nominal": [1.8, 0.9],
+  "uncertainty_model": {
+    "kind": "basis",
+    "components": [
+      {
+        "name": "sl_np_000",
+        "hi": [11.0, 8.1],
+        "lo": [9.8, 7.3]
+      },
+      {
+        "name": "sl_np_001",
+        "hi": [10.7, 8.0],
+        "lo": [10.1, 7.4]
+      }
+    ]
+  },
+  "derivation": {
+    "source_workspace_format": "pyhf",
+    "source_workspace_schema_version": "pyhf_workspace_v1",
+    "fit_result_schema_version": "nextstat_fit_result_v0",
+    "selected_channels": ["SR"],
+    "selected_bins": ["SR/bin0", "SR/bin1"],
+    "basis_method": "eigen",
+    "explained_variance_target": 0.995,
+    "jacobian_method": "finite_difference",
+    "split_stat_covariance": true
+  },
+  "diagnostics": {
+    "factorization": {
+      "method": "symmetric_eigendecomposition",
+      "original_rank": 5,
+      "retained_rank": 2,
+      "explained_variance_fraction": 0.997,
+      "frobenius_residual": 0.0021,
+      "clipped_negative_eigenvalues": 0,
+      "max_clipped_negative_eigenvalue_magnitude": 0.0,
+      "input_trace": 0.58,
+      "retained_trace": 0.578
+    },
+    "fidelity": {
+      "nuisance_count_full": 12,
+      "nuisance_count_reduced": 2,
+      "bins_count": 2,
+      "relative_background_cov_residual": 0.012,
+      "max_abs_expected_delta_at_nominal": 0.037,
+      "max_abs_expected_delta_random_draws": 0.061,
+      "qmu_delta_smoke": 0.008,
+      "upper_limit_ratio_smoke": 1.013,
+      "max_abs_yield_delta": 0.037,
+      "max_rel_yield_delta": 0.005
+    }
+  }
+}

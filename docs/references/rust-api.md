@@ -106,10 +106,11 @@ Key exports (see `crates/ns-inference/src/lib.rs`):
 - MLE: `MaximumLikelihoodEstimator`, `OptimizerConfig`, `OptimizationResult`, `RankingEntry`
 - Posterior + priors: `Posterior`, `Prior`
 - NUTS: `NutsConfig`, `sample_nuts`, `sample_nuts_multichain`
-- MAMS: `MamsConfig`, `sample_mams`, `sample_mams_multichain` — Metropolis-Adjusted Microcanonical Sampler (arXiv:2503.01707). Isokinetic dynamics on S^{d-1}, 4-phase DualAveraging warmup with adaptive phase durations (when Pathfinder init provides Hessian metric: 10%/15%/10%/65%, default: 15%/40%/15%/30%), exp_m1/ln_1p stable b-step.
+- WALNUTS: `AdaptiveWalnutsConfig`, `WalnutsConfig`, `WalnutsTuning`, `WalnutsTransition`, `sample_walnuts`, `sample_walnuts_fixed`, `sample_walnuts_multichain` — Window-Adaptive NUTS with dyadic local step selection. Stable CPU surface supports Euclidean diagonal and dense metrics through `AdaptiveWalnutsConfig.metric_type`; `sample_walnuts_fixed` / `WalnutsTuning` remain the low-level diagonal fixed-tuning path used for deterministic kernel tests. The public result contract matches `Chain` / `SamplerResult`, including `metric_type_name`, `mass_diag`, optional `inv_mass_matrix`, and per-chain `n_leapfrog_warmup_total`. `WalnutsConfig::default()` currently uses `max_step_halvings=4`, `min_micro_steps=1`, and `max_energy_error=2.0`. See `docs/references/walnuts-sampler.md` for the dedicated WALNUTS surface note.
+- MAMS: `MamsConfig`, `sample_mams`, `sample_mams_multichain` — Metropolis-Adjusted Microcanonical Sampler (arXiv:2503.01707). Isokinetic dynamics on S^{d-1}, diagonal preconditioning on the stable CPU surface, tracked stable defaults (`n_warmup=3500`, `target_accept=0.985`, `max_leapfrog=1024`, `eps_jitter=0.0`), 4-phase DualAveraging warmup with adaptive phase durations (when Pathfinder init provides a Hessian-derived diagonal preconditioner: 10%/15%/10%/65%, default: 15%/40%/15%/30%), exp_m1/ln_1p stable b-step, per-chain `n_leapfrog_warmup_total` telemetry, and divergence flags that now correctly surface early-terminated non-finite energy-error transitions.
 - LAPS: `LapsConfig`, `LapsModel`, `LapsResult`, `sample_laps` — GPU-accelerated MAMS on CUDA (feature `cuda`) or Metal (feature `metal`, Apple Silicon, f32). 4096+ chains in parallel, 1 thread = 1 chain. Windowed warmup with Stan-style doubling windows (default `n_mass_windows=3`). Built-in models: `StdNormal`, `EightSchools`, `NealFunnel`, `NealFunnelNcp`, `NealFunnelRiemannian { dim }`, `GlmLogistic`, `GlmLinear`, `GlmPoisson` (optional offset), `GlmNegBin` (optional offset, dispersion log_alpha, dim=p+1), `GlmComposedLogistic` (random intercept NCP, dim=p+n_groups). `NealFunnelNcp` is the recommended parametrization for funnel geometries (R-hat < 1.02). `NealFunnelRiemannian` uses hybrid position-dependent Fisher metric (experimental, known v-bias). User-defined models: `LapsModel::Custom { dim, param_names, model_data, cuda_src }` — compiled at runtime via NVRTC JIT with disk caching (CUDA only). Multi-GPU: `LapsConfig { device_ids: Some(vec![0,1,2,3]), .. }` — chains split across GPUs with synchronized warmup (CUDA only). Backend priority: CUDA (f64) > Metal (f32, built-in models only).
 - NVRTC JIT: `MamsJitCompiler` (ns-compute, feature `cuda`) — compiles user CUDA C (`user_nll` + `user_grad`) with the MAMS engine header into PTX at runtime. Per-device GPU arch auto-detect via `new_for_device(device_id)`, SHA-256 disk cache at `~/.cache/nextstat/ptx/`. `CudaMamsAccelerator::new_jit_on_device()` / `new_on_device()` load on a specific GPU device.
-- `InitStrategy`: `Random` (Stan-style Uniform(-2,2)), `Mle` (L-BFGS mode), `Pathfinder` (full L-BFGS + diagonal inverse Hessian as initial mass matrix). Used by both NUTS and MAMS.
+- `InitStrategy`: `Random` (Stan-style Uniform(-2,2)), `Mle` (L-BFGS mode), `Pathfinder` (full L-BFGS + Hessian-derived initial metric/preconditioner; dense when the sampler/metric supports it, diagonal otherwise). Used by both NUTS and MAMS.
 - Frequentist: `AsymptoticCLsContext`, `HypotestResult`
 - Toy-based: `hypotest_qtilde_toys`, `hypotest_qtilde_toys_expected_set`, `ToyHypotestResult`
 - Toy-based GPU: `hypotest_qtilde_toys_gpu`, `hypotest_qtilde_toys_expected_set_gpu` (feature `cuda` or `metal`)
@@ -119,9 +120,12 @@ Key exports (see `crates/ns-inference/src/lib.rs`):
 - Laplace: `laplace_log_marginal`, `LaplaceResult`
 - Model builder: `ModelBuilder`, `ComposedGlmModel` (hierarchical GLMs)
 - Regression: `LinearRegressionModel`, `LogisticRegressionModel`, `PoissonRegressionModel`, `ols_fit`
+- Sample-size calculator: `ns_inference::calculator::{CalculatorConfig, SampleSizeResult, SensitivityBreakdown, calculate_sample_size, calculate_power_curve, calculate_mde_curve, calculate_sensitivity_breakdown}`
 - Ordinal: `OrderedLogitModel`, `OrderedProbitModel`
 - LMM: `LmmMarginalModel`, `LmmRandomEffects`
 - Survival: `ExponentialSurvivalModel`, `WeibullSurvivalModel`, `LogNormalAftModel`, `CoxPhModel`, `IntervalCensoredWeibullModel`, `IntervalCensoredWeibullAftModel`, `IntervalCensoredExponentialModel`, `IntervalCensoredLogNormalModel`
+- Ads-native measurement helpers: `BetaBinomialModel`, `DelayCorrectionModel`, `hierarchical_segment_lift_summary`, `hill`, `adstock_geometric`
+- Variance reduction: `CupedArmData`, `MultiCovariateArmData`, `CupedResult`, `CureResult`, `VarianceReductionMethod`, `VarianceReductionSolver`, `cuped_adjust`, `cure_adjust`
 - Time series: Kalman / EM / forecasting utilities (see `ns_inference::timeseries::*`)
 - PK/NLME: `OneCompartmentOralPkModel`, `OneCompartmentOralPkNlmeModel`, `TwoCompartmentIvPkModel`, `TwoCompartmentOralPkModel`, `ThreeCompartmentIvPkModel`, `ThreeCompartmentOralPkModel`, `ErrorModel`, `LloqPolicy`
 - ODE: `rk4_linear`, `OdeSolution`
@@ -239,6 +243,76 @@ let returns = vec![0.01, -0.02, 0.005, 0.03, -0.015];
 let fit = garch11_fit(&returns, Garch11Config::default())?;
 println!("omega={:.4} alpha={:.4} beta={:.4}", fit.params.omega, fit.params.alpha, fit.params.beta);
 ```
+
+### Ads-native Observation / Response / Experimentation Helpers
+
+Ads-specific count and response helpers live in `ns_inference::ads` and are re-exported at the crate root:
+
+- `BetaBinomialModel::new(alpha, beta)` — beta prior over latent conversion rates.
+  - `fit(conversion_rates, sample_sizes)` and `fit_from_counts(successes, trials)` estimate an empirical-Bayes prior from historical campaigns.
+  - `mean()`, `variance()`, `overdispersion()`, `posterior(successes, trials)`, `predictive_mean(trials)`, `predictive_variance(trials)`.
+- `DelayCorrectionModel::new(lambda, lambda_se)` — exponential delay-censoring correction.
+  - `fit_from_lag_buckets(buckets)` estimates the delay rate from lag-bucket histograms.
+  - `observed_fraction(window_days)` and `correct(observed_count, window_days)`.
+- `hill(x, ec, slope)` — Hill saturation helper for response curves.
+- `adstock_geometric(spend, decay)` — geometric adstock transform.
+
+Shared experimentation variance-reduction helpers live in
+`ns_inference::variance_reduction`, are re-exported at the crate root, and are
+also available via `ns_inference::ads` for ads-facing callers:
+
+- `cuped_adjust(control, variant) -> Result<CupedResult>` — one-covariate CUPED adjustment.
+  - `CupedArmData { outcomes, covariates, covariate_name, covariate_provenance, pre_treatment_only }`
+  - `CovariateProvenance { name, timing, source_dataset }` with `CovariateTiming`
+    gives the typed boundary for leakage-safe pre-treatment validation.
+  - `CupedResult` reports adjusted means, `theta`, `rho`, `r_squared`,
+    `variance_reduction_factor`, `effective_sample_multiplier`,
+    `selected_covariates`, `covariate_provenance`, `provenance_validated`,
+    `solver`, `condition_number`, and `ridge_lambda`.
+- `cure_adjust(control, variant) -> Result<CureResult>` — multivariate CURE adjustment.
+  - `MultiCovariateArmData { outcomes, covariates, covariate_names, covariate_provenance, pre_treatment_only }`
+  - `CureResult` reports adjusted means, coefficient vector `theta`, pooled
+    `r_squared`, `variance_reduction_factor`, `effective_sample_multiplier`,
+    `selected_covariates`, `covariate_provenance`, `provenance_validated`,
+    `solver`, `condition_number`, and `ridge_lambda`.
+- Architectural rule: CUPED is treated as the one-covariate case of the shared
+  CURE layer.
+- Guardrails:
+  - only pre-treatment covariates are accepted
+  - typed provenance with `timing != pre_treatment` fails fast
+  - full-rank cases use SVD
+  - collinear / ill-conditioned designs fall back to ridge regularization
+  - approved deterministic reference fixtures live under
+    `tests/fixtures/variance_reduction/`
+  - benchmark governance and `nextstat-bench` evidence live in
+    `docs/benchmarks/ads-variance-reduction-runbook-2026-03-08.md` and
+    `docs/benchmarks/ads-variance-reduction-benchmark-2026-03-08.md`
+- Surface boundary:
+  - these primitives are part of the shared Rust API surface
+  - they are re-exported via `ns_inference::ads` for ads-facing callers
+  - the same canonical math is also surfaced through
+    `nextstat_ads_cuped_adjust` / `nextstat_ads_cure_adjust` on the
+    local and server-safe tool runtime
+  - they are still not a dedicated CLI endpoint
+
+The ads-oriented sample-size calculator lives under `ns_inference::calculator`:
+
+- `calculate_sample_size(&CalculatorConfig) -> Result<SampleSizeResult>`
+- `calculate_power_curve(&CalculatorConfig, relative_lifts) -> Result<Vec<(f64, f64)>>`
+- `calculate_mde_curve(&CalculatorConfig, candidate_ns) -> Result<Vec<(u64, f64)>>`
+- `calculate_sensitivity_breakdown(&CalculatorConfig) -> Result<SensitivityBreakdown>`
+- `CalculatorConfig` now supports both legacy `cuped_rho_squared` and the
+  generalized `expected_r_squared_from_covariates`, `expected_num_covariates`,
+  `selected_covariates`, and `pre_treatment_covariates_only`.
+- `SampleSizeResult` and `SensitivityBreakdown` now embed a typed
+  `VarianceReductionPlan { method, expected_r_squared, variance_reduction_factor, effective_sample_multiplier, num_covariates, selected_covariates, pre_treatment_covariates_only }`
+  so planner consumers do not need to reverse-engineer CUPED/CURE assumptions
+  from flat scalar fields.
+
+Time-series weekly seasonality convenience builders remain under `ns_inference::timeseries::kalman`:
+
+- `KalmanModel::local_level_weekly(q_level, q_weekly, r, level0, p0_level, p0_weekly)`
+- `KalmanModel::local_linear_trend_weekly(q_level, q_slope, q_weekly, r, level0, slope0, p0_level, p0_slope, p0_weekly)`
 
 ### Differentiable Layer (CUDA, feature-gated)
 
@@ -416,12 +490,16 @@ let histos = ns_root::fill_histograms(&[spec], &columns)?;
 Format translators. Ingestion from multiple HEP/analysis formats into the internal model.
 
 Key exports:
+- `ns_translate::audit::{audit_workspace_json, WorkspaceAuditArtifact}` — shared workspace-audit dispatcher for pyhf and simplified-likelihood JSON; HS3 is rejected explicitly.
 - `ns_translate::pyhf::{Workspace, HistFactoryModel, NllScratch, PreparedModel, NormSysInterpCode, HistoSysInterpCode}` — pyhf JSON format (full HistFactory probability model).
 - `ns_translate::histfactory::{parse_combination_xml, HistFactoryXmlWorkspace}` — HistFactory XML format (ROOT-style workspace definition). Feature-gated behind `root-io`.
 - `ns_translate::trex::{parse_trex_config, TrexConfig}` — TRExFitter configuration files (`.txt` and `.yaml` formats). Parses Region/Sample/Systematic/NormFactor blocks and converts to `Workspace`. Feature-gated behind `root-io`.
 - `ns_translate::NtupleWorkspaceBuilder` — fluent builder: ROOT ntuples -> HistFactory `Workspace`.
 - `ns_translate::ntuple::{ChannelConfig, SampleConfig, NtupleModifier}` — configuration types.
 - `ns_translate::pyhf::audit::workspace_audit(json) -> Result<WorkspaceAudit>` — inspect a workspace: channel/sample/modifier counts, unsupported features.
+- `ns_translate::simplified::schema::{SIMPLIFIED_LIKELIHOOD_SCHEMA_V0, SimplifiedLikelihoodWorkspace}` — simplified-likelihood input contract.
+- `ns_translate::simplified::audit::{SIMPLIFIED_LIKELIHOOD_AUDIT_SCHEMA_V0, audit_simplified_likelihood}` — typed audit artifact for simplified-likelihood inputs, including factorization diagnostics.
+- `ns_translate::simplified::export::{SIMPLIFIED_LIKELIHOOD_DERIVE_SCHEMA_V0, SIMPLIFIED_LIKELIHOOD_EXPORT_REPORT_SCHEMA_V0, SimplifiedLikelihoodDeriveConfig, SimplifiedLikelihoodExportReport, build_simplified_likelihood_export_report, derive_simplified_likelihood_core}` — promoted narrow exporter request + machine-readable export report surface for reduced `derived_from_workspace` artifacts. The stable boundary is explicit: `pyhf` source only, single-POI only, Gaussian-constrained `source_model_constraints` only, and no source-level nuisance-identity guarantee after reduction; broader fallback modes remain research-grade.
 - `Workspace::combine(&self, other, join) -> Result<Workspace>` — combine two workspaces. `CombineJoin::{None, Outer, LeftOuter, RightOuter}`.
 - `Workspace::prune(&self, channels, samples, modifiers, measurements) -> Workspace` — remove specified elements.
 - `Workspace::rename(&self, channels, samples, modifiers, measurements) -> Workspace` — rename elements via `HashMap<String,String>` maps.

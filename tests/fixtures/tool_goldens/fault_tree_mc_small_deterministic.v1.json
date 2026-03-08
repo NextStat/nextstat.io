@@ -1,0 +1,29 @@
+{
+  "case_name": "fault_tree_mc_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_fault_tree_mc": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_fault_tree_mc"
+      },
+      "ok": true,
+      "result": {
+        "ci_lower": 0.024483407101667975,
+        "ci_upper": 0.030916592898332023,
+        "component_importance": [
+          0.34296028880866425,
+          0.6570397111913358
+        ],
+        "n_scenarios": 10000,
+        "n_top_failures": 277,
+        "p_failure": 0.0277,
+        "se": 0.0016411188256796035
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

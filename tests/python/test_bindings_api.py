@@ -55,6 +55,31 @@ def test_model_basic_contracts_simple_workspace():
     assert nll == nll  # not NaN
 
 
+def test_model_basic_contracts_simplified_likelihood_workspace():
+    sl_json = (FIXTURES_DIR / "sl_basis_two_bin.json").read_text(encoding="utf-8")
+    model = nextstat.HistFactoryModel.from_workspace(sl_json)
+
+    names = model.parameter_names()
+    init = model.suggested_init()
+
+    assert names[0] == "mu"
+    assert len(names) == 2
+    assert len(init) == 2
+    assert math.isfinite(model.nll(init))
+
+
+def test_workspace_audit_accepts_simplified_likelihood_workspace():
+    sl_json = (FIXTURES_DIR / "sl_covariance_three_bin.json").read_text(encoding="utf-8")
+
+    audit = nextstat.workspace_audit(sl_json)
+
+    assert audit["schema_version"] == "nextstat_simplified_likelihood_audit_v0"
+    assert audit["input_schema_version"] == "nextstat_simplified_likelihood_v0"
+    assert audit["uncertainty_model_kind"] == "covariance"
+    assert audit["reduced_nuisance_count"] == 3
+    assert audit["diagnostics"]["factorization"]["method"] == "symmetric_eigendecomposition"
+
+
 def test_model_rejects_wrong_parameter_length_without_crashing():
     ws = load_fixture("simple_workspace.json")
     model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))
@@ -229,6 +254,41 @@ def test_upper_limit_contract():
     ul = nextstat.upper_limit(model, alpha=0.05, lo=0.0, hi=5.0)
     assert isinstance(ul, float)
     assert ul >= 0.0
+
+
+def test_fault_tree_ce_is_top_level_binding_contract():
+    spec = {
+        "components": [
+            {"type": "bernoulli", "p": 0.01},
+            {"type": "bernoulli", "p": 0.02},
+        ],
+        "nodes": [
+            {"type": "component", "index": 0},
+            {"type": "component", "index": 1},
+            {"type": "and", "children": [0, 1]},
+        ],
+        "top_event": 2,
+    }
+
+    out = nextstat.fault_tree_mc_ce_is(
+        spec,
+        n_per_level=1000,
+        elite_fraction=0.02,
+        max_levels=6,
+        q_max=0.9,
+        seed=42,
+    )
+    assert isinstance(out, dict)
+    assert {
+        "p_failure",
+        "se",
+        "ci_lower",
+        "ci_upper",
+        "n_levels",
+        "n_total_scenarios",
+        "final_proposal",
+        "coefficient_of_variation",
+    } <= set(out.keys())
 
 
 def test_fit_batch_contract_list_of_models():

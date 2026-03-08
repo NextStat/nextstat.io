@@ -1,0 +1,61 @@
+{
+  "schema_version": "nextstat.variance_reduction_fixture.v1",
+  "scenario": "multi-channel baseline metric with search, social, and display covariates",
+  "metric_type": "multi_channel",
+  "method": "cure",
+  "control_outcomes": [1.2, 1.28, 1.31, 1.44, 1.53, 1.58, 1.66, 1.79],
+  "variant_outcomes": [1.28, 1.37, 1.41, 1.55, 1.65, 1.71, 1.8, 1.94],
+  "control_covariates": [
+    [110.0, 70.0, 40.0],
+    [118.0, 74.0, 42.0],
+    [121.0, 76.0, 43.0],
+    [134.0, 83.0, 47.0],
+    [142.0, 88.0, 50.0],
+    [146.0, 91.0, 52.0],
+    [152.0, 95.0, 55.0],
+    [165.0, 101.0, 59.0]
+  ],
+  "variant_covariates": [
+    [112.0, 71.0, 41.0],
+    [120.0, 75.0, 43.0],
+    [123.0, 77.0, 44.0],
+    [136.0, 84.0, 48.0],
+    [144.0, 89.0, 51.0],
+    [148.0, 92.0, 53.0],
+    [154.0, 96.0, 56.0],
+    [167.0, 102.0, 60.0]
+  ],
+  "selected_covariates": ["pre_search_spend", "pre_social_spend", "pre_display_spend"],
+  "covariate_provenance": [
+    {
+      "name": "pre_search_spend",
+      "timing": "pre_treatment",
+      "source_dataset": "channel_baselines"
+    },
+    {
+      "name": "pre_social_spend",
+      "timing": "pre_treatment",
+      "source_dataset": "channel_baselines"
+    },
+    {
+      "name": "pre_display_spend",
+      "timing": "pre_treatment",
+      "source_dataset": "channel_baselines"
+    }
+  ],
+  "pre_treatment_only": true,
+  "expected": {
+    "method": "cure",
+    "adjusted_mean_control": 1.4975694444444443,
+    "adjusted_mean_variant": 1.5649305555555555,
+    "effect": 0.0673611111111112,
+    "theta": [0.015069444444444436, -0.04319444444444441, 0.060694444444444405],
+    "r_squared": 0.9630364517513297,
+    "variance_reduction_factor": 0.03696354824867032,
+    "effective_sample_multiplier": 27.05367983810842,
+    "solver": "svd",
+    "regression_rank": 3,
+    "condition_number": 67.24601566410065,
+    "ridge_lambda": null
+  }
+}

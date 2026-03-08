@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/pharma/bayesian_historical_control_borrowing_policy_v0.schema.json",
+  "title": "Bayesian Historical-Control Borrowing Policy v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "stability",
+    "policy_id",
+    "design_family",
+    "borrowing_model",
+    "historical_sources",
+    "eligibility",
+    "borrowing_strength",
+    "conflict_response"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_bayesian_historical_control_borrowing_policy_v0"
+    },
+    "stability": {
+      "const": "research-grade"
+    },
+    "policy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "design_family": {
+      "enum": ["beta_binomial", "normal_normal"]
+    },
+    "borrowing_model": {
+      "enum": ["power_prior", "commensurate"]
+    },
+    "historical_sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_id",
+          "source_role",
+          "planned_control_sample_size",
+          "exchangeability_assessment",
+          "data_cut_label"
+        ],
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_role": {
+            "enum": ["external_control_arm", "legacy_internal_control"]
+          },
+          "planned_control_sample_size": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "exchangeability_assessment": {
+            "enum": ["low", "moderate", "high"]
+          },
+          "data_cut_label": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum_current_control_sample_size",
+        "minimum_control_information_fraction",
+        "disallow_recommended_action_flip"
+      ],
+      "properties": {
+        "minimum_current_control_sample_size": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "minimum_control_information_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "disallow_recommended_action_flip": {
+          "type": "boolean"
+        }
+      }
+    },
+    "borrowing_strength": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "full_borrowing_fraction",
+        "tapered_borrowing_fraction",
+        "suspended_borrowing_fraction"
+      ],
+      "properties": {
+        "full_borrowing_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "tapered_borrowing_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "suspended_borrowing_fraction": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "conflict_response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "full_borrowing_max_conflict_severity",
+        "tapered_borrowing_max_conflict_severity",
+        "max_eventual_success_probability_range_for_full_borrowing",
+        "max_expected_total_sample_size_range_fraction_for_full_borrowing"
+      ],
+      "properties": {
+        "full_borrowing_max_conflict_severity": {
+          "enum": ["low", "moderate", "high"]
+        },
+        "tapered_borrowing_max_conflict_severity": {
+          "enum": ["low", "moderate", "high"]
+        },
+        "max_eventual_success_probability_range_for_full_borrowing": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max_expected_total_sample_size_range_fraction_for_full_borrowing": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    }
+  }
+}

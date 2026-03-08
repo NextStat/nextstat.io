@@ -1,0 +1,81 @@
+{
+  "case_name": "pharma_fit_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_pharma_fit": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_pharma_fit"
+      },
+      "ok": true,
+      "result": {
+        "converged": true,
+        "correlation": [
+          [
+            1.0,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            1.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            1.0
+          ]
+        ],
+        "covariance_step": null,
+        "eta": [
+          [
+            0.012952322987712603,
+            -0.00031001154414000894,
+            0.04450016477825753
+          ],
+          [
+            0.013262378628298094,
+            0.03687952252986629,
+            0.0013236388581879008
+          ]
+        ],
+        "imp": null,
+        "ofv": 10.4042179617348,
+        "omega": [
+          0.23205333134381162,
+          0.1747805686184603,
+          0.19886968003785888
+        ],
+        "omega_matrix": [
+          [
+            0.05384874858776082,
+            0.0,
+            0.0
+          ],
+          [
+            0.0,
+            0.030548247166592313,
+            0.0
+          ],
+          [
+            0.0,
+            0.0,
+            0.03954914963836036
+          ]
+        ],
+        "sigma": 0.4957107292952698,
+        "sigma_init": 0.1,
+        "theta": [
+          1.164506525594798,
+          24.909528523819073,
+          0.47362662391041127
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

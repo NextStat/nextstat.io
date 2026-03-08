@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/io/hepdata_import_v1.schema.json",
+  "title": "NextStat HEPData Import Summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "mode", "source", "source_mode", "manifest", "datasets"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat.hepdata_import.v1"
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["catalog", "materialize"]
+    },
+    "source": {
+      "type": "string",
+      "const": "hepdata"
+    },
+    "source_mode": {
+      "type": "string",
+      "enum": ["curated", "direct_doi"]
+    },
+    "manifest": {
+      "type": "string",
+      "minLength": 1
+    },
+    "out_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "cache_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "lock": {
+      "type": "string",
+      "minLength": 1
+    },
+    "datasets": {
+      "type": "array"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "mode": { "const": "catalog" }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["out_dir"] },
+            { "required": ["cache_dir"] },
+            { "required": ["lock"] }
+          ]
+        },
+        "properties": {
+          "datasets": {
+            "items": { "$ref": "#/$defs/catalog_dataset" }
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "mode": { "const": "materialize" }
+        }
+      },
+      "then": {
+        "required": ["out_dir", "cache_dir", "lock"],
+        "properties": {
+          "datasets": {
+            "items": { "$ref": "#/$defs/materialized_dataset" }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "sha256_hex": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "download": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "mode", "cached", "path", "sha256"],
+      "properties": {
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["cached", "network"]
+        },
+        "cached": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "$ref": "#/$defs/sha256_hex"
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "bkgonly_filename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "patchset_filename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "available_patch_names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "timings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_s",
+        "archive_prepare_s",
+        "download_s",
+        "extract_archive_s",
+        "extract_nested_archives_s",
+        "inspect_inputs_s",
+        "materialize_bkgonly_s",
+        "materialize_patches_s",
+        "materialize_total_s"
+      ],
+      "properties": {
+        "total_s": { "type": "number", "minimum": 0 },
+        "archive_prepare_s": { "type": "number", "minimum": 0 },
+        "download_s": { "type": "number", "minimum": 0 },
+        "extract_archive_s": { "type": "number", "minimum": 0 },
+        "extract_nested_archives_s": { "type": "number", "minimum": 0 },
+        "inspect_inputs_s": { "type": "number", "minimum": 0 },
+        "materialize_bkgonly_s": { "type": "number", "minimum": 0 },
+        "materialize_patches_s": { "type": "number", "minimum": 0 },
+        "materialize_total_s": { "type": "number", "minimum": 0 }
+      }
+    },
+    "catalog_patch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "patch_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bkgonly_filename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "patchset_filename": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "catalog_materialize": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bkgonly", "patches"],
+      "properties": {
+        "bkgonly": {
+          "type": "boolean"
+        },
+        "bkgonly_filename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "patchset_filename": {
+          "type": "string",
+          "minLength": 1
+        },
+        "patches": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/catalog_patch" }
+        }
+      }
+    },
+    "catalog_dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "doi", "materialize"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "doi": {
+          "type": "string",
+          "minLength": 1
+        },
+        "download": {
+          "$ref": "#/$defs/download"
+        },
+        "inputs": {
+          "$ref": "#/$defs/inputs"
+        },
+        "timings": {
+          "$ref": "#/$defs/timings"
+        },
+        "materialize": {
+          "$ref": "#/$defs/catalog_materialize"
+        }
+      }
+    },
+    "materialized_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["bkgonly", "patched"]
+        },
+        "patch_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "patch_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "materialized_dataset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "doi", "download", "inputs", "materialized"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "doi": {
+          "type": "string",
+          "minLength": 1
+        },
+        "download": {
+          "$ref": "#/$defs/download"
+        },
+        "inputs": {
+          "$ref": "#/$defs/inputs"
+        },
+        "timings": {
+          "$ref": "#/$defs/timings"
+        },
+        "materialized": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/materialized_entry" }
+        }
+      }
+    }
+  }
+}

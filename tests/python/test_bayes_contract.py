@@ -51,6 +51,26 @@ def test_bayes_sample_accepts_init_overdispersed_rel_kwarg():
     assert isinstance(raw, dict)
 
 
+def test_bayes_sample_accepts_walnuts_method():
+    model = nextstat.GaussianMeanModel([1.0, 2.0, 3.0, 4.0] * 5, sigma=1.0)
+
+    raw = nextstat.bayes.sample(
+        model,
+        method="walnuts",
+        n_chains=1,
+        n_warmup=20,
+        n_samples=10,
+        seed=11,
+        max_step_halvings=2,
+        min_micro_steps=2,
+        metric="dense",
+        return_idata=False,
+    )
+    assert isinstance(raw, dict)
+    assert {"posterior", "sample_stats", "diagnostics"} <= set(raw.keys())
+    assert raw["sample_stats"]["metric_type"] == "dense"
+
+
 def test_bayes_sample_multichain_uses_distinct_seeds_by_default():
     ws = load_fixture("simple_workspace.json")
     model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))

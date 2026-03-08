@@ -1,0 +1,54 @@
+{
+  "aggregate": {
+    "all_scenarios_converged": true,
+    "max_mu_abs_diff": 0.005697092810805771,
+    "max_mu_abs_diff_scenario": "bjes_0p05",
+    "max_q_star_abs_diff": 333.7482528347566,
+    "max_q_star_abs_diff_scenario": "bjes_0p05",
+    "max_sigma_rel_diff": 0.009982408573757033,
+    "max_sigma_rel_diff_scenario": "bjes_0p05",
+    "n_scenarios": 1
+  },
+  "baseline": {
+    "chi2_abs_diff": 0.0,
+    "lhs_optimizer_method": "closed_form_blue",
+    "mu_abs_diff": 0.0,
+    "q_star_abs_diff": null,
+    "rhs_optimizer_method": "closed_form_blue",
+    "sigma_abs_diff": 0.0,
+    "sigma_rel_diff": 0.0
+  },
+  "ci_level": 0.68,
+  "lhs_solver": "numerical-paper",
+  "poi": "m_top",
+  "rhs_solver": "analytic-perturbative",
+  "scenarios": [
+    {
+      "assignments": [
+        {
+          "systematic": "b-JES",
+          "value": 0.05
+        }
+      ],
+      "chi2_abs_diff": 348.4717791756534,
+      "lhs_all_perturbative_within_threshold": true,
+      "lhs_optimizer_method": "numerical_profile_gvm_original_theta",
+      "lhs_supported_systematics": [
+        "b-JES"
+      ],
+      "mu_abs_diff": 0.005697092810805771,
+      "name": "bjes_0p05",
+      "q_star_abs_diff": 333.7482528347566,
+      "rhs_all_perturbative_within_threshold": true,
+      "rhs_optimizer_method": "analytic_perturbative_order_eps2",
+      "rhs_supported_systematics": [
+        "b-JES"
+      ],
+      "same_supported_systematics": true,
+      "sigma_abs_diff": 0.005212879775072565,
+      "sigma_rel_diff": 0.009982408573757033
+    }
+  ],
+  "schema_version": "nextstat_measurement_combination_scenario_study_solver_parity_v0",
+  "stability": "research-grade"
+}

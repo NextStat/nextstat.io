@@ -1,0 +1,89 @@
+{
+  "case_name": "kaplan_meier_grouped_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_kaplan_meier": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_kaplan_meier"
+      },
+      "ok": true,
+      "result": {
+        "ci_lower": [
+          0.27312284936747033,
+          0.1946166364478851,
+          0.06618675297132007,
+          0.0
+        ],
+        "ci_upper": [
+          0.9747124267303966,
+          0.9044341644247187,
+          0.7849083673331644,
+          0.0
+        ],
+        "conf_level": 0.95,
+        "log_rank": {
+          "chi_squared": 0.8252730109204368,
+          "df": 1,
+          "expected": [
+            1.2333333333333334,
+            2.7666666666666666
+          ],
+          "group_ids": [
+            0,
+            1
+          ],
+          "n": 6,
+          "observed": [
+            2.0,
+            2.0
+          ],
+          "p_value": 0.36364295835095484
+        },
+        "median": 4.0,
+        "n": 6,
+        "n_censored": [
+          0,
+          0,
+          0,
+          0
+        ],
+        "n_event": [
+          1,
+          1,
+          1,
+          1
+        ],
+        "n_events": 4,
+        "n_risk": [
+          6,
+          5,
+          3,
+          1
+        ],
+        "survival": [
+          0.8333333333333334,
+          0.6666666666666667,
+          0.44444444444444453,
+          0.0
+        ],
+        "time": [
+          1.0,
+          2.0,
+          4.0,
+          6.0
+        ],
+        "variance": [
+          0.02314814814814815,
+          0.03703703703703705,
+          0.049382716049382734,
+          0.0
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

@@ -1,0 +1,479 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/pharma/bayesian_design_regulatory_appendix_v0.schema.json",
+  "title": "Bayesian Design Regulatory Appendix v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "stability",
+    "appendix_id",
+    "design_family",
+    "design_id",
+    "source_report_schema_version",
+    "generated_from_frozen_report",
+    "required_sections",
+    "section_order",
+    "sections"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_bayesian_design_regulatory_appendix_v0"
+    },
+    "stability": {
+      "type": "string"
+    },
+    "appendix_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "design_family": {
+      "type": "string",
+      "enum": [
+        "beta_binomial",
+        "normal_normal"
+      ]
+    },
+    "design_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_report_schema_version": {
+      "type": "string",
+      "enum": [
+        "nextstat_beta_binomial_design_report_v0",
+        "nextstat_normal_normal_design_report_v0"
+      ]
+    },
+    "generated_from_frozen_report": {
+      "const": true
+    },
+    "required_sections": {
+      "$ref": "#/$defs/sectionOrder"
+    },
+    "section_order": {
+      "$ref": "#/$defs/sectionOrder"
+    },
+    "sections": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "design_summary",
+        "prior_specification",
+        "decision_rules",
+        "current_analysis",
+        "operating_characteristics",
+        "posterior_predictive",
+        "prior_sensitivity",
+        "provenance"
+      ],
+      "properties": {
+        "design_summary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "design_id",
+            "design_family",
+            "endpoint_summary",
+            "planned_looks",
+            "total_planned_sample_size",
+            "current_look_id"
+          ],
+          "properties": {
+            "design_id": {
+              "type": "string"
+            },
+            "design_family": {
+              "type": "string",
+              "enum": [
+                "beta_binomial",
+                "normal_normal"
+              ]
+            },
+            "endpoint_summary": {
+              "type": "string"
+            },
+            "planned_looks": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "n_control",
+                  "n_treatment"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "n_control": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "n_treatment": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              }
+            },
+            "total_planned_sample_size": {
+              "type": "integer",
+              "minimum": 2
+            },
+            "current_look_id": {
+              "type": "string"
+            }
+          }
+        },
+        "prior_specification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "control_prior",
+            "treatment_prior",
+            "likelihood"
+          ],
+          "properties": {
+            "control_prior": {
+              "type": "object"
+            },
+            "treatment_prior": {
+              "type": "object"
+            },
+            "likelihood": {
+              "type": [
+                "object",
+                "null"
+              ]
+            }
+          }
+        },
+        "decision_rules": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "success",
+            "futility"
+          ],
+          "properties": {
+            "success": {
+              "type": "object"
+            },
+            "futility": {
+              "type": "object"
+            }
+          }
+        },
+        "current_analysis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "look_id",
+            "recommended_action",
+            "posterior_probability_gt_margin",
+            "treatment_effect_margin",
+            "posterior_effect_summary"
+          ],
+          "properties": {
+            "look_id": {
+              "type": "string"
+            },
+            "recommended_action": {
+              "type": "string",
+              "enum": [
+                "continue",
+                "stop_for_success",
+                "stop_for_futility"
+              ]
+            },
+            "posterior_probability_gt_margin": {
+              "type": "number",
+              "minimum": 0.0,
+              "maximum": 1.0
+            },
+            "treatment_effect_margin": {
+              "type": "number"
+            },
+            "posterior_effect_summary": {
+              "type": "object"
+            }
+          }
+        },
+        "operating_characteristics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "n_replicates",
+            "seed",
+            "scenario_summaries"
+          ],
+          "properties": {
+            "n_replicates": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "scenario_summaries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "scenario_id",
+                  "success_rate",
+                  "futility_rate",
+                  "no_decision_rate",
+                  "expected_total_sample_size"
+                ],
+                "properties": {
+                  "scenario_id": {
+                    "type": "string"
+                  },
+                  "success_rate": {
+                    "type": "number"
+                  },
+                  "futility_rate": {
+                    "type": "number"
+                  },
+                  "no_decision_rate": {
+                    "type": "number"
+                  },
+                  "expected_total_sample_size": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "posterior_predictive": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "n_replicates",
+            "seed",
+            "eventual_success_probability",
+            "eventual_futility_probability",
+            "eventual_no_decision_probability",
+            "expected_total_sample_size",
+            "future_look_summaries"
+          ],
+          "properties": {
+            "n_replicates": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "eventual_success_probability": {
+              "type": "number"
+            },
+            "eventual_futility_probability": {
+              "type": "number"
+            },
+            "eventual_no_decision_probability": {
+              "type": "number"
+            },
+            "expected_total_sample_size": {
+              "type": "number"
+            },
+            "future_look_summaries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "look_id",
+                  "conditional_stop_probability",
+                  "conditional_success_probability",
+                  "conditional_futility_probability"
+                ],
+                "properties": {
+                  "look_id": {
+                    "type": "string"
+                  },
+                  "conditional_stop_probability": {
+                    "type": "number"
+                  },
+                  "conditional_success_probability": {
+                    "type": "number"
+                  },
+                  "conditional_futility_probability": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "prior_sensitivity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "n_replicates",
+            "seed",
+            "baseline_variant_id",
+            "variant_summaries"
+          ],
+          "properties": {
+            "n_replicates": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "seed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "baseline_variant_id": {
+              "type": "string"
+            },
+            "variant_summaries": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "variant_id",
+                  "recommended_action",
+                  "posterior_probability_gt_margin",
+                  "eventual_success_probability",
+                  "eventual_futility_probability",
+                  "eventual_no_decision_probability",
+                  "expected_total_sample_size",
+                  "posterior_probability_delta_vs_baseline",
+                  "eventual_success_probability_delta_vs_baseline"
+                ],
+                "properties": {
+                  "variant_id": {
+                    "type": "string"
+                  },
+                  "recommended_action": {
+                    "type": "string",
+                    "enum": [
+                      "continue",
+                      "stop_for_success",
+                      "stop_for_futility"
+                    ]
+                  },
+                  "posterior_probability_gt_margin": {
+                    "type": "number"
+                  },
+                  "eventual_success_probability": {
+                    "type": "number"
+                  },
+                  "eventual_futility_probability": {
+                    "type": "number"
+                  },
+                  "eventual_no_decision_probability": {
+                    "type": "number"
+                  },
+                  "expected_total_sample_size": {
+                    "type": "number"
+                  },
+                  "posterior_probability_delta_vs_baseline": {
+                    "type": "number"
+                  },
+                  "eventual_success_probability_delta_vs_baseline": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "software_name",
+            "software_version",
+            "design_schema_version",
+            "analysis_schema_version",
+            "operating_characteristics_schema_version",
+            "posterior_predictive_schema_version",
+            "prior_sensitivity_campaign_schema_version",
+            "prior_sensitivity_report_schema_version",
+            "simulation_seed",
+            "n_replicates"
+          ],
+          "properties": {
+            "software_name": {
+              "type": "string"
+            },
+            "software_version": {
+              "type": "string"
+            },
+            "design_schema_version": {
+              "type": "string"
+            },
+            "analysis_schema_version": {
+              "type": "string"
+            },
+            "operating_characteristics_schema_version": {
+              "type": "string"
+            },
+            "posterior_predictive_schema_version": {
+              "type": "string"
+            },
+            "prior_sensitivity_campaign_schema_version": {
+              "type": "string"
+            },
+            "prior_sensitivity_report_schema_version": {
+              "type": "string"
+            },
+            "simulation_seed": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "n_replicates": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sectionOrder": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "const": "design_summary"
+        },
+        {
+          "const": "prior_specification"
+        },
+        {
+          "const": "decision_rules"
+        },
+        {
+          "const": "current_analysis"
+        },
+        {
+          "const": "operating_characteristics"
+        },
+        {
+          "const": "posterior_predictive"
+        },
+        {
+          "const": "prior_sensitivity"
+        },
+        {
+          "const": "provenance"
+        }
+      ],
+      "items": false,
+      "minItems": 8,
+      "maxItems": 8
+    }
+  }
+}

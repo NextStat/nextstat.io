@@ -1,0 +1,282 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/pharma/bayesian_robust_mixture_prior_operating_characteristics_v0.schema.json",
+  "title": "Bayesian Robust-Mixture Prior Operating Characteristics v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "stability",
+    "design_family",
+    "design_id",
+    "policy_id",
+    "source_design_schema_version",
+    "source_campaign_schema_version",
+    "source_policy_schema_version",
+    "derived_review_schema_version",
+    "generated_from_seeded_simulation",
+    "n_replicates",
+    "seed",
+    "scenarios"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_bayesian_robust_mixture_prior_operating_characteristics_v0"
+    },
+    "stability": {
+      "const": "research-grade"
+    },
+    "design_family": {
+      "enum": ["beta_binomial", "normal_normal"]
+    },
+    "design_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "source_design_schema_version": {
+      "enum": [
+        "nextstat_beta_binomial_design_v0",
+        "nextstat_normal_normal_design_v0"
+      ]
+    },
+    "source_campaign_schema_version": {
+      "enum": [
+        "nextstat_beta_binomial_prior_sensitivity_campaign_v0",
+        "nextstat_normal_normal_prior_sensitivity_campaign_v0"
+      ]
+    },
+    "source_policy_schema_version": {
+      "const": "nextstat_bayesian_robust_mixture_prior_policy_v0"
+    },
+    "derived_review_schema_version": {
+      "const": "nextstat_bayesian_robust_mixture_prior_review_v0"
+    },
+    "generated_from_seeded_simulation": {
+      "const": true
+    },
+    "n_replicates": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "seed": {
+      "type": "integer"
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "scenario_id",
+              "p_control",
+              "p_treatment",
+              "retain_rate",
+              "taper_rate",
+              "fallback_to_weak_rate",
+              "mixture_eligible_rate",
+              "decision_instability_rate",
+              "high_conflict_rate",
+              "mean_terminal_informative_weight",
+              "look_summaries"
+            ],
+            "properties": {
+              "scenario_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "p_control": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "p_treatment": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "retain_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "taper_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "fallback_to_weak_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "mixture_eligible_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "decision_instability_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "high_conflict_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "mean_terminal_informative_weight": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "look_summaries": {
+                "$ref": "#/$defs/lookSummaries"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "scenario_id",
+              "mean_control",
+              "mean_treatment",
+              "retain_rate",
+              "taper_rate",
+              "fallback_to_weak_rate",
+              "mixture_eligible_rate",
+              "decision_instability_rate",
+              "high_conflict_rate",
+              "mean_terminal_informative_weight",
+              "look_summaries"
+            ],
+            "properties": {
+              "scenario_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "mean_control": {
+                "type": "number"
+              },
+              "mean_treatment": {
+                "type": "number"
+              },
+              "retain_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "taper_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "fallback_to_weak_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "mixture_eligible_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "decision_instability_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "high_conflict_rate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "mean_terminal_informative_weight": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "look_summaries": {
+                "$ref": "#/$defs/lookSummaries"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "lookSummaries": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "look_id",
+          "review_probability",
+          "retain_probability",
+          "taper_probability",
+          "fallback_to_weak_probability",
+          "mixture_eligible_probability",
+          "decision_instability_probability",
+          "high_conflict_probability",
+          "mean_informative_weight_when_reviewed"
+        ],
+        "properties": {
+          "look_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "review_probability": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "retain_probability": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "taper_probability": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "fallback_to_weak_probability": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "mixture_eligible_probability": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "decision_instability_probability": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "high_conflict_probability": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "mean_informative_weight_when_reviewed": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      }
+    }
+  }
+}

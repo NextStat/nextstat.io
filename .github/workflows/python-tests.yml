@@ -29,9 +29,164 @@ jobs:
       - name: Terminology lint (public docs)
         run: python3 scripts/docs/terminology_lint.py --check
 
+  tool-contracts:
+    name: Tool Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Resolve tool-contract artifact manifest
+        id: tool-contract-artifacts
+        run: python scripts/tool_contract_artifact_manifest.py --format github-output >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install maturin
+        run: pip install "maturin>=1.11,<2.0"
+
+      - name: Build Python package
+        working-directory: bindings/ns-py
+        run: maturin build --release
+
+      - name: Install Python package and test deps
+        working-directory: bindings/ns-py
+        run: |
+          pip install target/wheels/*.whl
+          pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "jsonschema>=4.0" "pyarrow>=18.0" "polars>=1.0" "duckdb>=1.0"
+
+      - name: Run canonical fast tool-contract runner
+        run: python scripts/check_tool_contracts.py --mode fast --report-json "${{ steps.tool-contract-artifacts.outputs.fast_report_path }}"
+
+      - name: Upload tool-contract fast report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.tool-contract-artifacts.outputs.fast_artifact_name }}
+          path: ${{ steps.tool-contract-artifacts.outputs.fast_report_path }}
+          if-no-files-found: error
+
+  live-server-contracts:
+    name: Live Server Contracts (Python + Scripts + Semantic Parity)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    needs: [tool-contracts]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Resolve tool-contract artifact manifest
+        id: tool-contract-artifacts
+        run: python scripts/tool_contract_artifact_manifest.py --format github-output >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install maturin
+        run: pip install "maturin>=1.11,<2.0"
+
+      - name: Build Python package
+        working-directory: bindings/ns-py
+        run: maturin build --release
+
+      - name: Install Python package and live-test deps
+        working-directory: bindings/ns-py
+        run: |
+          pip install target/wheels/*.whl
+          pip install "pytest>=9.0" "jsonschema>=4.0"
+
+      - name: Run canonical live tool-contract runner
+        run: python scripts/check_tool_contracts.py --mode live --report-json "${{ steps.tool-contract-artifacts.outputs.live_report_path }}"
+
+      - name: Upload tool-contract live report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.tool-contract-artifacts.outputs.live_artifact_name }}
+          path: ${{ steps.tool-contract-artifacts.outputs.live_report_path }}
+          if-no-files-found: error
+
+  tool-contract-dashboard:
+    name: Tool Contract Dashboard
+    if: ${{ always() && (needs.tool-contracts.result == 'success' || needs.tool-contracts.result == 'failure') && (needs.live-server-contracts.result == 'success' || needs.live-server-contracts.result == 'failure' || needs.live-server-contracts.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    needs: [tool-contracts, live-server-contracts]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Resolve tool-contract artifact manifest
+        id: tool-contract-artifacts
+        run: python scripts/tool_contract_artifact_manifest.py --format github-output >> "$GITHUB_OUTPUT"
+
+      - name: Download fast tool-contract report
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.tool-contract-artifacts.outputs.fast_artifact_name }}
+          path: ${{ steps.tool-contract-artifacts.outputs.fast_download_dir }}
+
+      - name: Download live tool-contract report
+        if: needs.live-server-contracts.result == 'success' || needs.live-server-contracts.result == 'failure'
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ steps.tool-contract-artifacts.outputs.live_artifact_name }}
+          path: ${{ steps.tool-contract-artifacts.outputs.live_download_dir }}
+
+      - name: Build tool-contract dashboard
+        run: |
+          reports=(--report "${{ steps.tool-contract-artifacts.outputs.fast_downloaded_report_path }}")
+          if [ -f "${{ steps.tool-contract-artifacts.outputs.live_downloaded_report_path }}" ]; then
+            reports+=(--report "${{ steps.tool-contract-artifacts.outputs.live_downloaded_report_path }}")
+          fi
+          python scripts/summarize_tool_contract_reports.py \
+            "${reports[@]}" \
+            --out-json "${{ steps.tool-contract-artifacts.outputs.dashboard_json_path }}" \
+            --out-md "${{ steps.tool-contract-artifacts.outputs.dashboard_markdown_path }}"
+
+      - name: Publish tool-contract dashboard to job summary
+        if: always()
+        run: cat "${{ steps.tool-contract-artifacts.outputs.dashboard_markdown_path }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload tool-contract dashboard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.tool-contract-artifacts.outputs.dashboard_artifact_name }}
+          path: |
+            ${{ steps.tool-contract-artifacts.outputs.dashboard_json_path }}
+            ${{ steps.tool-contract-artifacts.outputs.dashboard_markdown_path }}
+          if-no-files-found: error
+
   test:
     name: Python ${{ matrix.python-version }} on ${{ matrix.os }}
     # PR: github-hosted ubuntu, py3.13 only (1 job). Push main: self-hosted, full matrix.
+    needs: [tool-contracts]
     runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","bench"]') }}
     strategy:
       fail-fast: false
@@ -171,7 +326,7 @@ jobs:
       - name: Render validation pack (JSON + PDF)
         run: |
           pip install "jsonschema>=4.0"
-          mkdir -p artifacts artifacts2 artifacts_jsononly
+          mkdir -p artifacts artifacts2 artifacts_jsononly artifacts_m15
 
           # JSON-only smoke (no matplotlib/PDF): prove the script can run in minimal environments.
           make validation-pack \
@@ -189,7 +344,7 @@ jobs:
           PY
 
           # PDF renderer dependency (runs via `python -m nextstat.validation_report`).
-          pip install "matplotlib>=3.8"
+          pip install "matplotlib>=3.8" "python-docx>=1.1"
           make validation-pack \
             VALIDATION_PACK_OUT_DIR=artifacts \
             VALIDATION_PACK_WORKSPACE=tests/fixtures/simple_workspace.json \
@@ -204,6 +359,34 @@ jobs:
           print("validation_report_v1: schema ok")
           PY
 
+          # Full M15 publishable pack: reuse deterministic pharma evidence and validate bundle/profile-diff contracts.
+          if [[ -f artifacts_jsononly/pharma_validation.json ]]; then
+            cp artifacts_jsononly/pharma_validation.json artifacts_m15/pharma_validation.json
+          fi
+          make validation-pack \
+            VALIDATION_PACK_OUT_DIR=artifacts_m15 \
+            VALIDATION_PACK_WORKSPACE=tests/fixtures/simple_workspace.json \
+            VALIDATION_PACK_M15_CONFIG=docs/specs/m15_config_v1.example.json \
+            VALIDATION_PACK_ARGS="--apex2-master artifacts_jsononly/apex2_master_report.json --python python --deterministic --skip-pharma-validation"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import jsonschema
+          schema = json.loads(Path("docs/schemas/validation/m15_bundle_manifest_v1.schema.json").read_text())
+          inst = json.loads(Path("artifacts_m15/m15_bundle_manifest.json").read_text())
+          jsonschema.validate(inst, schema)
+          print("m15_bundle_manifest_v1: schema ok")
+          PY
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import jsonschema
+          schema = json.loads(Path("docs/schemas/validation/m15_profile_diff_report_v1.schema.json").read_text())
+          inst = json.loads(Path("artifacts_m15/m15_profile_diff_report.json").read_text())
+          jsonschema.validate(inst, schema)
+          print("m15_profile_diff_report_v1: schema ok")
+          PY
+
           # Determinism: re-render using the same Apex2 master input and ensure JSON+PDF are bit-identical.
           make validation-pack \
             VALIDATION_PACK_OUT_DIR=artifacts2 \
@@ -216,11 +399,20 @@ jobs:
           test "$(sha256sum artifacts/validation_report.pdf | awk '{print $1}')" = "$(sha256sum artifacts2/validation_report.pdf | awk '{print $1}')"
           test "$(sha256sum artifacts/validation_pack_manifest.json | awk '{print $1}')" = "$(sha256sum artifacts2/validation_pack_manifest.json | awk '{print $1}')"
 
-          # Snapshot index: stable list of artifact hashes for discovery/replication.
+          python3 scripts/validation/write_manifest_digest.py \
+            --manifest artifacts/validation_pack_manifest.json
+          python3 scripts/validation/write_manifest_digest.py \
+            --manifest artifacts_m15/m15_bundle_manifest.json
+
+          # Snapshot indexes: stable lists of artifact hashes for discovery/replication.
           python scripts/benchmarks/write_snapshot_index.py \
             --suite python-tests-validation-pack \
             --artifacts-dir artifacts \
             --out artifacts/snapshot_index.json
+          python scripts/benchmarks/write_snapshot_index.py \
+            --suite python-tests-validation-pack-m15 \
+            --artifacts-dir artifacts_m15 \
+            --out artifacts_m15/m15_snapshot_index.json
 
           # Unbinned benchmark contract smoke: deterministic toy run + schema validation.
           pip install "numpy>=2.0" "pyarrow>=18.0"
@@ -354,9 +546,25 @@ jobs:
             artifacts/validation_report.json
             artifacts/validation_report.pdf
             artifacts/validation_pack_manifest.json
+            artifacts/validation_pack_manifest.sha256
+            artifacts/validation_pack_manifest.sha256.bin
             artifacts/snapshot_index.json
             artifacts/unbinned_bench_smoke.json
             artifacts/unbinned_bench_drift_summary.json
+            artifacts_m15/m15_config.json
+            artifacts_m15/m15_assessment_table.json
+            artifacts_m15/m15_map.json
+            artifacts_m15/m15_mar.json
+            artifacts_m15/m15_profile_diff_report.json
+            artifacts_m15/m15_profile_diff_report_v1.schema.json
+            artifacts_m15/m15_report.md
+            artifacts_m15/m15_report.pdf
+            artifacts_m15/m15_report.docx
+            artifacts_m15/m15_bundle_manifest.json
+            artifacts_m15/m15_bundle_manifest_v1.schema.json
+            artifacts_m15/m15_bundle_manifest.sha256
+            artifacts_m15/m15_bundle_manifest.sha256.bin
+            artifacts_m15/m15_snapshot_index.json
 
       - name: Upload validation pack determinism artifacts (debug)
         if: always()
@@ -369,6 +577,46 @@ jobs:
             artifacts2/validation_pack_manifest.json
             artifacts_jsononly/validation_report.json
             artifacts_jsononly/validation_pack_manifest.json
+            artifacts_m15/m15_bundle_manifest.json
+
+  m15-reporting-stable-surface:
+    name: M15 Reporting Stable-Surface Gate
+    if: github.event_name == 'push'
+    runs-on: ${{ fromJSON('["self-hosted","linux","x64","bench"]') }}
+    needs: [validation-pack]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Shellcheck (bash -n) stable-surface gate
+        run: bash -n scripts/benchmarks/m15_reporting_stable_surface_gate.sh
+
+      - name: Run M15 reporting stable-surface gate
+        run: make m15-reporting-stable-surface-gate
+
+      - name: Upload M15 reporting benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m15-reporting-stable-surface-report
+          path: |
+            tmp/m15_reporting_stable_surface/m15_reporting_benchmark.json
+            tmp/m15_reporting_stable_surface/m15_reporting_benchmark.md
+            tmp/m15_reporting_stable_surface/m15_reporting_compare.json
+          if-no-files-found: error
 
   lint:
     name: Python Linting

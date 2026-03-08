@@ -198,9 +198,10 @@ as external fixtures. This is useful for repeatable parity checks on real-world 
 1) Download and materialize pyhf JSON workspaces (opt-in; writes to `tmp/`):
 
 ```bash
-PYTHONPATH=bindings/ns-py/python ./.venv/bin/python tests/hepdata/fetch_workspaces.py \
-  --out tmp/external_hepdata/workspaces \
-  --cache tmp/external_hepdata/_cache \
+cargo run -p ns-cli -- import hepdata \
+  --dataset hepdata.116034.v1.r34 \
+  --out-dir tmp/external_hepdata/workspaces \
+  --cache-dir tmp/external_hepdata/_cache \
   --lock tmp/external_hepdata/workspaces.lock.json
 ```
 

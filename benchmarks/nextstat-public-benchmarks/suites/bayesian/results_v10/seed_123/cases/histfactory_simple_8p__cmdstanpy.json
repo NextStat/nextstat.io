@@ -1,5 +1,17 @@
 {
   "backend": "cmdstanpy",
+  "backend_meta": {
+    "cmdstan_path": "/tmp/nextstat_bayesian_suite_repo_20260309T003749Z/benchmarks/nextstat-public-benchmarks/vendor/cmdstan/cmdstan-2.38.0",
+    "cmdstan_path_source": "vendor",
+    "cmdstan_version": "(2, 38)",
+    "cmdstanpy_version": "1.3.0",
+    "histfactory_mapping": "simple_workspace_poisson_gamma_shapesys",
+    "histfactory_mu_bounds": [
+      0.0,
+      10.0
+    ],
+    "histfactory_shapesys_name": "uncorr_bkguncrt"
+  },
   "case": "histfactory_simple_8p",
   "config": {
     "dataset_seed": 12345,
@@ -13,32 +25,77 @@
     "target_accept": 0.8
   },
   "dataset": {
-    "id": "/data/benchmark-data/benchmarks/nextstat-public-benchmarks/suites/bayesian/datasets/simple_workspace.json",
-    "path": "/data/benchmark-data/benchmarks/nextstat-public-benchmarks/suites/bayesian/datasets/simple_workspace.json",
+    "id": "/tmp/nextstat_bayesian_suite_repo_20260309T003749Z/benchmarks/nextstat-public-benchmarks/suites/bayesian/datasets/simple_workspace.json",
+    "path": "/tmp/nextstat_bayesian_suite_repo_20260309T003749Z/benchmarks/nextstat-public-benchmarks/suites/bayesian/datasets/simple_workspace.json",
     "sha256": "e87594b9a23cc580a53a9d0b42df10218132bb8cd2401edf1cfdf020ad1d715d"
   },
-  "deterministic": false,
+  "deterministic": true,
+  "diagnostics": {
+    "ess_bulk": {
+      "mu": 3742.14,
+      "uncorr_bkguncrt[1]": 5276.78,
+      "uncorr_bkguncrt[2]": 5032.86
+    },
+    "ess_tail": {
+      "mu": 2415.01,
+      "uncorr_bkguncrt[1]": 4812.18,
+      "uncorr_bkguncrt[2]": 4762.2
+    },
+    "r_hat": {
+      "mu": 1.00069,
+      "uncorr_bkguncrt[1]": 1.00024,
+      "uncorr_bkguncrt[2]": 1.00038
+    }
+  },
   "diagnostics_summary": {
-    "divergence_rate": null,
-    "max_r_hat": null,
-    "max_treedepth_rate": null,
+    "divergence_rate": 0.0,
+    "max_r_hat": 1.00069,
+    "max_treedepth_rate": 0.0,
     "min_ebfmi": null,
-    "min_ess_bulk": null,
-    "min_ess_tail": null
+    "min_ess_bulk": 3742.14,
+    "min_ess_tail": 2415.01
+  },
+  "environment": {
+    "cpu": "AMD EPYC 7502P 32-Core Processor",
+    "machine": "x86_64",
+    "nextstat_version": "0.9.9",
+    "node": "nextstat-bench",
+    "packages": {
+      "arviz": "0.23.4",
+      "cmdstanpy": "1.3.0",
+      "numpy": "2.4.2",
+      "pymc": "5.28.1",
+      "scipy": "1.17.1"
+    },
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python_full": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "python_version": "3.12.3",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "system": "Linux"
   },
   "meta": {
-    "nextstat_version": "0.9.0",
+    "nextstat_version": "0.9.9",
     "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
     "python": "3.12.3"
   },
   "model": {
     "model_type": "HistFactoryModel(simple_workspace.json)"
   },
-  "reason": "backend_not_supported_for_model:cmdstanpy:histfactory_simple",
   "schema_version": "nextstat.bayesian_benchmark_result.v1",
-  "status": "warn",
+  "status": "ok",
   "suite": "bayesian",
   "timing": {
-    "wall_time_s": 0.0
+    "ess_bulk_per_sec": {
+      "median": 34590.264253044785,
+      "min": 25719.295087065606
+    },
+    "ess_per_grad": 0.07814684876581882,
+    "ess_tail_per_sec": {
+      "median": 32730.049400509826,
+      "min": 16598.08420535157
+    },
+    "grad_per_sec": 329114.93544849305,
+    "n_grad_evals": 47886,
+    "wall_time_s": 0.14549932209774852
   }
 }

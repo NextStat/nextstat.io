@@ -1,0 +1,46 @@
+{
+  "schema_version": "nextstat_normal_normal_design_analysis_v0",
+  "stability": "research-grade",
+  "design_id": "continuous_superiority_demo",
+  "look": {
+    "id": "interim",
+    "n_control": 10,
+    "n_treatment": 10
+  },
+  "observed": {
+    "look_id": "interim",
+    "control_sample_mean": 0.1,
+    "treatment_sample_mean": 1.0
+  },
+  "posterior": {
+    "control": {
+      "ci_lower": -0.5195852671179297,
+      "ci_upper": 0.7193854669181297,
+      "posterior_mean": 0.0999000999000999,
+      "posterior_sd": 0.316069770620507
+    },
+    "treatment": {
+      "ci_lower": 0.37951563198296934,
+      "ci_upper": 1.6184863660190287,
+      "posterior_mean": 0.999000999000999,
+      "posterior_sd": 0.316069770620507
+    },
+    "effect_difference": {
+      "margin": 0.0,
+      "posterior_mean": 0.8991008991008991,
+      "posterior_sd": 0.4469901562676742,
+      "ci_lower": 0.02301629137232708,
+      "ci_upper": 1.775185506829471,
+      "posterior_probability_gt_margin": 0.9778613276432776
+    }
+  },
+  "decision": {
+    "success": true,
+    "futility": false,
+    "recommended_action": "stop_for_success",
+    "posterior_probability_gt_margin": 0.9778613276432776,
+    "success_threshold": 0.975,
+    "futility_threshold": 0.1,
+    "margin": 0.0
+  }
+}

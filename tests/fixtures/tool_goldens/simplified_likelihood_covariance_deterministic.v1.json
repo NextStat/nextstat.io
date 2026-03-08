@@ -1,0 +1,241 @@
+{
+  "case_name": "simplified_likelihood_covariance_deterministic",
+  "fixture": "tests/fixtures/sl_covariance_three_bin.json",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_discovery_asymptotic": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_discovery_asymptotic"
+      },
+      "ok": true,
+      "result": {
+        "mu_hat": 0.12307472766192482,
+        "nll_hat": 8.857431022719528,
+        "nll_mu0": 8.859498863026761,
+        "p0": 0.47436199110393457,
+        "q0": 0.004135680614467674,
+        "z0": 0.06430925761092002
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    },
+    "nextstat_fit": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_fit"
+      },
+      "ok": true,
+      "result": {
+        "converged": true,
+        "nll": 8.857431022719528,
+        "parameters": {
+          "mu": {
+            "error": 1.9217008171431038,
+            "value": 0.12307472766192482
+          },
+          "sl_cov_000": {
+            "error": 0.999615380256289,
+            "value": 0.006033203333427537
+          },
+          "sl_cov_001": {
+            "error": 0.9842955073473753,
+            "value": 0.01873858932308584
+          },
+          "sl_cov_002": {
+            "error": 0.9952081174982254,
+            "value": -0.04027383594854969
+          }
+        },
+        "poi_error": 1.9217008171431038,
+        "poi_index": 0,
+        "poi_value": 0.12307472766192482
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    },
+    "nextstat_hypotest": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_hypotest"
+      },
+      "ok": true,
+      "result": {
+        "clb": 0.5240987750000929,
+        "cls": 0.6270645643795562,
+        "clsb": 0.3286437700372923,
+        "mu": 1.0
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    },
+    "nextstat_ranking": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_ranking"
+      },
+      "ok": true,
+      "result": {
+        "ranking": [
+          {
+            "constraint": 0.999615380256289,
+            "delta_mu_down": 0.43011746101943193,
+            "delta_mu_up": -0.12307472766192482,
+            "name": "sl_cov_000",
+            "pull": 0.006033203333427537,
+            "rank": 1,
+            "total_impact": 0.5531921886813568
+          },
+          {
+            "constraint": 0.9952081174982254,
+            "delta_mu_down": 0.025740464925378376,
+            "delta_mu_up": -0.021191882185662453,
+            "name": "sl_cov_002",
+            "pull": -0.04027383594854969,
+            "rank": 2,
+            "total_impact": 0.04693234711104083
+          },
+          {
+            "constraint": 0.9842955073473753,
+            "delta_mu_down": 0.020266932111402514,
+            "delta_mu_up": -0.0041174620319469335,
+            "name": "sl_cov_001",
+            "pull": 0.01873858932308584,
+            "rank": 3,
+            "total_impact": 0.024384394143349447
+          }
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    },
+    "nextstat_scan": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_scan"
+      },
+      "ok": true,
+      "result": {
+        "mu_hat": 0.12307472766192482,
+        "nll_hat": 8.857431022719528,
+        "poi_index": 0,
+        "points": [
+          {
+            "converged": true,
+            "mu": 0.0,
+            "nll_mu": 8.859498863026758,
+            "q_mu": 0.0
+          },
+          {
+            "converged": true,
+            "mu": 0.5,
+            "nll_mu": 8.87619803867723,
+            "q_mu": 0.037534031915406274
+          },
+          {
+            "converged": true,
+            "mu": 1.0,
+            "nll_mu": 8.955848659906605,
+            "q_mu": 0.1968352743741555
+          },
+          {
+            "converged": true,
+            "mu": 1.5,
+            "nll_mu": 9.092793512001956,
+            "q_mu": 0.4707249785648564
+          },
+          {
+            "converged": true,
+            "mu": 2.0,
+            "nll_mu": 9.282098166800226,
+            "q_mu": 0.8493342881613977
+          }
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    },
+    "nextstat_upper_limit": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_upper_limit"
+      },
+      "ok": true,
+      "result": {
+        "alpha": 0.05,
+        "exp_limits": [
+          2.1591949462890625,
+          2.9637908935546875,
+          4.253387451171875,
+          6.19415283203125,
+          8.76190185546875
+        ],
+        "obs_limit": 4.335174560546875
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    },
+    "nextstat_workspace_audit": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_workspace_audit"
+      },
+      "ok": true,
+      "result": {
+        "analysis_id": "sl_covariance_three_bin_smoke",
+        "channel_count": 2,
+        "channel_names": [
+          "SR_low",
+          "SR_high"
+        ],
+        "diagnostics": {
+          "factorization": {
+            "clipped_negative_eigenvalues": 0,
+            "explained_variance_fraction": 0.9999999999999999,
+            "frobenius_residual": 1.876098827769959e-15,
+            "input_trace": 0.8625,
+            "max_clipped_negative_eigenvalue_magnitude": 0.0,
+            "method": "symmetric_eigendecomposition",
+            "original_rank": 3,
+            "retained_rank": 3,
+            "retained_trace": 0.8624999999999999,
+            "shared_systematic_trace": 0.5725,
+            "stat_covariance_trace": 0.29000000000000004
+          },
+          "fidelity": null
+        },
+        "experiment": "CMS",
+        "has_signal": true,
+        "input_has_factorization_diagnostics": false,
+        "input_has_fidelity_diagnostics": false,
+        "input_schema_version": "nextstat_simplified_likelihood_v0",
+        "parameter_count_estimate": 4,
+        "poi_name": "mu",
+        "reduced_nuisance_count": 3,
+        "schema_version": "nextstat_simplified_likelihood_audit_v0",
+        "source_format": "covariance",
+        "total_background_yield": 27.0,
+        "total_bins": 3,
+        "total_observed_yield": 27.0,
+        "total_signal_yield": 2.6999999999999997,
+        "uncertainty_model_kind": "covariance"
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

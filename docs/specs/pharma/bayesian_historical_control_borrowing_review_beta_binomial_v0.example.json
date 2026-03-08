@@ -1,0 +1,54 @@
+{
+  "borrowing_eligible": true,
+  "borrowing_model": "power_prior",
+  "borrowing_strength": {
+    "full_borrowing_fraction": 0.35,
+    "suspended_borrowing_fraction": 0.0,
+    "tapered_borrowing_fraction": 0.15
+  },
+  "current_effective_borrowing_fraction": 0.15,
+  "current_effective_historical_control_sample_size": 18.0,
+  "design_family": "beta_binomial",
+  "design_id": "binary_superiority_demo",
+  "diagnostics": {
+    "current_control_information_fraction": 0.5,
+    "current_control_sample_size": 20.0,
+    "decision_instability": false,
+    "eventual_success_probability_range": 0.53125,
+    "expected_total_sample_size_range_fraction_of_plan": 0.0,
+    "historical_source_count": 1,
+    "planned_control_sample_size": 40.0,
+    "prior_conflict_severity": "moderate",
+    "recommended_action_flip_count": 0,
+    "total_planned_historical_control_sample_size": 120.0
+  },
+  "gating": {
+    "meets_minimum_control_information_fraction": true,
+    "meets_minimum_current_control_sample_size": true,
+    "passes_action_flip_gate": true,
+    "within_full_eventual_success_probability_range": false,
+    "within_full_expected_total_sample_size_range_fraction": true
+  },
+  "generated_from_frozen_report": true,
+  "historical_sources": [
+    {
+      "data_cut_label": "csr-final",
+      "exchangeability_assessment": "moderate",
+      "planned_control_sample_size": 120.0,
+      "source_id": "study_2019_control",
+      "source_role": "external_control_arm"
+    }
+  ],
+  "policy_id": "binary_superiority_demo_historical_control_policy_v0",
+  "rationale": [
+    "Historical borrowing remains conditionally acceptable, but the current conflict diagnostics exceed the full-borrowing limits.",
+    "The review downgrades to the published tapered borrowing fraction while preserving deterministic traceability."
+  ],
+  "recommended_borrowing_state": "taper",
+  "review_id": "binary_superiority_demo_binary_superiority_demo_historical_control_policy_v0_historical_control_borrowing_review_v0",
+  "schema_version": "nextstat_bayesian_historical_control_borrowing_review_v0",
+  "source_policy_schema_version": "nextstat_bayesian_historical_control_borrowing_policy_v0",
+  "source_prior_conflict_schema_version": "nextstat_bayesian_prior_conflict_diagnostic_v0",
+  "source_report_schema_version": "nextstat_beta_binomial_design_report_v0",
+  "stability": "research-grade"
+}

@@ -1,0 +1,576 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/ads/ads_statistical_artifact_v1.schema.json",
+  "title": "NextStat Ads Statistical Artifact",
+  "type": "object",
+  "required": [
+    "type",
+    "version",
+    "decision",
+    "result",
+    "diagnostics",
+    "guardrails",
+    "systematics_profile",
+    "rigor",
+    "metadata"
+  ],
+  "properties": {
+    "type": {
+      "type": "string",
+      "const": "ads_statistical_artifact"
+    },
+    "version": {
+      "type": "string",
+      "const": "1.0.0"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "continue",
+        "stop_winner",
+        "stop_no_difference",
+        "stop_guardrail"
+      ]
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "effect_estimate",
+        "sampling_uncertainty",
+        "causal_uncertainty",
+        "total_uncertainty",
+        "claim_status",
+        "practical_significance"
+      ],
+      "properties": {
+        "effect_estimate": {
+          "type": "number"
+        },
+        "sampling_uncertainty": {
+          "type": "object",
+          "required": [
+            "lo",
+            "hi"
+          ],
+          "properties": {
+            "lo": {
+              "type": "number"
+            },
+            "hi": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        "measurement_uncertainty": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "lo",
+            "hi"
+          ],
+          "properties": {
+            "lo": {
+              "type": "number"
+            },
+            "hi": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": false
+        },
+        "causal_uncertainty": {
+          "type": "object",
+          "required": [
+            "status",
+            "diagnostics"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "separate",
+                "combined",
+                "not_available"
+              ]
+            },
+            "diagnostics": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "total_uncertainty": {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "combined",
+                "not_combinable",
+                "not_available"
+              ]
+            },
+            "interval": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "required": [
+                "lo",
+                "hi"
+              ],
+              "properties": {
+                "lo": {
+                  "type": "number"
+                },
+                "hi": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "cls": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "required": [
+            "enabled",
+            "claim_status"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "value": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "expected_sensitivity_sigma": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "claim_status": {
+              "type": "string",
+              "enum": [
+                "claimable_win",
+                "positive_signal_but_not_claimable",
+                "claimable_no_difference",
+                "no_difference_but_not_claimable",
+                "guardrail_blocked",
+                "inconclusive"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "claim_status": {
+          "type": "string",
+          "enum": [
+            "claimable_win",
+            "positive_signal_but_not_claimable",
+            "claimable_no_difference",
+            "no_difference_but_not_claimable",
+            "guardrail_blocked",
+            "inconclusive"
+          ]
+        },
+        "practical_significance": {
+          "type": "object",
+          "required": [
+            "threshold_status"
+          ],
+          "properties": {
+            "threshold_status": {
+              "type": "string",
+              "enum": [
+                "threshold_not_declared",
+                "exceeds_win_threshold",
+                "exceeds_loss_threshold",
+                "inside_equivalence_band",
+                "inconclusive_relative_to_threshold"
+              ]
+            },
+            "delta_win": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "delta_loss": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "delta_equiv": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "tost_status": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "decision_loss": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "scale": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "hold": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "revert": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "diagnostics": {
+      "type": "object",
+      "required": [
+        "fit_quality",
+        "convergence",
+        "warnings"
+      ],
+      "properties": {
+        "fit_quality": {
+          "type": "string",
+          "enum": [
+            "good",
+            "warning",
+            "failed"
+          ]
+        },
+        "convergence": {
+          "type": "boolean"
+        },
+        "gof_pvalue": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "dominant_systematic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "guardrails": {
+      "type": "object",
+      "required": [
+        "minimum_events",
+        "actual_events",
+        "power_at_mde",
+        "sequential_looks_used",
+        "sequential_looks_planned",
+        "alpha_spent",
+        "alpha_remaining"
+      ],
+      "properties": {
+        "minimum_events": {
+          "type": "integer"
+        },
+        "actual_events": {
+          "type": "object",
+          "required": [
+            "control",
+            "variant"
+          ],
+          "properties": {
+            "control": {
+              "type": "integer"
+            },
+            "variant": {
+              "type": "integer"
+            }
+          },
+          "additionalProperties": false
+        },
+        "power_at_mde": {
+          "type": "number"
+        },
+        "sequential_looks_used": {
+          "type": "integer"
+        },
+        "sequential_looks_planned": {
+          "type": "integer"
+        },
+        "alpha_spent": {
+          "type": "number"
+        },
+        "alpha_remaining": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": false
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "key",
+          "value"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "systematics_profile": {
+      "type": "object",
+      "required": [
+        "registry_version",
+        "entries"
+      ],
+      "properties": {
+        "registry_version": {
+          "type": "string",
+          "const": "v1"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "code",
+              "systematic_id",
+              "enabled",
+              "uncertainty_layer",
+              "kind",
+              "source_class",
+              "combination_policy",
+              "nominal",
+              "sigma",
+              "constraint"
+            ],
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "systematic_id": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "uncertainty_layer": {
+                "type": "string",
+                "enum": [
+                  "measurement",
+                  "causal"
+                ]
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "norm_sys",
+                  "histo_sys"
+                ]
+              },
+              "source_class": {
+                "type": "string",
+                "enum": [
+                  "data_estimated",
+                  "hybrid_api_plus_benchmark",
+                  "hybrid_api_plus_prior",
+                  "policy_default_or_vendor_calibrated",
+                  "policy_default_or_incrementality_calibrated",
+                  "internal_nextstat_diagnostic"
+                ]
+              },
+              "combination_policy": {
+                "type": "string",
+                "enum": [
+                  "profile_likelihood",
+                  "scenario_only",
+                  "sensitivity_first_then_profile",
+                  "sensitivity_only"
+                ]
+              },
+              "nominal": {
+                "type": "string"
+              },
+              "sigma": {
+                "type": "string"
+              },
+              "constraint": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "rigor": {
+      "type": "object",
+      "required": [
+        "passed",
+        "artifacts_complete",
+        "claim_valid",
+        "leakage_clean",
+        "claim_violations",
+        "leakage_indicators"
+      ],
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "artifacts_complete": {
+          "type": "boolean"
+        },
+        "claim_valid": {
+          "type": "boolean"
+        },
+        "leakage_clean": {
+          "type": "boolean"
+        },
+        "claim_violations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "rule",
+              "severity",
+              "message"
+            ],
+            "properties": {
+              "rule": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "info",
+                  "warning",
+                  "error"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "leakage_indicators": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "detected",
+              "severity",
+              "message"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "detected": {
+                "type": "boolean"
+              },
+              "severity": {
+                "type": "string",
+                "enum": [
+                  "info",
+                  "warning",
+                  "error"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "metadata": {
+      "type": "object",
+      "required": [
+        "engine_version",
+        "model_version",
+        "created_at"
+      ],
+      "properties": {
+        "data_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "engine_version": {
+          "type": "string"
+        },
+        "model_version": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

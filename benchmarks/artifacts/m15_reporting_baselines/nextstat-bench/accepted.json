@@ -1,0 +1,327 @@
+{
+  "binary": {
+    "build_profile": "release",
+    "path": "tmp/m15_reporting_bench_target_20260308T153214Z/release/nextstat",
+    "sha256": "efedee0254c284a266d21bbbc81e9c39e704db4534c758544ee0af0432952692",
+    "version": "nextstat 0.9.9"
+  },
+  "derived": {
+    "validation_pack_m15_over_base_median_ratio": 1.512459
+  },
+  "deterministic": true,
+  "host": {
+    "cpu_model": "AMD EPYC 7502P 32-Core Processor",
+    "hostname": "nextstat-bench",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "meta": {
+    "git_commit": "95e7c009dc51e8632c6869dc6c421ab6bccdc3ec",
+    "host_policy": "nextstat-bench",
+    "markdown_out": "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/m15_reporting_benchmark.md",
+    "nextstat_bin": "tmp/m15_reporting_bench_target_20260308T153214Z/release/nextstat",
+    "nextstat_command": [
+      "python3",
+      "scripts/benchmarks/bench_m15_reporting.py"
+    ],
+    "out": "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/m15_reporting_benchmark.json",
+    "smoke": false,
+    "work_root": "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work"
+  },
+  "ok": true,
+  "protocol": {
+    "cases": [
+      "m15_assessment_table",
+      "m15_map",
+      "m15_mar",
+      "m15_bundle",
+      "validation_pack_base_json_only",
+      "validation_pack_m15_json_only"
+    ],
+    "metric": "wall_time_seconds",
+    "runs": 5,
+    "summary_policy": [
+      "min",
+      "median",
+      "max"
+    ],
+    "warmups": 1,
+    "workspace_root": "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work"
+  },
+  "results": [
+    {
+      "artifact_root": "m15_assessment_table/run_02",
+      "case_id": "m15_assessment_table",
+      "command": [
+        "tmp/m15_reporting_bench_target_20260308T153214Z/release/nextstat",
+        "m15",
+        "assessment-table",
+        "--config",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/docs/specs/m15_config_v1.example.json",
+        "--validation-report",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/docs/specs/validation_report_v1.example.json",
+        "--pharma-validation",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/tests/fixtures/pharma_validation_ok.json",
+        "--output",
+        "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work/m15_assessment_table/run_02/m15_assessment_table.json",
+        "--deterministic"
+      ],
+      "description": "Build assessment-table from frozen config, validation report, and pharma evidence.",
+      "max_s": 0.010288,
+      "median_s": 0.008265,
+      "min_s": 0.007844,
+      "runs": 5,
+      "samples_s": [
+        0.009037,
+        0.010288,
+        0.007844,
+        0.007859,
+        0.008265
+      ],
+      "status": "ok",
+      "validation": {
+        "validated_artifacts": [
+          {
+            "expected_schema_version": "m15_assessment_table_v1",
+            "observed_schema_version": "m15_assessment_table_v1",
+            "path": "m15_assessment_table.json",
+            "status": "ok"
+          }
+        ]
+      },
+      "warmups": 1
+    },
+    {
+      "artifact_root": "m15_map/run_02",
+      "case_id": "m15_map",
+      "command": [
+        "tmp/m15_reporting_bench_target_20260308T153214Z/release/nextstat",
+        "m15",
+        "map",
+        "--config",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/docs/specs/m15_config_v1.example.json",
+        "--assessment-table",
+        "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work/setup/m15_assessment_table.json",
+        "--output",
+        "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work/m15_map/run_02/m15_map.json",
+        "--deterministic"
+      ],
+      "description": "Build MAP from frozen config and prebuilt assessment-table.",
+      "max_s": 0.010864,
+      "median_s": 0.008352,
+      "min_s": 0.007707,
+      "runs": 5,
+      "samples_s": [
+        0.007707,
+        0.008352,
+        0.007734,
+        0.010788,
+        0.010864
+      ],
+      "status": "ok",
+      "validation": {
+        "validated_artifacts": [
+          {
+            "expected_schema_version": "m15_map_v1",
+            "observed_schema_version": "m15_map_v1",
+            "path": "m15_map.json",
+            "status": "ok"
+          }
+        ]
+      },
+      "warmups": 1
+    },
+    {
+      "artifact_root": "m15_mar/run_02",
+      "case_id": "m15_mar",
+      "command": [
+        "tmp/m15_reporting_bench_target_20260308T153214Z/release/nextstat",
+        "m15",
+        "mar",
+        "--map",
+        "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work/setup/m15_map.json",
+        "--assessment-table",
+        "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work/setup/m15_assessment_table.json",
+        "--validation-report",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/docs/specs/validation_report_v1.example.json",
+        "--pharma-validation",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/tests/fixtures/pharma_validation_ok.json",
+        "--output",
+        "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work/m15_mar/run_02/m15_mar.json",
+        "--deterministic"
+      ],
+      "description": "Build MAR from prebuilt MAP and assessment-table plus frozen evidence.",
+      "max_s": 0.012531,
+      "median_s": 0.009504,
+      "min_s": 0.007548,
+      "runs": 5,
+      "samples_s": [
+        0.007548,
+        0.008467,
+        0.009504,
+        0.012531,
+        0.009959
+      ],
+      "status": "ok",
+      "validation": {
+        "validated_artifacts": [
+          {
+            "expected_schema_version": "m15_mar_v1",
+            "observed_schema_version": "m15_mar_v1",
+            "path": "m15_mar.json",
+            "status": "ok"
+          }
+        ]
+      },
+      "warmups": 1
+    },
+    {
+      "artifact_root": "m15_bundle/run_02",
+      "case_id": "m15_bundle",
+      "command": [
+        "tmp/m15_reporting_bench_target_20260308T153214Z/release/nextstat",
+        "m15",
+        "bundle",
+        "--config",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/docs/specs/m15_config_v1.example.json",
+        "--assessment-table",
+        "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work/setup/m15_assessment_table.json",
+        "--map",
+        "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work/setup/m15_map.json",
+        "--mar",
+        "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work/setup/m15_mar.json",
+        "--validation-report",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/docs/specs/validation_report_v1.example.json",
+        "--pharma-validation",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/tests/fixtures/pharma_validation_ok.json",
+        "--output",
+        "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work/m15_bundle/run_02/m15_bundle_manifest.json",
+        "--deterministic"
+      ],
+      "description": "Build M15 bundle manifest from prebuilt artifact chain.",
+      "max_s": 0.010839,
+      "median_s": 0.009579,
+      "min_s": 0.008819,
+      "runs": 5,
+      "samples_s": [
+        0.009579,
+        0.010839,
+        0.009774,
+        0.008819,
+        0.00886
+      ],
+      "status": "ok",
+      "validation": {
+        "validated_artifacts": [
+          {
+            "expected_schema_version": "m15_bundle_manifest_v1",
+            "observed_schema_version": "m15_bundle_manifest_v1",
+            "path": "m15_bundle_manifest.json",
+            "status": "ok"
+          }
+        ]
+      },
+      "warmups": 1
+    },
+    {
+      "artifact_root": "validation_pack_base_json_only/run_02",
+      "case_id": "validation_pack_base_json_only",
+      "command": [
+        "bash",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/validation-pack/render_validation_pack.sh",
+        "--out-dir",
+        "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work/validation_pack_base_json_only/run_02/pack",
+        "--workspace",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/tests/fixtures/simple_workspace.json",
+        "--apex2-master",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/tests/fixtures/apex2_master_min_plus.json",
+        "--python",
+        "/usr/bin/python3",
+        "--nextstat-bin",
+        "tmp/m15_reporting_bench_target_20260308T153214Z/release/nextstat",
+        "--json-only",
+        "--skip-pharma-validation",
+        "--deterministic"
+      ],
+      "description": "Render JSON-only validation pack without M15 artifacts.",
+      "max_s": 0.118657,
+      "median_s": 0.113412,
+      "min_s": 0.112732,
+      "runs": 5,
+      "samples_s": [
+        0.116133,
+        0.113412,
+        0.118657,
+        0.112732,
+        0.112963
+      ],
+      "status": "ok",
+      "validation": {
+        "validated_artifacts": [
+          {
+            "expected_schema_version": "validation_pack_manifest_v1",
+            "observed_schema_version": "validation_pack_manifest_v1",
+            "path": "pack/validation_pack_manifest.json",
+            "status": "ok"
+          }
+        ]
+      },
+      "warmups": 1
+    },
+    {
+      "artifact_root": "validation_pack_m15_json_only/run_02",
+      "case_id": "validation_pack_m15_json_only",
+      "command": [
+        "bash",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/validation-pack/render_validation_pack.sh",
+        "--out-dir",
+        "tmp/m15_reporting_benchmark_20260308T153214Z_nextstat-bench/work/validation_pack_m15_json_only/run_02/pack",
+        "--workspace",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/tests/fixtures/simple_workspace.json",
+        "--apex2-master",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/tests/fixtures/apex2_master_min_plus.json",
+        "--python",
+        "/usr/bin/python3",
+        "--nextstat-bin",
+        "tmp/m15_reporting_bench_target_20260308T153214Z/release/nextstat",
+        "--json-only",
+        "--skip-pharma-validation",
+        "--m15-config",
+        "tmp/m15_reporting_bench_repo_20260308T153214Z/docs/specs/m15_config_v1.example.json",
+        "--deterministic"
+      ],
+      "description": "Render JSON-only validation pack with M15 artifact chain using preseeded pharma evidence.",
+      "max_s": 0.176223,
+      "median_s": 0.171531,
+      "min_s": 0.169266,
+      "runs": 5,
+      "samples_s": [
+        0.171531,
+        0.176223,
+        0.169266,
+        0.172479,
+        0.169511
+      ],
+      "status": "ok",
+      "validation": {
+        "validated_artifacts": [
+          {
+            "expected_schema_version": "validation_pack_manifest_v1",
+            "observed_schema_version": "validation_pack_manifest_v1",
+            "path": "pack/validation_pack_manifest.json",
+            "status": "ok"
+          },
+          {
+            "expected_schema_version": "m15_bundle_manifest_v1",
+            "observed_schema_version": "m15_bundle_manifest_v1",
+            "path": "pack/m15_bundle_manifest.json",
+            "status": "ok"
+          }
+        ]
+      },
+      "warmups": 1
+    }
+  ],
+  "schema_version": "nextstat.m15_reporting_benchmark_result.v1",
+  "suite": "m15_reporting"
+}

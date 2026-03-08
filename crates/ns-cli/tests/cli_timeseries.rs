@@ -150,6 +150,42 @@ fn timeseries_kalman_filter_local_linear_trend_seasonal_contract() {
 }
 
 #[test]
+fn timeseries_kalman_filter_local_level_weekly_contract() {
+    let input = fixture_path("kalman_local_level_weekly.json");
+    assert!(input.exists(), "missing fixture: {}", input.display());
+
+    let out = run(&["timeseries", "kalman-filter", "--input", input.to_string_lossy().as_ref()]);
+
+    assert!(
+        out.status.success(),
+        "timeseries kalman-filter (local_level_weekly) should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let v: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
+    assert!(v.get("log_likelihood").and_then(|x| x.as_f64()).unwrap().is_finite());
+}
+
+#[test]
+fn timeseries_kalman_filter_local_linear_trend_weekly_contract() {
+    let input = fixture_path("kalman_local_linear_trend_weekly.json");
+    assert!(input.exists(), "missing fixture: {}", input.display());
+
+    let out = run(&["timeseries", "kalman-filter", "--input", input.to_string_lossy().as_ref()]);
+
+    assert!(
+        out.status.success(),
+        "timeseries kalman-filter (local_linear_trend_weekly) should succeed, stderr={}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let v: serde_json::Value =
+        serde_json::from_slice(&out.stdout).expect("stdout should be valid JSON");
+    assert!(v.get("log_likelihood").and_then(|x| x.as_f64()).unwrap().is_finite());
+}
+
+#[test]
 fn timeseries_kalman_filter_allows_missing_null() {
     let input = fixture_path("kalman_1d_missing.json");
     assert!(input.exists(), "missing fixture: {}", input.display());

@@ -81,6 +81,10 @@ use ns_inference::tweedie::{
     GammaRegressionModel as RustGammaRegressionModel,
     TweedieRegressionModel as RustTweedieRegressionModel,
 };
+use ns_inference::walnuts::{
+    AdaptiveWalnutsConfig, WalnutsConfig,
+    sample_walnuts_multichain as rust_sample_walnuts_multichain,
+};
 use ns_inference::{
     BeConfig as RustBeConfig, BeData as RustBeData, BeDesign as RustBeDesign,
     BePowerConfig as RustBePowerConfig, BootstrapCiMethod as RustBootstrapCiMethod,
@@ -125,6 +129,17 @@ use ns_inference::{
     hypotest::AsymptoticCLsContext as RustCLsCtx, map_estimate as rust_map_estimate,
     npde_pk as rust_npde_pk, ols_fit as rust_ols_fit, profile_likelihood as pl,
     simulate_trial as rust_simulate_trial, vpc_pk as rust_vpc_pk,
+};
+use ns_inference::{
+    BetaBinomialModel as RustBetaBinomialModel, CovariateProvenance as RustCovariateProvenance,
+    CovariateTiming as RustCovariateTiming, CupedArmData as RustCupedArmData,
+    CupedResult as RustCupedResult, CureResult as RustCureResult,
+    DelayCorrectionModel as RustDelayCorrectionModel,
+    MultiCovariateArmData as RustMultiCovariateArmData,
+    VarianceReductionMethod as RustVarianceReductionMethod,
+    VarianceReductionSolver as RustVarianceReductionSolver,
+    adstock_geometric as rust_ads_adstock_geometric, cuped_adjust as rust_cuped_adjust,
+    cure_adjust as rust_cure_adjust, hill as rust_ads_hill,
 };
 use ns_root::RootFile;
 use ns_translate::histfactory::from_xml as histfactory_from_xml;
@@ -217,12 +232,15 @@ fn sampler_result_to_py_gates<'py>(
     let energy: Vec<Vec<f64>> = result.chains.iter().map(|c| c.energies.clone()).collect();
     let step_sizes: Vec<f64> = result.chains.iter().map(|c| c.step_size).collect();
     let n_leapfrog: Vec<Vec<usize>> = result.chains.iter().map(|c| c.n_leapfrog.clone()).collect();
+    let n_leapfrog_warmup_total: Vec<usize> =
+        result.chains.iter().map(|c| c.n_leapfrog_warmup_total).collect();
     sample_stats.set_item("diverging", diverging)?;
     sample_stats.set_item("tree_depth", tree_depth)?;
     sample_stats.set_item("accept_prob", accept_prob)?;
     sample_stats.set_item("energy", energy)?;
     sample_stats.set_item("step_size", step_sizes)?;
     sample_stats.set_item("n_leapfrog", n_leapfrog)?;
+    sample_stats.set_item("n_leapfrog_warmup_total", n_leapfrog_warmup_total)?;
 
     // Metric info (from first chain; all chains share the same metric type)
     if let Some(c0) = result.chains.first() {
@@ -1391,6 +1409,126 @@ impl PosteriorModel {
         }
     }
 
+    fn sample_walnuts_multichain(
+        &self,
+        n_chains: usize,
+        n_warmup: usize,
+        n_samples: usize,
+        seed: u64,
+        config: AdaptiveWalnutsConfig,
+    ) -> NsResult<RustSamplerResult> {
+        macro_rules! dispatch {
+            ($m:expr) => {
+                rust_sample_walnuts_multichain(
+                    $m,
+                    n_chains,
+                    n_warmup,
+                    n_samples,
+                    seed,
+                    config.clone(),
+                )
+            };
+        }
+
+        match self {
+            PosteriorModel::HistFactory(m) => dispatch!(m),
+            PosteriorModel::Unbinned(m) => dispatch!(m),
+            PosteriorModel::Hybrid(m) => dispatch!(m),
+            PosteriorModel::GaussianMean(m) => dispatch!(m),
+            PosteriorModel::Funnel(m) => dispatch!(m),
+            PosteriorModel::FunnelNcp(m) => dispatch!(m),
+            PosteriorModel::StdNormal(m) => dispatch!(m),
+            PosteriorModel::LinearRegression(m) => dispatch!(m),
+            PosteriorModel::LogisticRegression(m) => dispatch!(m),
+            PosteriorModel::OrderedLogit(m) => dispatch!(m),
+            PosteriorModel::OrderedProbit(m) => dispatch!(m),
+            PosteriorModel::PoissonRegression(m) => dispatch!(m),
+            PosteriorModel::NegativeBinomialRegression(m) => dispatch!(m),
+            PosteriorModel::ComposedGlm(m) => dispatch!(m),
+            PosteriorModel::LmmMarginal(m) => dispatch!(m),
+            PosteriorModel::ExponentialSurvival(m) => dispatch!(m),
+            PosteriorModel::WeibullSurvival(m) => dispatch!(m),
+            PosteriorModel::LogNormalAft(m) => dispatch!(m),
+            PosteriorModel::CoxPh(m) => dispatch!(m),
+            PosteriorModel::OneCompartmentOralPk(m) => dispatch!(m),
+            PosteriorModel::OneCompartmentOralPkNlme(m) => dispatch!(m),
+            PosteriorModel::TwoCompartmentIvPk(m) => dispatch!(m),
+            PosteriorModel::TwoCompartmentOralPk(m) => dispatch!(m),
+            PosteriorModel::ThreeCompartmentIvPk(m) => dispatch!(m),
+            PosteriorModel::ThreeCompartmentOralPk(m) => dispatch!(m),
+            PosteriorModel::GammaRegression(m) => dispatch!(m),
+            PosteriorModel::TweedieRegression(m) => dispatch!(m),
+            PosteriorModel::Gev(m) => dispatch!(m),
+            PosteriorModel::Gpd(m) => dispatch!(m),
+            PosteriorModel::IntervalCensoredWeibull(m) => dispatch!(m),
+            PosteriorModel::IntervalCensoredWeibullAft(m) => dispatch!(m),
+            PosteriorModel::IntervalCensoredExponential(m) => dispatch!(m),
+            PosteriorModel::IntervalCensoredLogNormal(m) => dispatch!(m),
+            PosteriorModel::EightSchools(m) => dispatch!(m),
+        }
+    }
+
+    fn sample_walnuts_multichain_map(
+        &self,
+        n_chains: usize,
+        n_warmup: usize,
+        n_samples: usize,
+        seed: u64,
+        config: AdaptiveWalnutsConfig,
+        priors: Vec<Prior>,
+    ) -> NsResult<RustSamplerResult> {
+        macro_rules! dispatch_map {
+            ($m:expr) => {{
+                let w = WithPriors { model: $m.clone(), priors: priors.clone() };
+                rust_sample_walnuts_multichain(
+                    &w,
+                    n_chains,
+                    n_warmup,
+                    n_samples,
+                    seed,
+                    config.clone(),
+                )
+            }};
+        }
+
+        match self {
+            PosteriorModel::HistFactory(m) => dispatch_map!(m),
+            PosteriorModel::Unbinned(m) => dispatch_map!(m),
+            PosteriorModel::Hybrid(m) => dispatch_map!(m),
+            PosteriorModel::GaussianMean(m) => dispatch_map!(m),
+            PosteriorModel::Funnel(m) => dispatch_map!(m),
+            PosteriorModel::FunnelNcp(m) => dispatch_map!(m),
+            PosteriorModel::StdNormal(m) => dispatch_map!(m),
+            PosteriorModel::LinearRegression(m) => dispatch_map!(m),
+            PosteriorModel::LogisticRegression(m) => dispatch_map!(m),
+            PosteriorModel::OrderedLogit(m) => dispatch_map!(m),
+            PosteriorModel::OrderedProbit(m) => dispatch_map!(m),
+            PosteriorModel::PoissonRegression(m) => dispatch_map!(m),
+            PosteriorModel::NegativeBinomialRegression(m) => dispatch_map!(m),
+            PosteriorModel::ComposedGlm(m) => dispatch_map!(m),
+            PosteriorModel::LmmMarginal(m) => dispatch_map!(m),
+            PosteriorModel::ExponentialSurvival(m) => dispatch_map!(m),
+            PosteriorModel::WeibullSurvival(m) => dispatch_map!(m),
+            PosteriorModel::LogNormalAft(m) => dispatch_map!(m),
+            PosteriorModel::CoxPh(m) => dispatch_map!(m),
+            PosteriorModel::OneCompartmentOralPk(m) => dispatch_map!(m),
+            PosteriorModel::OneCompartmentOralPkNlme(m) => dispatch_map!(m),
+            PosteriorModel::TwoCompartmentIvPk(m) => dispatch_map!(m),
+            PosteriorModel::TwoCompartmentOralPk(m) => dispatch_map!(m),
+            PosteriorModel::ThreeCompartmentIvPk(m) => dispatch_map!(m),
+            PosteriorModel::ThreeCompartmentOralPk(m) => dispatch_map!(m),
+            PosteriorModel::GammaRegression(m) => dispatch_map!(m),
+            PosteriorModel::TweedieRegression(m) => dispatch_map!(m),
+            PosteriorModel::Gev(m) => dispatch_map!(m),
+            PosteriorModel::Gpd(m) => dispatch_map!(m),
+            PosteriorModel::IntervalCensoredWeibull(m) => dispatch_map!(m),
+            PosteriorModel::IntervalCensoredWeibullAft(m) => dispatch_map!(m),
+            PosteriorModel::IntervalCensoredExponential(m) => dispatch_map!(m),
+            PosteriorModel::IntervalCensoredLogNormal(m) => dispatch_map!(m),
+            PosteriorModel::EightSchools(m) => dispatch_map!(m),
+        }
+    }
+
     fn profile_ci_one(
         &self,
         mle_params: &[f64],
@@ -1579,11 +1717,43 @@ fn validate_bounds(name: &str, bounds: &[(f64, f64)], dim: usize) -> PyResult<()
     Ok(())
 }
 
-fn validate_nuts_config(
+fn parse_init_strategy(init_strategy: &str) -> PyResult<InitStrategy> {
+    match init_strategy {
+        "random" => Ok(InitStrategy::Random),
+        "mle" => Ok(InitStrategy::Mle),
+        "pathfinder" => Ok(InitStrategy::Pathfinder),
+        other => Err(PyValueError::new_err(format!(
+            "init must be 'random', 'mle', or 'pathfinder', got '{other}'"
+        ))),
+    }
+}
+
+fn parse_metric_type(metric: &str) -> PyResult<MetricType> {
+    match metric {
+        "diagonal" | "diag" | "diag_e" => Ok(MetricType::Diagonal),
+        "dense" | "dense_e" => Ok(MetricType::Dense),
+        "auto" => Ok(MetricType::Auto),
+        other => Err(PyValueError::new_err(format!(
+            "metric must be 'diagonal', 'dense', or 'auto', got '{other}'"
+        ))),
+    }
+}
+
+fn parse_mams_metric_type(metric: &str) -> PyResult<MetricType> {
+    match metric {
+        "diagonal" | "diag" | "diag_e" => Ok(MetricType::Diagonal),
+        "dense" | "dense_e" | "auto" => Err(PyValueError::new_err(
+            "MAMS currently supports only metric='diagonal'; dense/auto are not part of the stable public surface yet",
+        )),
+        other => {
+            Err(PyValueError::new_err(format!("metric must be 'diagonal', got '{other}' for MAMS")))
+        }
+    }
+}
+
+fn validate_common_adaptive_sampler_config(
     n_chains: usize,
-    _n_warmup: usize,
     n_samples: usize,
-    max_treedepth: usize,
     target_accept: f64,
     init_jitter: f64,
     init_jitter_rel: Option<f64>,
@@ -1594,9 +1764,6 @@ fn validate_nuts_config(
     }
     if n_samples == 0 {
         return Err(PyValueError::new_err("n_samples must be >= 1"));
-    }
-    if max_treedepth == 0 {
-        return Err(PyValueError::new_err("max_treedepth must be >= 1"));
     }
     if !(target_accept.is_finite() && 0.0 < target_accept && target_accept < 1.0) {
         return Err(PyValueError::new_err("target_accept must be finite and in (0,1)"));
@@ -1623,6 +1790,69 @@ fn validate_nuts_config(
         return Err(PyValueError::new_err(
             "init_jitter, init_jitter_rel, init_overdispersed_rel are mutually exclusive",
         ));
+    }
+    Ok(())
+}
+
+fn validate_nuts_config(
+    n_chains: usize,
+    _n_warmup: usize,
+    n_samples: usize,
+    max_treedepth: usize,
+    target_accept: f64,
+    init_jitter: f64,
+    init_jitter_rel: Option<f64>,
+    init_overdispersed_rel: Option<f64>,
+) -> PyResult<()> {
+    validate_common_adaptive_sampler_config(
+        n_chains,
+        n_samples,
+        target_accept,
+        init_jitter,
+        init_jitter_rel,
+        init_overdispersed_rel,
+    )?;
+    if max_treedepth == 0 {
+        return Err(PyValueError::new_err("max_treedepth must be >= 1"));
+    }
+    Ok(())
+}
+
+fn validate_walnuts_config(
+    n_chains: usize,
+    n_samples: usize,
+    max_treedepth: usize,
+    min_micro_steps: usize,
+    max_energy_error: f64,
+    target_accept: f64,
+    target_tree_depth: f64,
+    init_jitter: f64,
+    init_jitter_rel: Option<f64>,
+    init_overdispersed_rel: Option<f64>,
+    stepsize_jitter: f64,
+) -> PyResult<()> {
+    validate_common_adaptive_sampler_config(
+        n_chains,
+        n_samples,
+        target_accept,
+        init_jitter,
+        init_jitter_rel,
+        init_overdispersed_rel,
+    )?;
+    if max_treedepth == 0 {
+        return Err(PyValueError::new_err("max_treedepth must be >= 1"));
+    }
+    if min_micro_steps == 0 {
+        return Err(PyValueError::new_err("min_micro_steps must be >= 1"));
+    }
+    if !max_energy_error.is_finite() || max_energy_error <= 0.0 {
+        return Err(PyValueError::new_err("max_energy_error must be finite and > 0"));
+    }
+    if !target_tree_depth.is_finite() || target_tree_depth <= 0.0 {
+        return Err(PyValueError::new_err("target_tree_depth must be finite and > 0"));
+    }
+    if !stepsize_jitter.is_finite() || !(0.0..=1.0).contains(&stepsize_jitter) {
+        return Err(PyValueError::new_err("stepsize_jitter must be finite and in [0,1]"));
     }
     Ok(())
 }
@@ -1985,12 +2215,29 @@ struct PyHistFactoryModel {
 
 #[pymethods]
 impl PyHistFactoryModel {
-    /// Create model from workspace JSON string (auto-detects pyhf vs HS3 format).
+    /// Create model from workspace JSON string (auto-detects pyhf, HS3, or simplified-likelihood format).
     #[staticmethod]
     fn from_workspace(json_str: &str) -> PyResult<Self> {
         let format = ns_translate::hs3::detect::detect_format(json_str);
         match format {
             ns_translate::hs3::detect::WorkspaceFormat::Hs3 => Self::from_hs3(json_str, None, None),
+            ns_translate::hs3::detect::WorkspaceFormat::SimplifiedLikelihood => {
+                let spec: ns_translate::simplified::schema::SimplifiedLikelihoodWorkspace =
+                    serde_json::from_str(json_str).map_err(|e| {
+                        PyValueError::new_err(format!(
+                            "Failed to parse simplified-likelihood workspace: {}",
+                            e
+                        ))
+                    })?;
+                let model =
+                    ns_translate::simplified::convert::simplified_to_model(&spec).map_err(|e| {
+                        PyValueError::new_err(format!(
+                            "Failed to create model from simplified likelihood: {}",
+                            e
+                        ))
+                    })?;
+                Ok(PyHistFactoryModel { inner: model })
+            }
             _ => {
                 let workspace: RustWorkspace = serde_json::from_str(json_str).map_err(|e| {
                     PyValueError::new_err(format!("Failed to parse workspace: {}", e))
@@ -2672,6 +2919,444 @@ impl PyDcrSurrogate {
 
         Ok(out)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Ads-native observation models.
+// ---------------------------------------------------------------------------
+
+/// Python wrapper for `ns_inference::BetaBinomialModel`.
+#[pyclass(name = "BetaBinomialModel")]
+struct PyBetaBinomialModel {
+    inner: RustBetaBinomialModel,
+}
+
+#[pymethods]
+impl PyBetaBinomialModel {
+    #[new]
+    fn new(alpha: f64, beta: f64) -> PyResult<Self> {
+        let model = RustBetaBinomialModel::new(alpha, beta).map_err(|e| {
+            PyValueError::new_err(format!("Failed to build BetaBinomialModel: {}", e))
+        })?;
+        Ok(Self { inner: model })
+    }
+
+    #[staticmethod]
+    fn fit(conversion_rates: Vec<f64>, sample_sizes: Vec<usize>) -> PyResult<Self> {
+        let model = RustBetaBinomialModel::fit(&conversion_rates, &sample_sizes).map_err(|e| {
+            PyValueError::new_err(format!("Failed to fit BetaBinomialModel: {}", e))
+        })?;
+        Ok(Self { inner: model })
+    }
+
+    #[staticmethod]
+    fn fit_from_counts(successes: Vec<u64>, trials: Vec<u64>) -> PyResult<Self> {
+        let model = RustBetaBinomialModel::fit_from_counts(&successes, &trials).map_err(|e| {
+            PyValueError::new_err(format!("Failed to fit BetaBinomialModel from counts: {}", e))
+        })?;
+        Ok(Self { inner: model })
+    }
+
+    #[getter]
+    fn alpha(&self) -> f64 {
+        self.inner.alpha
+    }
+
+    #[getter]
+    fn beta(&self) -> f64 {
+        self.inner.beta
+    }
+
+    fn mean(&self) -> f64 {
+        self.inner.mean()
+    }
+
+    fn variance(&self) -> f64 {
+        self.inner.variance()
+    }
+
+    fn overdispersion(&self) -> f64 {
+        self.inner.overdispersion()
+    }
+
+    fn posterior(&self, successes: u64, trials: u64) -> PyResult<Self> {
+        let model = self.inner.posterior(successes, trials).map_err(|e| {
+            PyValueError::new_err(format!("Failed to update BetaBinomialModel posterior: {}", e))
+        })?;
+        Ok(Self { inner: model })
+    }
+
+    fn predictive_mean(&self, trials: u64) -> f64 {
+        self.inner.predictive_mean(trials)
+    }
+
+    fn predictive_variance(&self, trials: u64) -> f64 {
+        self.inner.predictive_variance(trials)
+    }
+}
+
+/// Python wrapper for `ns_inference::DelayCorrectionModel`.
+#[pyclass(name = "DelayCorrectionModel")]
+struct PyDelayCorrectionModel {
+    inner: RustDelayCorrectionModel,
+}
+
+#[pymethods]
+impl PyDelayCorrectionModel {
+    #[new]
+    #[pyo3(signature = (lambda_, lambda_se=None))]
+    fn new(lambda_: f64, lambda_se: Option<f64>) -> PyResult<Self> {
+        let model = RustDelayCorrectionModel::new(lambda_, lambda_se).map_err(|e| {
+            PyValueError::new_err(format!("Failed to build DelayCorrectionModel: {}", e))
+        })?;
+        Ok(Self { inner: model })
+    }
+
+    #[staticmethod]
+    fn fit_from_lag_buckets(buckets: Vec<(f64, usize)>) -> PyResult<Self> {
+        let model = RustDelayCorrectionModel::fit_from_lag_buckets(&buckets).map_err(|e| {
+            PyValueError::new_err(format!("Failed to fit DelayCorrectionModel: {}", e))
+        })?;
+        Ok(Self { inner: model })
+    }
+
+    #[getter]
+    fn lambda_(&self) -> f64 {
+        self.inner.lambda
+    }
+
+    #[getter]
+    fn lambda_se(&self) -> Option<f64> {
+        self.inner.lambda_se
+    }
+
+    fn observed_fraction(&self, window_days: f64) -> PyResult<f64> {
+        self.inner.observed_fraction(window_days).map_err(|e| {
+            PyValueError::new_err(format!("DelayCorrectionModel.observed_fraction failed: {}", e))
+        })
+    }
+
+    fn correct(&self, observed_count: f64, window_days: f64) -> PyResult<(f64, f64)> {
+        self.inner.correct(observed_count, window_days).map_err(|e| {
+            PyValueError::new_err(format!("DelayCorrectionModel.correct failed: {}", e))
+        })
+    }
+}
+
+#[pyfunction]
+fn ads_hill(x: f64, ec: f64, slope: f64) -> PyResult<f64> {
+    rust_ads_hill(x, ec, slope)
+        .map_err(|e| PyValueError::new_err(format!("ads_hill failed: {}", e)))
+}
+
+#[pyfunction]
+fn ads_adstock_geometric(spend: Vec<f64>, decay: f64) -> PyResult<Vec<f64>> {
+    rust_ads_adstock_geometric(&spend, decay)
+        .map_err(|e| PyValueError::new_err(format!("ads_adstock_geometric failed: {}", e)))
+}
+
+fn variance_reduction_method_name(method: RustVarianceReductionMethod) -> &'static str {
+    match method {
+        RustVarianceReductionMethod::None => "none",
+        RustVarianceReductionMethod::Cuped => "cuped",
+        RustVarianceReductionMethod::Cure => "cure",
+    }
+}
+
+fn variance_reduction_solver_name(solver: RustVarianceReductionSolver) -> &'static str {
+    match solver {
+        RustVarianceReductionSolver::Svd => "svd",
+        RustVarianceReductionSolver::Ridge => "ridge",
+    }
+}
+
+fn covariate_timing_name(timing: RustCovariateTiming) -> &'static str {
+    match timing {
+        RustCovariateTiming::PreTreatment => "pre_treatment",
+        RustCovariateTiming::Unknown => "unknown",
+        RustCovariateTiming::PostTreatment => "post_treatment",
+        RustCovariateTiming::Mixed => "mixed",
+    }
+}
+
+fn parse_covariate_timing(value: &str) -> PyResult<RustCovariateTiming> {
+    match value {
+        "pre_treatment" => Ok(RustCovariateTiming::PreTreatment),
+        "unknown" => Ok(RustCovariateTiming::Unknown),
+        "post_treatment" => Ok(RustCovariateTiming::PostTreatment),
+        "mixed" => Ok(RustCovariateTiming::Mixed),
+        other => Err(PyValueError::new_err(format!(
+            "unknown covariate timing '{other}'; expected one of pre_treatment, unknown, post_treatment, mixed"
+        ))),
+    }
+}
+
+fn covariate_provenance_item_to_py(
+    py: Python<'_>,
+    item: RustCovariateProvenance,
+) -> PyResult<Py<PyAny>> {
+    let out = PyDict::new(py);
+    out.set_item("name", item.name)?;
+    out.set_item("timing", covariate_timing_name(item.timing))?;
+    out.set_item("source_dataset", item.source_dataset)?;
+    Ok(out.into_any().unbind())
+}
+
+fn covariate_provenance_items_to_py(
+    py: Python<'_>,
+    items: Vec<RustCovariateProvenance>,
+) -> PyResult<Py<PyAny>> {
+    let out = PyList::empty(py);
+    for item in items {
+        out.append(covariate_provenance_item_to_py(py, item)?)?;
+    }
+    Ok(out.into_any().unbind())
+}
+
+fn build_single_covariate_provenance(
+    covariate_name: &Option<String>,
+    covariate_timing: &Option<String>,
+    covariate_source_dataset: &Option<String>,
+    pre_treatment_only: bool,
+) -> PyResult<Option<RustCovariateProvenance>> {
+    let has_explicit_provenance = covariate_timing.is_some() || covariate_source_dataset.is_some();
+    if has_explicit_provenance && covariate_name.is_none() {
+        return Err(PyValueError::new_err(
+            "covariate_name is required when covariate_timing or covariate_source_dataset is provided",
+        ));
+    }
+
+    if let Some(name) = covariate_name.as_ref() {
+        let timing = if let Some(value) = covariate_timing.as_deref() {
+            parse_covariate_timing(value)?
+        } else if pre_treatment_only {
+            RustCovariateTiming::PreTreatment
+        } else {
+            return Ok(None);
+        };
+        return Ok(Some(RustCovariateProvenance {
+            name: name.clone(),
+            timing,
+            source_dataset: covariate_source_dataset.clone(),
+        }));
+    }
+
+    Ok(None)
+}
+
+fn build_multi_covariate_provenance(
+    covariate_names: &[String],
+    covariate_timings: &Option<Vec<String>>,
+    covariate_source_datasets: &Option<Vec<String>>,
+    pre_treatment_only: bool,
+) -> PyResult<Vec<RustCovariateProvenance>> {
+    let has_explicit_provenance =
+        covariate_timings.as_ref().map(|items| !items.is_empty()).unwrap_or(false)
+            || covariate_source_datasets.as_ref().map(|items| !items.is_empty()).unwrap_or(false);
+    if has_explicit_provenance && covariate_names.is_empty() {
+        return Err(PyValueError::new_err(
+            "covariate_names are required when covariate_timings or covariate_source_datasets are provided",
+        ));
+    }
+    if covariate_names.is_empty() {
+        return Ok(Vec::new());
+    }
+    if let Some(items) = covariate_timings.as_ref()
+        && items.len() != covariate_names.len()
+    {
+        return Err(PyValueError::new_err(format!(
+            "covariate_timings length ({}) must match covariate_names length ({})",
+            items.len(),
+            covariate_names.len()
+        )));
+    }
+    if let Some(items) = covariate_source_datasets.as_ref()
+        && items.len() != covariate_names.len()
+    {
+        return Err(PyValueError::new_err(format!(
+            "covariate_source_datasets length ({}) must match covariate_names length ({})",
+            items.len(),
+            covariate_names.len()
+        )));
+    }
+
+    let mut out = Vec::with_capacity(covariate_names.len());
+    for (idx, name) in covariate_names.iter().enumerate() {
+        let timing = if let Some(items) = covariate_timings.as_ref() {
+            parse_covariate_timing(items[idx].as_str())?
+        } else if pre_treatment_only {
+            RustCovariateTiming::PreTreatment
+        } else {
+            return Ok(Vec::new());
+        };
+        let source_dataset =
+            covariate_source_datasets.as_ref().and_then(|items| items.get(idx).cloned());
+        out.push(RustCovariateProvenance { name: name.clone(), timing, source_dataset });
+    }
+
+    Ok(out)
+}
+
+fn cuped_result_to_py(py: Python<'_>, result: RustCupedResult) -> PyResult<Py<PyAny>> {
+    let out = PyDict::new(py);
+    out.set_item("method", variance_reduction_method_name(result.method))?;
+    out.set_item("mean_control", result.mean_control)?;
+    out.set_item("mean_variant", result.mean_variant)?;
+    out.set_item("adjusted_mean_control", result.adjusted_mean_control)?;
+    out.set_item("adjusted_mean_variant", result.adjusted_mean_variant)?;
+    out.set_item("effect", result.effect)?;
+    out.set_item("theta", result.theta)?;
+    out.set_item("rho", result.rho)?;
+    out.set_item("r_squared", result.r_squared)?;
+    out.set_item("variance_reduction_factor", result.variance_reduction_factor)?;
+    out.set_item("original_variance", result.original_variance)?;
+    out.set_item("adjusted_variance", result.adjusted_variance)?;
+    out.set_item("effective_sample_multiplier", result.effective_sample_multiplier)?;
+    out.set_item("num_covariates", result.num_covariates)?;
+    out.set_item("selected_covariates", result.selected_covariates)?;
+    out.set_item(
+        "covariate_provenance",
+        covariate_provenance_items_to_py(py, result.covariate_provenance)?,
+    )?;
+    out.set_item("provenance_validated", result.provenance_validated)?;
+    out.set_item("solver", variance_reduction_solver_name(result.solver))?;
+    out.set_item("regression_rank", result.regression_rank)?;
+    out.set_item("condition_number", result.condition_number)?;
+    out.set_item("ridge_lambda", result.ridge_lambda)?;
+    out.set_item("pre_treatment_only", result.pre_treatment_only)?;
+    Ok(out.into_any().unbind())
+}
+
+fn cure_result_to_py(py: Python<'_>, result: RustCureResult) -> PyResult<Py<PyAny>> {
+    let out = PyDict::new(py);
+    out.set_item("method", variance_reduction_method_name(result.method))?;
+    out.set_item("mean_control", result.mean_control)?;
+    out.set_item("mean_variant", result.mean_variant)?;
+    out.set_item("adjusted_mean_control", result.adjusted_mean_control)?;
+    out.set_item("adjusted_mean_variant", result.adjusted_mean_variant)?;
+    out.set_item("effect", result.effect)?;
+    out.set_item("theta", result.theta)?;
+    out.set_item("r_squared", result.r_squared)?;
+    out.set_item("variance_reduction_factor", result.variance_reduction_factor)?;
+    out.set_item("original_variance", result.original_variance)?;
+    out.set_item("adjusted_variance", result.adjusted_variance)?;
+    out.set_item("effective_sample_multiplier", result.effective_sample_multiplier)?;
+    out.set_item("num_covariates", result.num_covariates)?;
+    out.set_item("selected_covariates", result.selected_covariates)?;
+    out.set_item(
+        "covariate_provenance",
+        covariate_provenance_items_to_py(py, result.covariate_provenance)?,
+    )?;
+    out.set_item("provenance_validated", result.provenance_validated)?;
+    out.set_item("solver", variance_reduction_solver_name(result.solver))?;
+    out.set_item("regression_rank", result.regression_rank)?;
+    out.set_item("condition_number", result.condition_number)?;
+    out.set_item("ridge_lambda", result.ridge_lambda)?;
+    out.set_item("pre_treatment_only", result.pre_treatment_only)?;
+    Ok(out.into_any().unbind())
+}
+
+#[pyfunction]
+#[pyo3(
+    name = "ads_cuped_adjust",
+    signature = (
+        control_outcomes,
+        control_covariates,
+        variant_outcomes,
+        variant_covariates,
+        *,
+        covariate_name=None,
+        covariate_timing=None,
+        covariate_source_dataset=None,
+        pre_treatment_only=true
+    )
+)]
+fn ads_cuped_adjust_py(
+    py: Python<'_>,
+    control_outcomes: Vec<f64>,
+    control_covariates: Vec<f64>,
+    variant_outcomes: Vec<f64>,
+    variant_covariates: Vec<f64>,
+    covariate_name: Option<String>,
+    covariate_timing: Option<String>,
+    covariate_source_dataset: Option<String>,
+    pre_treatment_only: bool,
+) -> PyResult<Py<PyAny>> {
+    let covariate_provenance = build_single_covariate_provenance(
+        &covariate_name,
+        &covariate_timing,
+        &covariate_source_dataset,
+        pre_treatment_only,
+    )?;
+    let control = RustCupedArmData {
+        outcomes: control_outcomes,
+        covariates: control_covariates,
+        covariate_name: covariate_name.clone(),
+        covariate_provenance: covariate_provenance.clone(),
+        pre_treatment_only,
+    };
+    let variant = RustCupedArmData {
+        outcomes: variant_outcomes,
+        covariates: variant_covariates,
+        covariate_name,
+        covariate_provenance,
+        pre_treatment_only,
+    };
+    let result = rust_cuped_adjust(&control, &variant)
+        .map_err(|e| PyValueError::new_err(format!("ads_cuped_adjust failed: {e}")))?;
+    cuped_result_to_py(py, result)
+}
+
+#[pyfunction]
+#[pyo3(
+    name = "ads_cure_adjust",
+    signature = (
+        control_outcomes,
+        control_covariates,
+        variant_outcomes,
+        variant_covariates,
+        *,
+        covariate_names=None,
+        covariate_timings=None,
+        covariate_source_datasets=None,
+        pre_treatment_only=true
+    )
+)]
+fn ads_cure_adjust_py(
+    py: Python<'_>,
+    control_outcomes: Vec<f64>,
+    control_covariates: Vec<Vec<f64>>,
+    variant_outcomes: Vec<f64>,
+    variant_covariates: Vec<Vec<f64>>,
+    covariate_names: Option<Vec<String>>,
+    covariate_timings: Option<Vec<String>>,
+    covariate_source_datasets: Option<Vec<String>>,
+    pre_treatment_only: bool,
+) -> PyResult<Py<PyAny>> {
+    let shared_covariate_names = covariate_names.unwrap_or_default();
+    let shared_covariate_provenance = build_multi_covariate_provenance(
+        &shared_covariate_names,
+        &covariate_timings,
+        &covariate_source_datasets,
+        pre_treatment_only,
+    )?;
+    let control = RustMultiCovariateArmData {
+        outcomes: control_outcomes,
+        covariates: control_covariates,
+        covariate_names: shared_covariate_names.clone(),
+        covariate_provenance: shared_covariate_provenance.clone(),
+        pre_treatment_only,
+    };
+    let variant = RustMultiCovariateArmData {
+        outcomes: variant_outcomes,
+        covariates: variant_covariates,
+        covariate_names: shared_covariate_names,
+        covariate_provenance: shared_covariate_provenance,
+        pre_treatment_only,
+    };
+    let result = rust_cure_adjust(&control, &variant)
+        .map_err(|e| PyValueError::new_err(format!("ads_cure_adjust failed: {e}")))?;
+    cure_result_to_py(py, result)
 }
 
 // ---------------------------------------------------------------------------
@@ -10688,14 +11373,13 @@ fn to_arrow_params_ipc<'py>(
     Ok(pyo3::types::PyBytes::new(py, &ipc).unbind())
 }
 
-/// Audit a pyhf workspace JSON string for compatibility.
+/// Audit a pyhf or simplified-likelihood workspace JSON string.
 ///
-/// Returns a dict with channels, modifier types, unsupported features, etc.
+/// HS3 is rejected explicitly.
 #[pyfunction]
 fn workspace_audit(py: Python<'_>, json_str: &str) -> PyResult<Py<PyAny>> {
-    let json: serde_json::Value = serde_json::from_str(json_str)
-        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
-    let audit = ns_translate::pyhf::audit::workspace_audit(&json);
+    let audit = ns_translate::audit::audit_workspace_json(json_str)
+        .map_err(|e| PyValueError::new_err(format!("workspace_audit failed: {}", e)))?;
     let audit_json = serde_json::to_value(&audit)
         .map_err(|e| PyValueError::new_err(format!("Serialization failed: {}", e)))?;
     json_value_to_py(py, &audit_json)
@@ -10787,6 +11471,589 @@ fn workspace_combine(
     };
     let combined = ws1.combine(&ws2, join_mode).map_err(PyValueError::new_err)?;
     serde_json::to_string_pretty(&combined).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Build a stable-first measurement-combination spec from tabular tables.
+#[pyfunction]
+#[pyo3(signature = (measurements_table, stat_covariance_table, *, poi="mu", systematics_table=None, correlations_table=None))]
+fn measurement_combine_build_spec_json(
+    measurements_table: &str,
+    stat_covariance_table: &str,
+    poi: &str,
+    systematics_table: Option<&str>,
+    correlations_table: Option<&str>,
+) -> PyResult<String> {
+    let spec = ns_inference::measurement_combine::build_measurement_combination_spec_from_tables(
+        poi,
+        measurements_table,
+        stat_covariance_table,
+        systematics_table,
+        correlations_table,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&spec).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Build a stable-first measurement-combination spec from a YAML/JSON manifest path.
+#[pyfunction]
+fn measurement_combine_build_spec_from_manifest_json(manifest_path: &str) -> PyResult<String> {
+    let spec =
+        ns_inference::measurement_combine::build_measurement_combination_spec_from_manifest_path(
+            std::path::Path::new(manifest_path),
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&spec).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Combine scalar measurements with correlated systematics (stable-first).
+#[pyfunction]
+#[pyo3(signature = (spec_json, *, ci_level=0.68, solver="auto"))]
+fn measurement_combine_json(spec_json: &str, ci_level: f64, solver: &str) -> PyResult<String> {
+    let spec: ns_inference::MeasurementCombinationSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let solver_mode = measurement_combine_solver_mode(solver)?;
+    let result = ns_inference::measurement_combine::combine_measurements_with_solver(
+        &spec,
+        ci_level,
+        solver_mode,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+fn measurement_combine_solver_mode(
+    solver: &str,
+) -> PyResult<ns_inference::measurement_combine::MeasurementCombinationSolver> {
+    match solver {
+        "numerical" => {
+            Ok(ns_inference::measurement_combine::MeasurementCombinationSolver::Numerical)
+        }
+        "numerical-paper" => {
+            Ok(ns_inference::measurement_combine::MeasurementCombinationSolver::NumericalPaper)
+        }
+        "analytic-perturbative" => Ok(
+            ns_inference::measurement_combine::MeasurementCombinationSolver::AnalyticPerturbative,
+        ),
+        "auto" => Ok(ns_inference::measurement_combine::MeasurementCombinationSolver::Auto),
+        _ => Err(PyValueError::new_err(format!(
+            "Unknown solver '{}'. Use 'numerical', 'numerical-paper', 'analytic-perturbative', or 'auto'.",
+            solver
+        ))),
+    }
+}
+
+/// Run stable-first toy calibration for scalar measurement combinations.
+#[pyfunction]
+#[pyo3(signature = (spec_json, *, ci_level=0.68, solver="auto", n_toys=128, seed=42))]
+fn measurement_combine_calibrate_json(
+    spec_json: &str,
+    ci_level: f64,
+    solver: &str,
+    n_toys: usize,
+    seed: u64,
+) -> PyResult<String> {
+    let spec: ns_inference::MeasurementCombinationSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let result = ns_inference::measurement_combine::calibrate_measurements_toys_with_solver(
+        &spec,
+        ci_level,
+        measurement_combine_solver_mode(solver)?,
+        n_toys,
+        seed,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Run a repeated-seed stable-first toy calibration study for scalar measurement combinations.
+#[pyfunction]
+#[pyo3(signature = (spec_json, *, ci_level=0.68, solver="auto", n_toys=128, seeds=vec![42_u64, 43_u64, 44_u64]))]
+fn measurement_combine_calibrate_study_json(
+    spec_json: &str,
+    ci_level: f64,
+    solver: &str,
+    n_toys: usize,
+    seeds: Vec<u64>,
+) -> PyResult<String> {
+    let spec: ns_inference::MeasurementCombinationSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let result = ns_inference::measurement_combine::calibrate_measurements_toys_study_with_solver(
+        &spec,
+        ci_level,
+        measurement_combine_solver_mode(solver)?,
+        n_toys,
+        &seeds,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Run a repeated scenario-study for scalar measurement combinations.
+#[pyfunction]
+#[pyo3(signature = (spec_json, scenario_study_json, *, ci_level=0.68, solver="auto"))]
+fn measurement_combine_scenario_study_json(
+    spec_json: &str,
+    scenario_study_json: &str,
+    ci_level: f64,
+    solver: &str,
+) -> PyResult<String> {
+    let spec: ns_inference::MeasurementCombinationSpec =
+        serde_json::from_str(spec_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid measurement-combination JSON: {}", e))
+        })?;
+    let scenario_study: ns_inference::measurement_combine::MeasurementCombinationScenarioStudySpec =
+        serde_json::from_str(scenario_study_json)
+            .map_err(|e| PyValueError::new_err(format!("Invalid scenario-study JSON: {}", e)))?;
+    let result =
+        ns_inference::measurement_combine::study_measurement_combination_scenarios_with_solver(
+            &spec,
+            &scenario_study,
+            ci_level,
+            measurement_combine_solver_mode(solver)?,
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Run a repeated-seed calibration campaign across named measurement-combination scenarios.
+#[pyfunction]
+#[pyo3(signature = (spec_json, scenario_study_json, *, ci_level=0.68, solver="auto", n_toys=128, seeds=vec![42_u64, 43_u64, 44_u64]))]
+fn measurement_combine_calibration_campaign_json(
+    spec_json: &str,
+    scenario_study_json: &str,
+    ci_level: f64,
+    solver: &str,
+    n_toys: usize,
+    seeds: Vec<u64>,
+) -> PyResult<String> {
+    let spec: ns_inference::MeasurementCombinationSpec =
+        serde_json::from_str(spec_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid measurement-combination JSON: {}", e))
+        })?;
+    let scenario_study: ns_inference::measurement_combine::MeasurementCombinationScenarioStudySpec =
+        serde_json::from_str(scenario_study_json)
+            .map_err(|e| PyValueError::new_err(format!("Invalid scenario-study JSON: {}", e)))?;
+    let result = ns_inference::measurement_combine::run_measurement_combination_calibration_campaign_with_solver(
+        &spec,
+        &scenario_study,
+        ci_level,
+        measurement_combine_solver_mode(solver)?,
+        n_toys,
+        &seeds,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Compare two solver modes on the same scenario-study input.
+#[pyfunction]
+#[pyo3(signature = (spec_json, scenario_study_json, *, ci_level=0.68, lhs_solver="numerical-paper", rhs_solver="analytic-perturbative"))]
+fn measurement_combine_solver_parity_scenario_study_json(
+    spec_json: &str,
+    scenario_study_json: &str,
+    ci_level: f64,
+    lhs_solver: &str,
+    rhs_solver: &str,
+) -> PyResult<String> {
+    let spec: ns_inference::MeasurementCombinationSpec =
+        serde_json::from_str(spec_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid measurement-combination JSON: {}", e))
+        })?;
+    let scenario_study: ns_inference::measurement_combine::MeasurementCombinationScenarioStudySpec =
+        serde_json::from_str(scenario_study_json)
+            .map_err(|e| PyValueError::new_err(format!("Invalid scenario-study JSON: {}", e)))?;
+    let result =
+        ns_inference::measurement_combine::compare_measurement_combination_scenario_study_solvers(
+            &spec,
+            &scenario_study,
+            ci_level,
+            measurement_combine_solver_mode(lhs_solver)?,
+            measurement_combine_solver_mode(rhs_solver)?,
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Compare two solver modes on the same calibration-campaign input.
+#[pyfunction]
+#[pyo3(signature = (spec_json, scenario_study_json, *, ci_level=0.68, lhs_solver="numerical-paper", rhs_solver="analytic-perturbative", n_toys=128, seeds=vec![42_u64, 43_u64, 44_u64]))]
+fn measurement_combine_solver_parity_calibration_campaign_json(
+    spec_json: &str,
+    scenario_study_json: &str,
+    ci_level: f64,
+    lhs_solver: &str,
+    rhs_solver: &str,
+    n_toys: usize,
+    seeds: Vec<u64>,
+) -> PyResult<String> {
+    let spec: ns_inference::MeasurementCombinationSpec =
+        serde_json::from_str(spec_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid measurement-combination JSON: {}", e))
+        })?;
+    let scenario_study: ns_inference::measurement_combine::MeasurementCombinationScenarioStudySpec =
+        serde_json::from_str(scenario_study_json)
+            .map_err(|e| PyValueError::new_err(format!("Invalid scenario-study JSON: {}", e)))?;
+    let result = ns_inference::measurement_combine::compare_measurement_combination_calibration_campaign_solvers(
+        &spec,
+        &scenario_study,
+        ci_level,
+        measurement_combine_solver_mode(lhs_solver)?,
+        measurement_combine_solver_mode(rhs_solver)?,
+        n_toys,
+        &seeds,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Compare two precomputed scenario-study reports.
+#[pyfunction]
+#[pyo3(signature = (lhs_report_json, rhs_report_json, *, lhs_solver="numerical-paper", rhs_solver="analytic-perturbative"))]
+fn measurement_combine_solver_parity_scenario_study_reports_json(
+    lhs_report_json: &str,
+    rhs_report_json: &str,
+    lhs_solver: &str,
+    rhs_solver: &str,
+) -> PyResult<String> {
+    let lhs: ns_inference::measurement_combine::MeasurementCombinationScenarioStudyReport =
+        serde_json::from_str(lhs_report_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid lhs scenario-study JSON: {}", e))
+        })?;
+    let rhs: ns_inference::measurement_combine::MeasurementCombinationScenarioStudyReport =
+        serde_json::from_str(rhs_report_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid rhs scenario-study JSON: {}", e))
+        })?;
+    let result =
+        ns_inference::measurement_combine::compare_measurement_combination_scenario_study_reports(
+            &lhs, &rhs, lhs_solver, rhs_solver,
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Compare two precomputed calibration-campaign reports.
+#[pyfunction]
+#[pyo3(signature = (lhs_report_json, rhs_report_json, *, lhs_solver="numerical-paper", rhs_solver="analytic-perturbative"))]
+fn measurement_combine_solver_parity_calibration_campaign_reports_json(
+    lhs_report_json: &str,
+    rhs_report_json: &str,
+    lhs_solver: &str,
+    rhs_solver: &str,
+) -> PyResult<String> {
+    let lhs: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignReport =
+        serde_json::from_str(lhs_report_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid lhs calibration-campaign JSON: {}", e))
+        })?;
+    let rhs: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignReport =
+        serde_json::from_str(rhs_report_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid rhs calibration-campaign JSON: {}", e))
+        })?;
+    let result = ns_inference::measurement_combine::compare_measurement_combination_calibration_campaign_reports(
+        &lhs,
+        &rhs,
+        lhs_solver,
+        rhs_solver,
+    )
+    .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Render a scenario-study solver parity report as Markdown.
+#[pyfunction]
+fn measurement_combine_solver_parity_scenario_study_markdown(
+    report_json: &str,
+) -> PyResult<String> {
+    let report: ns_inference::measurement_combine::MeasurementCombinationScenarioStudySolverParityReport =
+        serde_json::from_str(report_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid scenario-study solver parity JSON: {}", e))
+        })?;
+    ns_inference::measurement_combine::render_measurement_combination_scenario_study_solver_parity_markdown(&report)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Render a calibration-campaign solver parity report as Markdown.
+#[pyfunction]
+fn measurement_combine_solver_parity_calibration_campaign_markdown(
+    report_json: &str,
+) -> PyResult<String> {
+    let report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignSolverParityReport =
+        serde_json::from_str(report_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid calibration-campaign solver parity JSON: {}", e))
+        })?;
+    ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_solver_parity_markdown(&report)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Summarize a scenario-study solver parity artifact into a compact digest.
+#[pyfunction]
+fn measurement_combine_solver_parity_scenario_study_summary_json(
+    report_json: &str,
+) -> PyResult<String> {
+    let report: ns_inference::measurement_combine::MeasurementCombinationScenarioStudySolverParityReport =
+        serde_json::from_str(report_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid scenario-study solver parity JSON: {}", e))
+        })?;
+    let result = ns_inference::measurement_combine::summarize_measurement_combination_scenario_study_solver_parity(&report)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Render a scenario-study solver parity digest as Markdown.
+#[pyfunction]
+fn measurement_combine_solver_parity_scenario_study_summary_markdown(
+    digest_json: &str,
+) -> PyResult<String> {
+    let digest: ns_inference::measurement_combine::MeasurementCombinationScenarioStudySolverParityDigest =
+        serde_json::from_str(digest_json).map_err(|e| {
+            PyValueError::new_err(format!(
+                "Invalid scenario-study solver parity digest JSON: {}",
+                e
+            ))
+        })?;
+    ns_inference::measurement_combine::render_measurement_combination_scenario_study_solver_parity_digest_markdown(&digest)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Summarize a calibration-campaign solver parity artifact into a compact digest.
+#[pyfunction]
+fn measurement_combine_solver_parity_calibration_campaign_summary_json(
+    report_json: &str,
+) -> PyResult<String> {
+    let report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignSolverParityReport =
+        serde_json::from_str(report_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid calibration-campaign solver parity JSON: {}", e))
+        })?;
+    let result = ns_inference::measurement_combine::summarize_measurement_combination_calibration_campaign_solver_parity(&report)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Render a calibration-campaign solver parity digest as Markdown.
+#[pyfunction]
+fn measurement_combine_solver_parity_calibration_campaign_summary_markdown(
+    digest_json: &str,
+) -> PyResult<String> {
+    let digest: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignSolverParityDigest =
+        serde_json::from_str(digest_json).map_err(|e| {
+            PyValueError::new_err(format!(
+                "Invalid calibration-campaign solver parity digest JSON: {}",
+                e
+            ))
+        })?;
+    ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_solver_parity_digest_markdown(&digest)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Summarize a calibration-campaign artifact into a compact research digest.
+#[pyfunction]
+fn measurement_combine_calibration_campaign_summary_json(report_json: &str) -> PyResult<String> {
+    let report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignReport =
+        serde_json::from_str(report_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid calibration-campaign JSON: {}", e))
+        })?;
+    let result =
+        ns_inference::measurement_combine::summarize_measurement_combination_calibration_campaign(
+            &report,
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Render a calibration-campaign digest as Markdown.
+#[pyfunction]
+fn measurement_combine_calibration_campaign_summary_markdown(
+    summary_json: &str,
+) -> PyResult<String> {
+    let summary: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignDigest =
+        serde_json::from_str(summary_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid calibration-campaign summary JSON: {}", e))
+        })?;
+    ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_digest_markdown(&summary)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Build a comparative brief from multiple calibration-campaign digests.
+#[pyfunction]
+#[pyo3(signature = (labeled_summary_jsons))]
+fn measurement_combine_calibration_campaign_brief_json(
+    labeled_summary_jsons: Vec<(String, String)>,
+) -> PyResult<String> {
+    let mut digests = Vec::with_capacity(labeled_summary_jsons.len());
+    for (label, summary_json) in labeled_summary_jsons {
+        let digest: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignDigest =
+            serde_json::from_str(&summary_json).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Invalid calibration-campaign summary JSON for '{}': {}",
+                    label, e
+                ))
+            })?;
+        digests.push((label, digest));
+    }
+    let result =
+        ns_inference::measurement_combine::build_measurement_combination_calibration_campaign_brief(
+            &digests,
+        )
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Render a calibration-campaign brief as Markdown.
+#[pyfunction]
+fn measurement_combine_calibration_campaign_brief_markdown(brief_json: &str) -> PyResult<String> {
+    let brief: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignBrief =
+        serde_json::from_str(brief_json).map_err(|e| {
+            PyValueError::new_err(format!("Invalid calibration-campaign brief JSON: {}", e))
+        })?;
+    ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_brief_markdown(&brief)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Build a family-level report from multiple calibration-campaign briefs.
+#[pyfunction]
+#[pyo3(signature = (labeled_brief_jsons))]
+fn measurement_combine_calibration_campaign_family_report_json(
+    labeled_brief_jsons: Vec<(String, String)>,
+) -> PyResult<String> {
+    let mut briefs = Vec::with_capacity(labeled_brief_jsons.len());
+    for (label, brief_json) in labeled_brief_jsons {
+        let brief: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignBrief =
+            serde_json::from_str(&brief_json).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Invalid calibration-campaign brief JSON for '{}': {}",
+                    label, e
+                ))
+            })?;
+        briefs.push((label, brief));
+    }
+    let result = ns_inference::measurement_combine::build_measurement_combination_calibration_campaign_family_report(&briefs)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Render a calibration-campaign family report as Markdown.
+#[pyfunction]
+fn measurement_combine_calibration_campaign_family_report_markdown(
+    report_json: &str,
+) -> PyResult<String> {
+    let report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignFamilyReport =
+        serde_json::from_str(report_json).map_err(|e| {
+            PyValueError::new_err(format!(
+                "Invalid calibration-campaign family report JSON: {}",
+                e
+            ))
+        })?;
+    ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_family_report_markdown(&report)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Build a machine-readable dominance matrix from a family-level report.
+#[pyfunction]
+fn measurement_combine_calibration_campaign_family_matrix_json(
+    report_json: &str,
+) -> PyResult<String> {
+    let report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignFamilyReport =
+        serde_json::from_str(report_json).map_err(|e| {
+            PyValueError::new_err(format!(
+                "Invalid calibration-campaign family report JSON: {}",
+                e
+            ))
+        })?;
+    let result =
+        ns_inference::measurement_combine::build_measurement_combination_calibration_campaign_family_matrix(&report)
+            .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Render a calibration-campaign family matrix as Markdown.
+#[pyfunction]
+fn measurement_combine_calibration_campaign_family_matrix_markdown(
+    matrix_json: &str,
+) -> PyResult<String> {
+    let matrix: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignFamilyMatrix =
+        serde_json::from_str(matrix_json).map_err(|e| {
+            PyValueError::new_err(format!(
+                "Invalid calibration-campaign family matrix JSON: {}",
+                e
+            ))
+        })?;
+    ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_family_matrix_markdown(&matrix)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Build a portfolio-level report from multiple family-matrix artifacts.
+#[pyfunction]
+#[pyo3(signature = (labeled_matrix_jsons))]
+fn measurement_combine_calibration_campaign_portfolio_json(
+    labeled_matrix_jsons: Vec<(String, String)>,
+) -> PyResult<String> {
+    let mut matrices = Vec::with_capacity(labeled_matrix_jsons.len());
+    for (label, matrix_json) in labeled_matrix_jsons {
+        let matrix: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignFamilyMatrix =
+            serde_json::from_str(&matrix_json).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Invalid calibration-campaign family matrix JSON for '{}': {}",
+                    label, e
+                ))
+            })?;
+        matrices.push((label, matrix));
+    }
+    let result = ns_inference::measurement_combine::build_measurement_combination_calibration_campaign_portfolio_report(&matrices)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Render a calibration-campaign portfolio report as Markdown.
+#[pyfunction]
+fn measurement_combine_calibration_campaign_portfolio_markdown(
+    report_json: &str,
+) -> PyResult<String> {
+    let report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignPortfolioReport =
+        serde_json::from_str(report_json).map_err(|e| {
+            PyValueError::new_err(format!(
+                "Invalid calibration-campaign portfolio JSON: {}",
+                e
+            ))
+        })?;
+    ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_portfolio_markdown(&report)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Build a stability report from multiple calibration-campaign portfolios.
+#[pyfunction]
+#[pyo3(signature = (labeled_portfolio_jsons))]
+fn measurement_combine_calibration_campaign_portfolio_stability_json(
+    labeled_portfolio_jsons: Vec<(String, String)>,
+) -> PyResult<String> {
+    let mut portfolios = Vec::with_capacity(labeled_portfolio_jsons.len());
+    for (label, report_json) in labeled_portfolio_jsons {
+        let report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignPortfolioReport =
+            serde_json::from_str(&report_json).map_err(|e| {
+                PyValueError::new_err(format!(
+                    "Invalid calibration-campaign portfolio JSON for '{}': {}",
+                    label, e
+                ))
+            })?;
+        portfolios.push((label, report));
+    }
+    let result = ns_inference::measurement_combine::build_measurement_combination_calibration_campaign_portfolio_stability_report(&portfolios)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+/// Render a calibration-campaign portfolio stability report as Markdown.
+#[pyfunction]
+fn measurement_combine_calibration_campaign_portfolio_stability_markdown(
+    report_json: &str,
+) -> PyResult<String> {
+    let report: ns_inference::measurement_combine::MeasurementCombinationCalibrationCampaignPortfolioStabilityReport =
+        serde_json::from_str(report_json).map_err(|e| {
+            PyValueError::new_err(format!(
+                "Invalid calibration-campaign portfolio stability JSON: {}",
+                e
+            ))
+        })?;
+    ns_inference::measurement_combine::render_measurement_combination_calibration_campaign_portfolio_stability_markdown(&report)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
 }
 
 /// Remove channels, samples, modifiers, and/or measurements from a pyhf workspace.
@@ -10943,6 +12210,34 @@ fn read_root_histogram<'py>(
         })
         .map_err(|e| PyValueError::new_err(format!("ROOT histogram read failed: {}", e)))?;
 
+    root_histogram_with_flows_to_pydict(py, wf)
+}
+
+#[pyfunction]
+#[pyo3(name = "_read_root_histogram_bytes", signature = (root_bytes, hist_path, *, filename_hint=None))]
+fn read_root_histogram_bytes<'py>(
+    py: Python<'py>,
+    root_bytes: Vec<u8>,
+    hist_path: &str,
+    filename_hint: Option<&str>,
+) -> PyResult<Py<PyAny>> {
+    let hist_path = hist_path.to_string();
+    let path = std::path::PathBuf::from(filename_hint.unwrap_or("uploaded.root"));
+
+    let wf = py
+        .detach(move || {
+            let f = RootFile::from_bytes(root_bytes, path)?;
+            f.get_histogram_with_flows(&hist_path)
+        })
+        .map_err(|e| PyValueError::new_err(format!("ROOT histogram read failed: {}", e)))?;
+
+    root_histogram_with_flows_to_pydict(py, wf)
+}
+
+fn root_histogram_with_flows_to_pydict(
+    py: Python<'_>,
+    wf: ns_root::HistogramWithFlows,
+) -> PyResult<Py<PyAny>> {
     let d = PyDict::new(py);
     d.set_item("name", wf.histogram.name)?;
     d.set_item("title", wf.histogram.title)?;
@@ -12846,27 +14141,8 @@ fn sample<'py>(
         init_overdispersed_rel,
     )?;
 
-    let init_strategy = match init_strategy {
-        "random" => InitStrategy::Random,
-        "mle" => InitStrategy::Mle,
-        "pathfinder" => InitStrategy::Pathfinder,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "init must be 'random', 'mle', or 'pathfinder', got '{other}'"
-            )));
-        }
-    };
-
-    let metric_type = match metric {
-        "diagonal" | "diag" | "diag_e" => ns_inference::MetricType::Diagonal,
-        "dense" | "dense_e" => ns_inference::MetricType::Dense,
-        "auto" => ns_inference::MetricType::Auto,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "metric must be 'diagonal', 'dense', or 'auto', got '{other}'"
-            )));
-        }
-    };
+    let init_strategy = parse_init_strategy(init_strategy)?;
+    let metric_type = parse_metric_type(metric)?;
 
     let config = NutsConfig {
         max_treedepth,
@@ -12903,16 +14179,105 @@ fn sample<'py>(
     sampler_result_to_py(py, &result, n_chains, n_warmup, n_samples)
 }
 
+/// Adaptive WALNUTS sampling with ArviZ-compatible output.
+#[pyfunction]
+#[pyo3(name = "sample_walnuts", signature = (
+    model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42,
+    max_treedepth=10, max_step_halvings=4, min_micro_steps=1, max_energy_error=2.0,
+    target_accept=0.8, target_tree_depth=4.0, init_strategy="random", metric="diagonal",
+    init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, stepsize_jitter=0.0,
+    data=None
+))]
+fn sample_walnuts_py<'py>(
+    py: Python<'py>,
+    model: &Bound<'py, PyAny>,
+    n_chains: usize,
+    n_warmup: usize,
+    n_samples: usize,
+    seed: u64,
+    max_treedepth: usize,
+    max_step_halvings: usize,
+    min_micro_steps: usize,
+    max_energy_error: f64,
+    target_accept: f64,
+    target_tree_depth: f64,
+    init_strategy: &str,
+    metric: &str,
+    init_jitter: f64,
+    init_jitter_rel: Option<f64>,
+    init_overdispersed_rel: Option<f64>,
+    stepsize_jitter: f64,
+    data: Option<Vec<f64>>,
+) -> PyResult<Py<PyAny>> {
+    validate_walnuts_config(
+        n_chains,
+        n_samples,
+        max_treedepth,
+        min_micro_steps,
+        max_energy_error,
+        target_accept,
+        target_tree_depth,
+        init_jitter,
+        init_jitter_rel,
+        init_overdispersed_rel,
+        stepsize_jitter,
+    )?;
+
+    let init_strategy = parse_init_strategy(init_strategy)?;
+    let metric_type = parse_metric_type(metric)?;
+
+    let config = AdaptiveWalnutsConfig {
+        kernel: WalnutsConfig {
+            max_treedepth,
+            max_step_halvings,
+            min_micro_steps,
+            max_energy_error,
+        },
+        target_accept,
+        target_tree_depth,
+        init_strategy,
+        init_jitter,
+        init_jitter_rel,
+        init_overdispersed_rel,
+        metric_type,
+        stepsize_jitter,
+    };
+
+    let result = if let Ok(post) = model.extract::<PyRef<'_, PyPosterior>>() {
+        if data.is_some() {
+            return Err(PyValueError::new_err(
+                "data= is not supported when sampling a Posterior; build the Posterior from the desired model/data",
+            ));
+        }
+        let priors = post.priors.clone();
+        let m = post.model.clone();
+        py.detach(move || {
+            m.sample_walnuts_multichain_map(n_chains, n_warmup, n_samples, seed, config, priors)
+        })
+        .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+    } else {
+        let sample_model = extract_posterior_model_with_data(model, data)?;
+        py.detach(move || {
+            sample_model.sample_walnuts_multichain(n_chains, n_warmup, n_samples, seed, config)
+        })
+        .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+    };
+
+    sampler_result_to_py(py, &result, n_chains, n_warmup, n_samples)
+}
+
 /// MAMS (Metropolis-Adjusted Microcanonical Sampler) with ArviZ-compatible output.
 ///
 /// Uses microcanonical dynamics (Sundman leapfrog, norm-preserving partial refresh)
 /// for improved ESS/gradient on funnel and multiscale geometries.
+///
+/// The stable CPU MAMS surface currently supports diagonal preconditioning only.
 #[pyfunction]
 #[pyo3(name = "sample_mams", signature = (
-    model, *, n_chains=4, n_warmup=1000, n_samples=1000, seed=42,
-    target_accept=0.9, init_strategy="random", metric="diagonal",
+    model, *, n_chains=4, n_warmup=3500, n_samples=1000, seed=42,
+    target_accept=0.985, init_strategy="random", metric="diagonal",
     init_step_size=0.0, init_l=0.0, max_leapfrog=1024,
-    diagonal_precond=true, eps_jitter=0.1, data=None
+    diagonal_precond=true, eps_jitter=0.0, data=None
 ))]
 fn sample_mams_py<'py>(
     py: Python<'py>,
@@ -12942,27 +14307,8 @@ fn sample_mams_py<'py>(
         return Err(PyValueError::new_err("target_accept must be finite and in (0,1)"));
     }
 
-    let init_strategy = match init_strategy {
-        "random" => InitStrategy::Random,
-        "mle" => InitStrategy::Mle,
-        "pathfinder" => InitStrategy::Pathfinder,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "init_strategy must be 'random', 'mle', or 'pathfinder', got '{other}'"
-            )));
-        }
-    };
-
-    let metric_type = match metric {
-        "diagonal" | "diag" | "diag_e" => MetricType::Diagonal,
-        "dense" | "dense_e" => MetricType::Dense,
-        "auto" => MetricType::Auto,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "metric must be 'diagonal', 'dense', or 'auto', got '{other}'"
-            )));
-        }
-    };
+    let init_strategy = parse_init_strategy(init_strategy)?;
+    let metric_type = parse_mams_metric_type(metric)?;
 
     let config = MamsConfig {
         n_warmup,
@@ -14423,6 +15769,166 @@ fn render_viz(
 }
 
 // ---------------------------------------------------------------------------
+// Bayesian trial design functions.
+// ---------------------------------------------------------------------------
+
+#[pyfunction]
+fn beta_binomial_design_analyze_json(spec_json: &str, observed_json: &str) -> PyResult<String> {
+    let spec: ns_inference::BetaBinomialDesignSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let observed: ns_inference::BetaBinomialObservedData = serde_json::from_str(observed_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let result = ns_inference::analyze_beta_binomial_design(&spec, &observed)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn beta_binomial_design_operating_characteristics_json(spec_json: &str) -> PyResult<String> {
+    let spec: ns_inference::BetaBinomialDesignSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let result = ns_inference::beta_binomial_operating_characteristics(&spec)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn beta_binomial_design_posterior_predictive_json(
+    spec_json: &str,
+    observed_json: &str,
+) -> PyResult<String> {
+    let spec: ns_inference::BetaBinomialDesignSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let observed: ns_inference::BetaBinomialObservedData = serde_json::from_str(observed_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let result = ns_inference::beta_binomial_posterior_predictive(&spec, &observed)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn beta_binomial_design_prior_sensitivity_json(
+    spec_json: &str,
+    observed_json: &str,
+    campaign_json: &str,
+) -> PyResult<String> {
+    let spec: ns_inference::BetaBinomialDesignSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let observed: ns_inference::BetaBinomialObservedData = serde_json::from_str(observed_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let campaign: ns_inference::BetaBinomialPriorSensitivityCampaign =
+        serde_json::from_str(campaign_json)
+            .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let result = ns_inference::beta_binomial_prior_sensitivity(&spec, &observed, &campaign)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn beta_binomial_design_report_json(
+    spec_json: &str,
+    observed_json: &str,
+    campaign_json: &str,
+) -> PyResult<String> {
+    let spec: ns_inference::BetaBinomialDesignSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let observed: ns_inference::BetaBinomialObservedData = serde_json::from_str(observed_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let campaign: ns_inference::BetaBinomialPriorSensitivityCampaign =
+        serde_json::from_str(campaign_json)
+            .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let result = ns_inference::beta_binomial_design_report(&spec, &observed, &campaign)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn beta_binomial_design_report_markdown(report_json: &str) -> PyResult<String> {
+    let report: ns_inference::BetaBinomialDesignReport = serde_json::from_str(report_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    ns_inference::render_beta_binomial_design_report_markdown(&report)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn normal_normal_design_analyze_json(spec_json: &str, observed_json: &str) -> PyResult<String> {
+    let spec: ns_inference::NormalNormalDesignSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let observed: ns_inference::NormalNormalObservedData = serde_json::from_str(observed_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let result = ns_inference::analyze_normal_normal_design(&spec, &observed)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn normal_normal_design_operating_characteristics_json(spec_json: &str) -> PyResult<String> {
+    let spec: ns_inference::NormalNormalDesignSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let result = ns_inference::normal_normal_operating_characteristics(&spec)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn normal_normal_design_posterior_predictive_json(
+    spec_json: &str,
+    observed_json: &str,
+) -> PyResult<String> {
+    let spec: ns_inference::NormalNormalDesignSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let observed: ns_inference::NormalNormalObservedData = serde_json::from_str(observed_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let result = ns_inference::normal_normal_posterior_predictive(&spec, &observed)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn normal_normal_design_prior_sensitivity_json(
+    spec_json: &str,
+    observed_json: &str,
+    campaign_json: &str,
+) -> PyResult<String> {
+    let spec: ns_inference::NormalNormalDesignSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let observed: ns_inference::NormalNormalObservedData = serde_json::from_str(observed_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let campaign: ns_inference::NormalNormalPriorSensitivityCampaign =
+        serde_json::from_str(campaign_json)
+            .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let result = ns_inference::normal_normal_prior_sensitivity(&spec, &observed, &campaign)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn normal_normal_design_report_json(
+    spec_json: &str,
+    observed_json: &str,
+    campaign_json: &str,
+) -> PyResult<String> {
+    let spec: ns_inference::NormalNormalDesignSpec = serde_json::from_str(spec_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let observed: ns_inference::NormalNormalObservedData = serde_json::from_str(observed_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let campaign: ns_inference::NormalNormalPriorSensitivityCampaign =
+        serde_json::from_str(campaign_json)
+            .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    let result = ns_inference::normal_normal_design_report(&spec, &observed, &campaign)
+        .map_err(|e| PyValueError::new_err(e.to_string()))?;
+    serde_json::to_string_pretty(&result).map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+#[pyfunction]
+fn normal_normal_design_report_markdown(report_json: &str) -> PyResult<String> {
+    let report: ns_inference::NormalNormalDesignReport = serde_json::from_str(report_json)
+        .map_err(|e| PyValueError::new_err(format!("Invalid JSON: {}", e)))?;
+    ns_inference::render_normal_normal_design_report_markdown(&report)
+        .map_err(|e| PyValueError::new_err(e.to_string()))
+}
+
+// ---------------------------------------------------------------------------
 // Bioequivalence functions.
 // ---------------------------------------------------------------------------
 
@@ -14652,6 +16158,86 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(from_pyhf, m)?)?;
     m.add_function(wrap_pyfunction!(workspace_audit, m)?)?;
     m.add_function(wrap_pyfunction!(workspace_combine, m)?)?;
+    m.add_function(wrap_pyfunction!(measurement_combine_build_spec_json, m)?)?;
+    m.add_function(wrap_pyfunction!(measurement_combine_build_spec_from_manifest_json, m)?)?;
+    m.add_function(wrap_pyfunction!(measurement_combine_json, m)?)?;
+    m.add_function(wrap_pyfunction!(measurement_combine_calibrate_json, m)?)?;
+    m.add_function(wrap_pyfunction!(measurement_combine_calibrate_study_json, m)?)?;
+    m.add_function(wrap_pyfunction!(measurement_combine_scenario_study_json, m)?)?;
+    m.add_function(wrap_pyfunction!(measurement_combine_calibration_campaign_json, m)?)?;
+    m.add_function(wrap_pyfunction!(measurement_combine_solver_parity_scenario_study_json, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_solver_parity_calibration_campaign_json,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_solver_parity_scenario_study_reports_json,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_solver_parity_calibration_campaign_reports_json,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_solver_parity_scenario_study_markdown,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_solver_parity_calibration_campaign_markdown,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_solver_parity_scenario_study_summary_json,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_solver_parity_scenario_study_summary_markdown,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_solver_parity_calibration_campaign_summary_json,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_solver_parity_calibration_campaign_summary_markdown,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(measurement_combine_calibration_campaign_summary_json, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_calibration_campaign_summary_markdown,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(measurement_combine_calibration_campaign_brief_json, m)?)?;
+    m.add_function(wrap_pyfunction!(measurement_combine_calibration_campaign_brief_markdown, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_calibration_campaign_family_report_json,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_calibration_campaign_family_report_markdown,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_calibration_campaign_family_matrix_json,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_calibration_campaign_family_matrix_markdown,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(measurement_combine_calibration_campaign_portfolio_json, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_calibration_campaign_portfolio_markdown,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_calibration_campaign_portfolio_stability_json,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        measurement_combine_calibration_campaign_portfolio_stability_markdown,
+        m
+    )?)?;
     m.add_function(wrap_pyfunction!(workspace_prune, m)?)?;
     m.add_function(wrap_pyfunction!(workspace_rename, m)?)?;
     m.add_function(wrap_pyfunction!(workspace_sorted, m)?)?;
@@ -14663,6 +16249,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(from_histfactory, m)?)?;
     m.add_function(wrap_pyfunction!(histfactory_bin_edges_by_channel, m)?)?;
     m.add_function(wrap_pyfunction!(read_root_histogram, m)?)?;
+    m.add_function(wrap_pyfunction!(read_root_histogram_bytes, m)?)?;
     m.add_function(wrap_pyfunction!(fit, m)?)?;
     m.add_function(wrap_pyfunction!(map_fit, m)?)?;
     m.add_function(wrap_pyfunction!(fit_batch, m)?)?;
@@ -14689,12 +16276,15 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(upper_limit, m)?)?;
     m.add_function(wrap_pyfunction!(upper_limits, m)?)?;
     m.add_function(wrap_pyfunction!(sample, m)?)?;
+    m.add_function(wrap_pyfunction!(sample_walnuts_py, m)?)?;
     m.add_function(wrap_pyfunction!(sample_mams_py, m)?)?;
     #[cfg(any(feature = "cuda", feature = "metal"))]
     m.add_function(wrap_pyfunction!(sample_laps_py, m)?)?;
     #[cfg(feature = "cuda")]
     m.add_class::<PyRawCudaModel>()?;
     m.add_function(wrap_pyfunction!(cls_curve, m)?)?;
+    m.add_function(wrap_pyfunction!(ads_hill, m)?)?;
+    m.add_function(wrap_pyfunction!(ads_adstock_geometric, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_filter, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_smooth, m)?)?;
     m.add_function(wrap_pyfunction!(kalman_em, m)?)?;
@@ -14767,6 +16357,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyUnbinnedModel>()?;
     m.add_class::<PyHybridModel>()?;
     m.add_class::<PyPosterior>()?;
+    m.add_class::<PyBetaBinomialModel>()?;
+    m.add_class::<PyDelayCorrectionModel>()?;
     m.add_class::<PyKalmanModel>()?;
     m.add_class::<PyGaussianMeanModel>()?;
     m.add_class::<PyFunnelModel>()?;
@@ -14828,11 +16420,25 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_wrapped(wrap_pyfunction!(fault_tree_mc))?;
     m.add_wrapped(wrap_pyfunction!(fault_tree_mc_ce_is))?;
     m.add_function(wrap_pyfunction!(profile_ci_py, m)?)?;
+    m.add_function(wrap_pyfunction!(beta_binomial_design_analyze_json, m)?)?;
+    m.add_function(wrap_pyfunction!(beta_binomial_design_operating_characteristics_json, m)?)?;
+    m.add_function(wrap_pyfunction!(beta_binomial_design_posterior_predictive_json, m)?)?;
+    m.add_function(wrap_pyfunction!(beta_binomial_design_prior_sensitivity_json, m)?)?;
+    m.add_function(wrap_pyfunction!(beta_binomial_design_report_json, m)?)?;
+    m.add_function(wrap_pyfunction!(beta_binomial_design_report_markdown, m)?)?;
+    m.add_function(wrap_pyfunction!(normal_normal_design_analyze_json, m)?)?;
+    m.add_function(wrap_pyfunction!(normal_normal_design_operating_characteristics_json, m)?)?;
+    m.add_function(wrap_pyfunction!(normal_normal_design_posterior_predictive_json, m)?)?;
+    m.add_function(wrap_pyfunction!(normal_normal_design_prior_sensitivity_json, m)?)?;
+    m.add_function(wrap_pyfunction!(normal_normal_design_report_json, m)?)?;
+    m.add_function(wrap_pyfunction!(normal_normal_design_report_markdown, m)?)?;
     m.add_function(wrap_pyfunction!(average_be, m)?)?;
     m.add_function(wrap_pyfunction!(be_power_py, m)?)?;
     m.add_function(wrap_pyfunction!(be_sample_size_py, m)?)?;
     m.add_function(wrap_pyfunction!(simulate_trial_py, m)?)?;
     m.add_function(wrap_pyfunction!(map_estimate_py, m)?)?;
+    m.add_function(wrap_pyfunction!(ads_cuped_adjust_py, m)?)?;
+    m.add_function(wrap_pyfunction!(ads_cure_adjust_py, m)?)?;
 
     // Native Rust visualization renderer
     #[cfg(feature = "native-render")]

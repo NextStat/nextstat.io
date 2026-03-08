@@ -1,9 +1,9 @@
-//! cuBLAS-based batched GLM logistic evaluator on CUDA.
+//! cuBLAS-based batched GLM evaluator on CUDA.
 //!
-//! This module provides a focused primitive for large-`n` logistic GLM:
+//! This module provides a focused primitive for large-`n` GLM families:
 //! - `eta = X @ beta` for many chains in parallel (strided batched GEMM)
-//! - `grad = X^T @ (sigmoid(eta) - y)` (strided batched GEMM)
-//! - `nll = sum(log(1+exp(eta)) - y*eta) + 0.5*||beta||^2`
+//! - `grad = X^T @ diff(eta, y)` (strided batched GEMM)
+//! - `nll = sum(data_nll(eta, y)) + 0.5*||beta||^2`
 //!
 //! It is intentionally kept separate from MAMS transition kernels so we can
 //! benchmark and validate a cuBLAS path before deeper integrator refactors.
@@ -20,6 +20,37 @@ use cudarc::nvrtc::Ptx;
 use std::sync::Arc;
 
 const AUX_KERNEL_SRC: &str = include_str!("../kernels/glm_cublas_aux.cu");
+
+/// GLM family supported by [`CudaGlmCublasEvaluator`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CudaGlmFamily {
+    /// Gaussian linear regression with fixed sigma=1.
+    Linear,
+    /// Bernoulli-logit GLM.
+    Logistic,
+    /// Poisson GLM with log link and no offset term inside the evaluator.
+    Poisson,
+    /// Negative binomial GLM with log link and trailing `log_alpha`.
+    NegativeBinomial,
+}
+
+impl CudaGlmFamily {
+    fn kernel_name(self) -> &'static str {
+        match self {
+            Self::Linear => "glm_linear_diff_nll",
+            Self::Logistic => "glm_logistic_diff_nll",
+            Self::Poisson => "glm_poisson_diff_nll",
+            Self::NegativeBinomial => "glm_negbin_diff_nll",
+        }
+    }
+
+    fn extra_param_dim(self) -> usize {
+        match self {
+            Self::Linear | Self::Logistic | Self::Poisson => 0,
+            Self::NegativeBinomial => 1,
+        }
+    }
+}
 
 fn cuda_err(msg: impl std::fmt::Display) -> ns_core::Error {
     ns_core::Error::Computation(format!("CUDA GLM cuBLAS: {msg}"))
@@ -57,18 +88,18 @@ fn detect_gpu_arch_for_device(device_id: usize) -> ns_core::Result<String> {
 fn compile_aux_ptx_for_arch(arch: &str) -> ns_core::Result<String> {
     use cudarc::nvrtc::{CompileOptions, compile_ptx_with_opts};
 
-    if let Ok(override_ptx) = std::env::var("NS_GLM_CUBLAS_AUX_PTX_OVERRIDE")
-        && !override_ptx.trim().is_empty()
-    {
-        let src = std::fs::read_to_string(&override_ptx).map_err(|e| {
-            cuda_err(format!("read NS_GLM_CUBLAS_AUX_PTX_OVERRIDE={override_ptx}: {e}"))
-        })?;
-        if src.trim().is_empty() {
-            return Err(cuda_err(format!(
-                "NS_GLM_CUBLAS_AUX_PTX_OVERRIDE is empty: {override_ptx}"
-            )));
+    if let Ok(override_ptx) = std::env::var("NS_GLM_CUBLAS_AUX_PTX_OVERRIDE") {
+        if !override_ptx.trim().is_empty() {
+            let src = std::fs::read_to_string(&override_ptx).map_err(|e| {
+                cuda_err(format!("read NS_GLM_CUBLAS_AUX_PTX_OVERRIDE={override_ptx}: {e}"))
+            })?;
+            if src.trim().is_empty() {
+                return Err(cuda_err(format!(
+                    "NS_GLM_CUBLAS_AUX_PTX_OVERRIDE is empty: {override_ptx}"
+                )));
+            }
+            return Ok(src);
         }
-        return Ok(src);
     }
 
     let inferred_arch = if let Some(cc) = arch.strip_prefix("sm_") {
@@ -113,7 +144,7 @@ fn compile_aux_ptx_for_arch(arch: &str) -> ns_core::Result<String> {
     Err(cuda_err(format!("NVRTC compile glm_cublas_aux failed:\n{}", errs.join("\n"))))
 }
 
-/// Batched GLM logistic evaluator backed by cuBLAS.
+/// Batched GLM evaluator backed by cuBLAS.
 pub struct CudaGlmCublasEvaluator {
     #[allow(dead_code)]
     ctx: Arc<CudaContext>,
@@ -123,35 +154,87 @@ pub struct CudaGlmCublasEvaluator {
     k_add_prior: CudaFunction,
     d_x_col: CudaSlice<f64>,
     d_y: CudaSlice<f64>,
-    d_beta: CudaSlice<f64>,
+    d_offset: CudaSlice<f64>,
+    d_params: CudaSlice<f64>,
     d_eta: CudaSlice<f64>,
     d_diff: CudaSlice<f64>,
     d_grad: CudaSlice<f64>,
     d_nll: CudaSlice<f64>,
     n: usize,
-    p: usize,
+    beta_dim: usize,
+    param_dim: usize,
     n_chains: usize,
     zeros_grad: Vec<f64>,
     zeros_nll: Vec<f64>,
+    family: CudaGlmFamily,
 }
 
 impl CudaGlmCublasEvaluator {
+    /// Create evaluator for a specific GLM family on a specific GPU device.
+    pub fn new_on_device_with_family(
+        x_col: &[f64], // column-major [p * n]
+        y: &[f64],     // [n]
+        n: usize,
+        beta_dim: usize,
+        n_chains: usize,
+        family: CudaGlmFamily,
+        device_id: usize,
+    ) -> ns_core::Result<Self> {
+        Self::new_on_device_impl(x_col, y, None, n, beta_dim, n_chains, family, device_id)
+    }
+
+    /// Create evaluator for a specific GLM family with an optional observation offset.
+    pub fn new_on_device_with_family_and_offset(
+        x_col: &[f64],          // column-major [p * n]
+        y: &[f64],              // [n]
+        offset: Option<&[f64]>, // [n]
+        n: usize,
+        beta_dim: usize,
+        n_chains: usize,
+        family: CudaGlmFamily,
+        device_id: usize,
+    ) -> ns_core::Result<Self> {
+        Self::new_on_device_impl(x_col, y, offset, n, beta_dim, n_chains, family, device_id)
+    }
+
     /// Create evaluator on a specific GPU device.
     pub fn new_on_device(
         x_col: &[f64], // column-major [p * n]
         y: &[f64],     // [n]
         n: usize,
-        p: usize,
+        beta_dim: usize,
         n_chains: usize,
         device_id: usize,
     ) -> ns_core::Result<Self> {
-        if n == 0 || p == 0 || n_chains == 0 {
-            return Err(ns_core::Error::Validation("n, p and n_chains must be > 0".into()));
+        Self::new_on_device_impl(
+            x_col,
+            y,
+            None,
+            n,
+            beta_dim,
+            n_chains,
+            CudaGlmFamily::Logistic,
+            device_id,
+        )
+    }
+
+    fn new_on_device_impl(
+        x_col: &[f64], // column-major [p * n]
+        y: &[f64],     // [n]
+        offset: Option<&[f64]>,
+        n: usize,
+        beta_dim: usize,
+        n_chains: usize,
+        family: CudaGlmFamily,
+        device_id: usize,
+    ) -> ns_core::Result<Self> {
+        if n == 0 || beta_dim == 0 || n_chains == 0 {
+            return Err(ns_core::Error::Validation("n, beta_dim and n_chains must be > 0".into()));
         }
-        if x_col.len() != n * p {
+        if x_col.len() != n * beta_dim {
             return Err(ns_core::Error::Validation(format!(
                 "x_col length mismatch: expected {}, got {}",
-                n * p,
+                n * beta_dim,
                 x_col.len()
             )));
         }
@@ -161,6 +244,20 @@ impl CudaGlmCublasEvaluator {
                 n,
                 y.len()
             )));
+        }
+        if let Some(off) = offset {
+            if off.len() != n {
+                return Err(ns_core::Error::Validation(format!(
+                    "offset length mismatch: expected {}, got {}",
+                    n,
+                    off.len()
+                )));
+            }
+            if off.iter().any(|v| !v.is_finite()) {
+                return Err(ns_core::Error::Validation(
+                    "offset must contain only finite values".into(),
+                ));
+            }
         }
 
         let ctx = CudaContext::new(device_id)
@@ -174,18 +271,21 @@ impl CudaGlmCublasEvaluator {
             .load_module(Ptx::from_src(ptx_src))
             .map_err(|e| cuda_err(format!("load module: {e}")))?;
         let k_diff_nll = module
-            .load_function("glm_logistic_diff_nll")
-            .map_err(|e| cuda_err(format!("load glm_logistic_diff_nll: {e}")))?;
+            .load_function(family.kernel_name())
+            .map_err(|e| cuda_err(format!("load {}: {e}", family.kernel_name())))?;
         let k_add_prior = module
             .load_function("glm_add_prior")
             .map_err(|e| cuda_err(format!("load glm_add_prior: {e}")))?;
 
         let d_x_col = stream.clone_htod(x_col).map_err(cuda_err)?;
         let d_y = stream.clone_htod(y).map_err(cuda_err)?;
-        let d_beta = stream.alloc_zeros::<f64>(n_chains * p).map_err(cuda_err)?;
+        let host_offset = offset.map_or_else(|| vec![0.0; n], |off| off.to_vec());
+        let d_offset = stream.clone_htod(&host_offset).map_err(cuda_err)?;
+        let param_dim = beta_dim + family.extra_param_dim();
+        let d_params = stream.alloc_zeros::<f64>(n_chains * param_dim).map_err(cuda_err)?;
         let d_eta = stream.alloc_zeros::<f64>(n_chains * n).map_err(cuda_err)?;
         let d_diff = stream.alloc_zeros::<f64>(n_chains * n).map_err(cuda_err)?;
-        let d_grad = stream.alloc_zeros::<f64>(n_chains * p).map_err(cuda_err)?;
+        let d_grad = stream.alloc_zeros::<f64>(n_chains * param_dim).map_err(cuda_err)?;
         let d_nll = stream.alloc_zeros::<f64>(n_chains).map_err(cuda_err)?;
 
         Ok(Self {
@@ -196,17 +296,45 @@ impl CudaGlmCublasEvaluator {
             k_add_prior,
             d_x_col,
             d_y,
-            d_beta,
+            d_offset,
+            d_params,
             d_eta,
             d_diff,
             d_grad,
             d_nll,
             n,
-            p,
+            beta_dim,
+            param_dim,
             n_chains,
-            zeros_grad: vec![0.0; n_chains * p],
+            zeros_grad: vec![0.0; n_chains * param_dim],
             zeros_nll: vec![0.0; n_chains],
+            family,
         })
+    }
+
+    /// Create evaluator for a specific GLM family on GPU 0.
+    pub fn new_with_family(
+        x_col: &[f64],
+        y: &[f64],
+        n: usize,
+        beta_dim: usize,
+        n_chains: usize,
+        family: CudaGlmFamily,
+    ) -> ns_core::Result<Self> {
+        Self::new_on_device_impl(x_col, y, None, n, beta_dim, n_chains, family, 0)
+    }
+
+    /// Create evaluator for a specific GLM family with an optional observation offset on GPU 0.
+    pub fn new_with_family_and_offset(
+        x_col: &[f64],
+        y: &[f64],
+        offset: Option<&[f64]>,
+        n: usize,
+        beta_dim: usize,
+        n_chains: usize,
+        family: CudaGlmFamily,
+    ) -> ns_core::Result<Self> {
+        Self::new_on_device_impl(x_col, y, offset, n, beta_dim, n_chains, family, 0)
     }
 
     /// Create evaluator on GPU 0.
@@ -214,29 +342,34 @@ impl CudaGlmCublasEvaluator {
         x_col: &[f64],
         y: &[f64],
         n: usize,
-        p: usize,
+        beta_dim: usize,
         n_chains: usize,
     ) -> ns_core::Result<Self> {
-        Self::new_on_device(x_col, y, n, p, n_chains, 0)
+        Self::new_on_device_impl(x_col, y, None, n, beta_dim, n_chains, CudaGlmFamily::Logistic, 0)
     }
 
-    /// Evaluate batched GLM logistic grad and NLL for `beta` (shape `[n_chains * p]`).
+    /// Evaluate batched GLM grad and NLL for packed per-chain parameters.
     ///
-    /// Returns `(grad_flat, nll)` with shapes `[n_chains * p]` and `[n_chains]`.
-    pub fn evaluate_host(&mut self, beta: &[f64]) -> ns_core::Result<(Vec<f64>, Vec<f64>)> {
-        if beta.len() != self.n_chains * self.p {
+    /// Logistic and Poisson pack only the coefficient vector. Negative binomial
+    /// packs `[beta..., log_alpha]` per chain.
+    ///
+    /// Returns `(grad_flat, nll)` with shapes `[n_chains * param_dim]` and
+    /// `[n_chains]`.
+    pub fn evaluate_host(&mut self, params: &[f64]) -> ns_core::Result<(Vec<f64>, Vec<f64>)> {
+        if params.len() != self.n_chains * self.param_dim {
             return Err(ns_core::Error::Validation(format!(
-                "beta length mismatch: expected {}, got {}",
-                self.n_chains * self.p,
-                beta.len()
+                "parameter length mismatch: expected {}, got {}",
+                self.n_chains * self.param_dim,
+                params.len()
             )));
         }
 
-        self.stream.memcpy_htod(beta, &mut self.d_beta).map_err(cuda_err)?;
+        self.stream.memcpy_htod(params, &mut self.d_params).map_err(cuda_err)?;
         self.stream.memcpy_htod(&self.zeros_grad, &mut self.d_grad).map_err(cuda_err)?;
         self.stream.memcpy_htod(&self.zeros_nll, &mut self.d_nll).map_err(cuda_err)?;
 
-        // eta = X @ beta for each chain (X shared across batch).
+        // eta = X @ beta for each chain (X shared across batch). Family-specific
+        // trailing parameters are skipped by the batch stride.
         unsafe {
             self.blas
                 .gemm_strided_batched(
@@ -246,44 +379,53 @@ impl CudaGlmCublasEvaluator {
                             transb: cublas_sys::cublasOperation_t::CUBLAS_OP_N,
                             m: self.n as c_int,
                             n: 1,
-                            k: self.p as c_int,
+                            k: self.beta_dim as c_int,
                             alpha: 1.0f64,
                             lda: self.n as c_int,
-                            ldb: self.p as c_int,
+                            ldb: self.beta_dim as c_int,
                             beta: 0.0f64,
                             ldc: self.n as c_int,
                         },
                         batch_size: self.n_chains as c_int,
                         stride_a: 0,
-                        stride_b: self.p as i64,
+                        stride_b: self.param_dim as i64,
                         stride_c: self.n as i64,
                     },
                     &self.d_x_col,
-                    &self.d_beta,
+                    &self.d_params,
                     &mut self.d_eta,
                 )
                 .map_err(|e| cublas_err("gemm_strided_batched(X @ beta)", e))?;
         }
 
-        // diff = sigmoid(eta)-y, nll_data = sum(log1pexp - y*eta)
+        // diff = family-specific residual, nll_data = family-specific data NLL,
+        // and any trailing-parameter likelihood gradients are accumulated
+        // directly into d_grad.
         let total = self.n * self.n_chains;
         let block = 256u32;
         let grid = (total as u32).div_ceil(block).min(65535);
         let cfg =
             LaunchConfig { grid_dim: (grid, 1, 1), block_dim: (block, 1, 1), shared_mem_bytes: 0 };
         let n_arg = self.n as c_int;
+        let beta_dim_arg = self.beta_dim as c_int;
+        let param_dim_arg = self.param_dim as c_int;
         let n_chains_arg = self.n_chains as c_int;
         let mut builder = self.stream.launch_builder(&self.k_diff_nll);
         builder.arg(&self.d_eta);
         builder.arg(&self.d_y);
+        builder.arg(&self.d_offset);
+        builder.arg(&self.d_params);
         builder.arg(&mut self.d_diff);
+        builder.arg(&mut self.d_grad);
         builder.arg(&mut self.d_nll);
         builder.arg(&n_arg);
+        builder.arg(&beta_dim_arg);
+        builder.arg(&param_dim_arg);
         builder.arg(&n_chains_arg);
         unsafe {
             builder
                 .launch(cfg)
-                .map_err(|e| cuda_err(format!("launch glm_logistic_diff_nll: {e}")))?;
+                .map_err(|e| cuda_err(format!("launch {}: {e}", self.family.kernel_name())))?;
         }
 
         // grad_data = X^T @ diff for each chain.
@@ -294,19 +436,19 @@ impl CudaGlmCublasEvaluator {
                         gemm: GemmConfig {
                             transa: cublas_sys::cublasOperation_t::CUBLAS_OP_T,
                             transb: cublas_sys::cublasOperation_t::CUBLAS_OP_N,
-                            m: self.p as c_int,
+                            m: self.beta_dim as c_int,
                             n: 1,
                             k: self.n as c_int,
                             alpha: 1.0f64,
                             lda: self.n as c_int,
                             ldb: self.n as c_int,
                             beta: 0.0f64,
-                            ldc: self.p as c_int,
+                            ldc: self.beta_dim as c_int,
                         },
                         batch_size: self.n_chains as c_int,
                         stride_a: 0,
                         stride_b: self.n as i64,
-                        stride_c: self.p as i64,
+                        stride_c: self.param_dim as i64,
                     },
                     &self.d_x_col,
                     &self.d_diff,
@@ -315,20 +457,19 @@ impl CudaGlmCublasEvaluator {
                 .map_err(|e| cublas_err("gemm_strided_batched(X^T @ diff)", e))?;
         }
 
-        // Add Gaussian prior: grad += beta; nll += 0.5 * ||beta||^2
-        let total_beta = self.n_chains * self.p;
-        let grid_prior = (total_beta as u32).div_ceil(block).min(65535);
+        // Add Gaussian prior: grad += params; nll += 0.5 * ||params||^2
+        let total_params = self.n_chains * self.param_dim;
+        let grid_prior = (total_params as u32).div_ceil(block).min(65535);
         let cfg_prior = LaunchConfig {
             grid_dim: (grid_prior, 1, 1),
             block_dim: (block, 1, 1),
             shared_mem_bytes: 0,
         };
-        let p_arg = self.p as c_int;
         let mut builder = self.stream.launch_builder(&self.k_add_prior);
-        builder.arg(&self.d_beta);
+        builder.arg(&self.d_params);
         builder.arg(&mut self.d_grad);
         builder.arg(&mut self.d_nll);
-        builder.arg(&p_arg);
+        builder.arg(&param_dim_arg);
         builder.arg(&n_chains_arg);
         unsafe {
             builder
@@ -338,7 +479,7 @@ impl CudaGlmCublasEvaluator {
 
         self.stream.synchronize().map_err(cuda_err)?;
 
-        let mut grad = vec![0.0f64; self.n_chains * self.p];
+        let mut grad = vec![0.0f64; self.n_chains * self.param_dim];
         let mut nll = vec![0.0f64; self.n_chains];
         self.stream.memcpy_dtoh(&self.d_grad, &mut grad).map_err(cuda_err)?;
         self.stream.memcpy_dtoh(&self.d_nll, &mut nll).map_err(cuda_err)?;

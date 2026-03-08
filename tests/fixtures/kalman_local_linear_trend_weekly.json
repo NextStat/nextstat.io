@@ -1,0 +1,14 @@
+{
+  "local_linear_trend_weekly": {
+    "q_level": 0.1,
+    "q_slope": 0.05,
+    "q_weekly": 0.2,
+    "r": 0.3,
+    "level0": 0.0,
+    "slope0": 0.0,
+    "p0_level": 1.0,
+    "p0_slope": 1.0,
+    "p0_weekly": 1.0
+  },
+  "ys": [[0.9], [1.2], [0.8], [1.1], [1.0], [0.95], [1.05]]
+}

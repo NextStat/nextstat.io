@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/apex2/simplified_likelihood_public_fixture_catalog_v0.schema.json",
+  "title": "Simplified Likelihood Public Fixture Catalog v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "stability", "fixtures"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat_simplified_likelihood_public_fixture_catalog_v0"
+    },
+    "stability": {
+      "type": "string",
+      "const": "apex2"
+    },
+    "fixtures": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/fixture"
+      }
+    }
+  },
+  "$defs": {
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fixture_id",
+        "title",
+        "fixture_role",
+        "experiment",
+        "analysis_id",
+        "source_format",
+        "uncertainty_model_kind",
+        "workspace_json_path",
+        "reference",
+        "provenance_kind",
+        "stable_commands",
+        "research_grade_commands",
+        "ranking_semantics"
+      ],
+      "properties": {
+        "fixture_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fixture_role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "experiment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analysis_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_format": {
+          "type": "string",
+          "enum": ["basis", "covariance", "derived_from_workspace"]
+        },
+        "uncertainty_model_kind": {
+          "type": "string",
+          "enum": ["basis", "covariance"]
+        },
+        "workspace_json_path": {
+          "type": "string",
+          "pattern": ".*\\.json$"
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provenance_kind": {
+          "type": "string",
+          "enum": ["public_style_example", "derived_public_style_example"]
+        },
+        "stable_commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": ["audit", "fit", "hypotest", "upper-limit", "scan"]
+          }
+        },
+        "research_grade_commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": ["significance", "hypotest-toys", "viz-ranking"]
+          }
+        },
+        "ranking_semantics": {
+          "type": "string",
+          "enum": ["reduced_basis_only"]
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

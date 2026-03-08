@@ -1,5 +1,14 @@
 # Benchmarks
 
+For the canonical GitHub-release maintainer path, see: [Release Runbook](/docs/releases/release-runbook).
+
+For the policy that defines what benchmark evidence belongs in git vs CI artifacts vs release assets, see: [Benchmark Artifact Policy](/docs/releases/benchmark-artifact-policy).
+
+The canonical machine-readable prerelease outputs are:
+- `tmp/release_surface_matrix_report.json`
+- `tmp/release_manifest.json`
+- `tmp/release_candidate_bundle/`
+
 For the **public benchmarks** program (trust/reproducibility spec, artifacts, and suite structure), see: [Public Benchmarks Specification](/docs/public-benchmarks).
 
 For the live registry of published artifacts on nextstat.io, see: [Benchmark Results](/docs/benchmark-results) and [Snapshot Registry](/docs/snapshot-registry).
@@ -9,6 +18,117 @@ For a step-by-step “first snapshot” runbook, see: [First Public Benchmark Sn
 For publication-grade unbinned GPU/CPU matrix execution, see: [Unbinned GPU Publication Runbook (PF3.1)](/docs/benchmarks/unbinned-publication-runbook).
 
 For RNTuple native decode comparison on `epyc-node` (`ns-root` vs ROOT, 2026-02-16), see: [RNTuple Decode Benchmark (epyc-node, 2026-02-16)](/docs/benchmarks/rntuple-epyc-node-2026-02-16). For local reproducible reruns use `make rntuple-root-vs-nsroot`.
+
+For the GVM measurement-combination published snapshot (Apple M5 + AMD EPYC, 2026-03-07, including Rayon thread-scaling notes), see: [GVM Benchmark Snapshot](/docs/benchmarks/gvm-measurement-combine-snapshot-2026-03-07).
+
+For the `NumericalPaper` multi-start robustness snapshot (mixed literature + synthetic tiers through `128x96`, 2026-03-07), see: [GVM NumericalPaper Robustness Snapshot](/docs/benchmarks/gvm-numerical-paper-robustness-snapshot-2026-03-07).
+
+For the release-hardening memo that defines the current stable-first subset, evidence-backed operating envelope, and remaining blockers before further stable promotion, see: [GVM Stable-Surface Readiness Memo](/docs/benchmarks/gvm-stable-surface-readiness-2026-03-07).
+
+For the normative release-hardening policy and the explicit first-wave stable promotion decision, see:
+- [GVM Stable-Surface Support Policy](/docs/benchmarks/gvm-stable-surface-support-policy-2026-03-07)
+- [GVM Stable-First Promotion Decision](/docs/benchmarks/gvm-stable-first-decision-2026-03-07)
+
+For the simplified-likelihood stable-surface acceptance criteria, release gate,
+promotion runbook, and the current `nextstat-bench` benchmark evidence, see:
+- [Simplified Likelihood Stable-Surface Acceptance](/docs/benchmarks/simplified-likelihood-stable-surface-acceptance-2026-03-08)
+- [Simplified Likelihood Stable-Surface Support Matrix](/docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08)
+- [Simplified Likelihood Stable-Surface Release Notes](/docs/benchmarks/simplified-likelihood-release-notes-2026-03-08)
+- [Simplified Likelihood Release PR Checklist](/docs/benchmarks/simplified-likelihood-release-pr-checklist-2026-03-08)
+- [Simplified Likelihood Promotion Runbook](/docs/benchmarks/simplified-likelihood-promotion-runbook-2026-03-08)
+- [Simplified Likelihood Benchmark Snapshot: 2026-03-08](/docs/benchmarks/simplified-likelihood-benchmark-snapshot-2026-03-08)
+- [Simplified Likelihood Exporter Acceptance](/docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09)
+- [Simplified Likelihood Exporter Runtime Gate](/docs/benchmarks/simplified-likelihood-exporter-runtime-gate)
+- [Simplified Likelihood Exporter Promotion Runbook](/docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09)
+- [Simplified Likelihood Exporter Stable Evidence Policy](/docs/benchmarks/simplified-likelihood-exporter-stable-evidence-policy-2026-03-09)
+- [Simplified Likelihood Exporter Stable Evidence Freshness](/docs/benchmarks/simplified-likelihood-exporter-stable-evidence-freshness-2026-03-09)
+- [Simplified Likelihood Exporter Public Validation Surface](/docs/benchmarks/simplified-likelihood-exporter-public-validation-surface-2026-03-09)
+- [Simplified Likelihood Exporter Stable-Review Checklist](/docs/benchmarks/simplified-likelihood-exporter-stable-review-checklist-2026-03-09)
+- [Simplified Likelihood Exporter Stable Source-Semantics Boundary](/docs/benchmarks/simplified-likelihood-exporter-stable-source-semantics-boundary-2026-03-09)
+- [Simplified Likelihood Exporter Stable-Candidate Blocker Matrix](/docs/benchmarks/simplified-likelihood-exporter-stable-candidate-blocker-matrix-2026-03-09)
+- [Simplified Likelihood Exporter Stable-Candidate Review Packet](/docs/benchmarks/simplified-likelihood-exporter-stable-candidate-review-packet-2026-03-09)
+- Exporter public case catalog example:
+  `docs/specs/apex2_simplified_likelihood_export_public_case_catalog_v0.example.json`
+- Exporter public validation report example:
+  `docs/specs/benchmarks/simplified_likelihood_export_public_validation_report_v0.example.json`
+- Exporter stable evidence policy example:
+  `docs/specs/benchmarks/simplified_likelihood_exporter_stable_evidence_policy_v0.example.json`
+- Validator-facing promotion evidence bundle example:
+  `docs/specs/benchmarks/simplified_likelihood_promotion_evidence_bundle_v0.example.json`
+- Promotion evidence verification report example:
+  `docs/specs/benchmarks/simplified_likelihood_promotion_evidence_check_v0.example.json`
+- Promotion bundle persistence report example:
+  `docs/specs/benchmarks/simplified_likelihood_promotion_bundle_promotion_report_v0.example.json`
+- Exporter benchmark snapshot persistence report example:
+  `docs/specs/benchmarks/simplified_likelihood_export_benchmark_snapshot_report_v0.example.json`
+- Exporter promotion evidence bundle example:
+  `docs/specs/benchmarks/simplified_likelihood_exporter_promotion_evidence_bundle_v0.example.json`
+- Exporter promotion evidence verification report example:
+  `docs/specs/benchmarks/simplified_likelihood_exporter_promotion_evidence_check_v0.example.json`
+- Exporter promotion bundle persistence report example:
+  `docs/specs/benchmarks/simplified_likelihood_exporter_promotion_bundle_promotion_report_v0.example.json`
+- Exporter stable-review assessment example:
+  `docs/specs/benchmarks/simplified_likelihood_exporter_stable_review_assessment_v0.example.json`
+- Exporter stable source-semantics boundary example:
+  `docs/specs/benchmarks/simplified_likelihood_exporter_stable_source_semantics_boundary_v0.example.json`
+- Exporter stable-candidate blocker matrix example:
+  `docs/specs/benchmarks/simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0.example.json`
+- Exporter stable-candidate review packet example:
+  `docs/specs/benchmarks/simplified_likelihood_exporter_stable_candidate_review_packet_v0.example.json`
+
+For the ads + weekly time-series stable-surface acceptance criteria, support
+matrix, release note, promotion runbook, and current `nextstat-bench`
+benchmark evidence, see:
+- [Ads + Time Series Stable-Surface Acceptance](/docs/benchmarks/ads-timeseries-stable-surface-acceptance-2026-03-08)
+- [Ads + Time Series Stable-Surface Support Matrix](/docs/benchmarks/ads-timeseries-support-matrix-2026-03-08)
+- [Ads + Time Series Stable-Surface Release Notes](/docs/benchmarks/ads-timeseries-release-notes-2026-03-08)
+- [Ads + Time Series Stable-Surface Release PR Checklist](/docs/benchmarks/ads-timeseries-release-pr-checklist-2026-03-08)
+- [Ads + Time Series Runtime Gate](/docs/benchmarks/ads-timeseries-runtime-gate.md)
+- [Ads + Time Series Promotion Runbook](/docs/benchmarks/ads-timeseries-promotion-runbook-2026-03-08)
+- [Ads + Time Series Benchmark Snapshot: 2026-03-08](/docs/benchmarks/ads-timeseries-benchmark-snapshot-2026-03-08)
+
+For the realistic ads variance-reduction matrix that compares `naive`,
+`CUPED(primary covariate)`, and `CURE(all covariates)` across `n`, `p`,
+sparsity, and collinearity, see:
+- [Ads Variance-Reduction Matrix Runbook](/docs/benchmarks/ads-variance-reduction-runbook-2026-03-08)
+- [Ads Variance-Reduction Benchmark: 2026-03-08](/docs/benchmarks/ads-variance-reduction-benchmark-2026-03-08)
+- [Ads Variance-Reduction Stable-Surface Acceptance](/docs/benchmarks/ads-variance-reduction-stable-surface-acceptance-2026-03-09)
+- [Ads Variance-Reduction Runtime Gate](/docs/benchmarks/ads-variance-reduction-runtime-gate.md)
+
+For the HEPData import stable-surface acceptance criteria, runtime gate,
+promotion workflow, and frozen `nextstat-bench` evidence, see:
+- [HEPData Import Acceptance Criteria (Stable Surface v1)](/docs/specs/hep/hepdata_import_acceptance_v1)
+- [HEPData Import Runtime Gate](/docs/benchmarks/hepdata-import-runtime-gate)
+- [HEPData Import Benchmark Snapshot: 2026-03-08](/docs/benchmarks/hepdata-import-benchmark-snapshot-2026-03-08)
+- [HEPData Import Stable-Surface Support Matrix](/docs/benchmarks/hepdata-import-support-matrix-2026-03-08)
+- [HEPData Import Stable-Surface Release Notes](/docs/benchmarks/hepdata-import-release-notes-2026-03-08)
+- [HEPData Import Release PR Checklist](/docs/benchmarks/hepdata-import-release-pr-checklist-2026-03-08)
+- [HEPData Import Promotion Runbook](/docs/benchmarks/hepdata-import-promotion-runbook-2026-03-08)
+
+For the short operational matrix of what is `stable` vs `research-grade`, and the release note for the promoted subset, see:
+- [GVM Stable-First Support Matrix](/docs/benchmarks/gvm-stable-first-support-matrix-2026-03-07)
+- [GVM Stable-First Release Notes](/docs/benchmarks/gvm-stable-first-release-notes-2026-03-07)
+- [GVM Stable-First Release Candidate: v0.10.0](/docs/benchmarks/gvm-stable-first-release-candidate-v0.10.0-2026-03-08)
+- [GVM Stable-First Release PR Checklist](/docs/benchmarks/gvm-stable-first-release-pr-checklist-2026-03-07)
+- [GVM Stable-First Launch Checklist](/docs/benchmarks/gvm-stable-first-launch-checklist-2026-03-07)
+
+For the simplified-likelihood stable consume path and the promoted narrow
+exporter subset, see:
+- [Simplified Likelihood Stable-Surface Support Matrix](/docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08)
+- [Simplified Likelihood Stable-Surface Release Notes](/docs/benchmarks/simplified-likelihood-release-notes-2026-03-08)
+- [Simplified Likelihood Benchmark Snapshot: 2026-03-08](/docs/benchmarks/simplified-likelihood-benchmark-snapshot-2026-03-08)
+- [Simplified Likelihood Exporter Acceptance](/docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09)
+- [Simplified Likelihood Exporter Runtime Gate](/docs/benchmarks/simplified-likelihood-exporter-runtime-gate)
+- [Simplified Likelihood Exporter Promotion Runbook](/docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09)
+- [Simplified Likelihood Exporter Stable Evidence Policy](/docs/benchmarks/simplified-likelihood-exporter-stable-evidence-policy-2026-03-09)
+- [Simplified Likelihood Exporter Stable Evidence Freshness](/docs/benchmarks/simplified-likelihood-exporter-stable-evidence-freshness-2026-03-09)
+- [Simplified Likelihood Exporter Stable Source-Semantics Boundary](/docs/benchmarks/simplified-likelihood-exporter-stable-source-semantics-boundary-2026-03-09)
+- [Simplified Likelihood Exporter Stable-Candidate Review Packet](/docs/benchmarks/simplified-likelihood-exporter-stable-candidate-review-packet-2026-03-09)
+- [Simplified Likelihood Exporter Stable Promotion Decision](/docs/benchmarks/simplified-likelihood-exporter-stable-promotion-decision-2026-03-09)
+- [Simplified Likelihood Exporter Release PR Checklist](/docs/benchmarks/simplified-likelihood-exporter-release-pr-checklist-2026-03-09)
+- `docs/specs/benchmarks/simplified_likelihood_exporter_stable_evidence_policy_v0.example.json`
+- `docs/specs/benchmarks/simplified_likelihood_exporter_stable_evidence_freshness_report_v0.example.json`
+- `docs/specs/benchmarks/simplified_likelihood_exporter_stable_promotion_decision_v0.example.json`
 
 Suite runbooks: [HEP](/docs/benchmarks/suites/hep) · [Pharma](/docs/benchmarks/suites/pharma) · [Bayesian](/docs/benchmarks/suites/bayesian) · [ML](/docs/benchmarks/suites/ml) · [Time Series](/docs/benchmarks/suites/timeseries) · [Econometrics](/docs/benchmarks/suites/econometrics)
 
@@ -31,6 +151,7 @@ Available benchmarks:
 | `nuts_benchmark.rs` | NUTS sampler (warmup + sampling) |
 | `kalman_benchmark.rs` | Kalman filter/smoother/EM |
 | `hier_benchmark.rs` | Hierarchical model NLL/gradient |
+| `measurement_combine_benchmark.rs` | Stable-first GVM core plus research-grade advanced measurement-combination workflows: direct fits, toy calibration, campaigns, and solver-parity calibration on paper + synthetic large-scale combinations |
 | `flow_nll_f32_vs_f64.rs` | Flow NLL: f32 device-ptr vs f64 host upload (CUDA) |
 
 ### Local Runs
@@ -45,6 +166,28 @@ Run a specific bench:
 
 ```bash
 cargo bench -p ns-inference --bench mle_benchmark
+```
+
+Run the dedicated GVM measurement-combination bench:
+
+```bash
+cargo bench -p ns-inference --bench measurement_combine_benchmark
+```
+
+This bench now covers:
+- direct `combine_measurements_with_solver(...)`
+- `calibrate_measurements_toys_with_solver(...)`
+- `run_measurement_combination_calibration_campaign_with_solver(...)`
+- `compare_measurement_combination_calibration_campaign_solvers(...)`
+
+The calibration layer includes both paper-scale fixtures and synthetic large-scale cases:
+- `synthetic_gvm_32x24`
+- `synthetic_gvm_64x48`
+
+For fast local iteration on the synthetic large-scale cases:
+
+```bash
+cargo bench -p ns-inference --bench measurement_combine_benchmark -- --quick
 ```
 
 Criterion writes HTML reports to `target/criterion/**/report/index.html`.
@@ -125,6 +268,7 @@ Outputs:
 | `tests/benchmark_glm_fit_predict.py` | GLM fit/predict timing (linear/logistic/poisson/negbin) | `tmp/p6_glm_fit_predict.json` |
 | `tests/apex2_p6_glm_benchmark_report.py` | P6 GLM regression vs baseline (slowdown detection) | `tmp/apex2_p6_glm_bench_report.json` |
 | `tests/apex2_gpu_bench_report.py` | CPU vs CUDA perf (fit, profile scan, batch toys) + basic parity | `tmp/apex2_gpu_bench_report.json` |
+| `tests/apex2_simplified_likelihood_report.py` | full-vs-simplified fidelity, reduction, and reinterpretation speedup | `tmp/apex2_simplified_likelihood_report.json` |
 | `tests/apex2_sbc_report.py` | SBC posterior calibration (NUTS) | `tmp/apex2_sbc_report.json` |
 | `tests/apex2_master_report.py` | Aggregates all runners into one report | `tmp/apex2_master_report.json` |
 | `tests/compare_with_latest_baseline.py` | Compare current runs vs `tmp/baselines/latest_manifest.json` | `tmp/baseline_compare_report.json` |
@@ -285,7 +429,7 @@ cargo test -p ns-root --test read_tree
 
 ## GPU Benchmarks (CUDA)
 
-Measured on NVIDIA RTX 4000 SFF Ada (Ada Lovelace, 20GB GDDR6), CUDA 12.0, GEX44 server.
+Measured on NVIDIA RTX 4000 SFF Ada (Ada Lovelace, 20GB GDDR6), CUDA 12.0, dedicated GPU server.
 Release build (`--release`). CPU comparison on same machine (AMD EPYC, 8 cores).
 
 ### MLE Fit — CPU vs GPU

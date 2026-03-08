@@ -38,7 +38,11 @@
           "min_ess_bulk_per_sec": { "type": "array", "items": { "type": "number" } },
           "wall_time_s": { "type": "array", "items": { "type": "number" } },
           "min_ess_bulk": { "type": "array", "items": { "type": "number" } },
+          "min_ess_tail": { "type": "array", "items": { "type": "number" } },
           "max_r_hat": { "type": "array", "items": { "type": "number" } },
+          "divergence_rate": { "type": "array", "items": { "type": "number" } },
+          "max_treedepth_rate": { "type": "array", "items": { "type": "number" } },
+          "min_ebfmi": { "type": "array", "items": { "type": "number" } },
           "configs": { "type": "array", "items": { "type": "object" } }
         }
       }

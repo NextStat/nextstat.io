@@ -7,5 +7,8 @@
 # `CARGO_TARGET_DIR=/some/fast/disk cargo build`.
 target-dir = "../.nextstat-cargo-target"
 
-[target.aarch64-apple-darwin]
-rustflags = ["-C", "target-cpu=native"]
+# Keep release and CI builds on the generic Apple Silicon baseline.
+# Opt-in native tuning belongs in local benchmark sessions via:
+#   RUSTFLAGS='-C target-cpu=native' cargo ...
+# A hardcoded aarch64-apple-darwin native target here breaks portable/release
+# builds and trips crates such as `ring` that assert the baseline feature set.

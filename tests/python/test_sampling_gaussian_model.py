@@ -4,11 +4,20 @@ This validates that `nextstat.sample()` accepts models beyond HistFactoryModel.
 """
 
 import nextstat
+import pytest
 
 
-def test_sample_accepts_gaussian_mean_model():
+@pytest.mark.parametrize("method", ["nuts", "walnuts"])
+def test_sample_accepts_gaussian_mean_model(method: str):
     model = nextstat.GaussianMeanModel([1.0, 2.0, 3.0, 4.0], sigma=1.0)
-    result = nextstat.sample(model, n_chains=2, n_warmup=20, n_samples=20, seed=7)
+    result = nextstat.sample(
+        model,
+        method=method,
+        n_chains=2,
+        n_warmup=20,
+        n_samples=20,
+        seed=7,
+    )
 
     assert result["param_names"] == ["mu"]
     posterior = result["posterior"]["mu"]

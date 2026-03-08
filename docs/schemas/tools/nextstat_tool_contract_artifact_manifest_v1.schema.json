@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/tools/nextstat_tool_contract_artifact_manifest_v1.schema.json",
+  "title": "NextStat Tool Contract Artifact Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "reports",
+    "dashboard"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.tool_contract_artifact_manifest.v1"
+    },
+    "reports": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fast",
+        "live"
+      ],
+      "properties": {
+        "fast": {
+          "$ref": "#/$defs/report_contract"
+        },
+        "live": {
+          "$ref": "#/$defs/report_contract"
+        }
+      }
+    },
+    "dashboard": {
+      "$ref": "#/$defs/dashboard_contract"
+    }
+  },
+  "$defs": {
+    "report_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runner_report_path",
+        "artifact_name",
+        "download_dir",
+        "downloaded_report_path"
+      ],
+      "properties": {
+        "runner_report_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "download_dir": {
+          "type": "string",
+          "minLength": 1
+        },
+        "downloaded_report_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "dashboard_contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_name",
+        "json_path",
+        "markdown_path"
+      ],
+      "properties": {
+        "artifact_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "json_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "markdown_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

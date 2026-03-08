@@ -31,6 +31,23 @@ PYTHONPATH=bindings/ns-py/python ./.venv/bin/python scripts/e2e_discovery.py \
   --ranking-top-n 10
 ```
 
+Example (server tools over HTTP, auth-enabled):
+
+```bash
+export NEXTSTAT_SERVER_URL=http://127.0.0.1:3742
+export NEXTSTAT_SERVER_API_KEY=secret-key
+
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python scripts/e2e_discovery.py \
+  --workspace tests/fixtures/complex_workspace.json \
+  --out-dir tmp/e2e_discovery_server \
+  --transport server \
+  --eval-mode parity \
+  --threads 1 \
+  --mu 1.0 \
+  --scan-start 0 --scan-stop 1 --scan-points 21 \
+  --ranking-top-n 10
+```
+
 ## What "E2E" Means Here
 
 The E2E pattern is:

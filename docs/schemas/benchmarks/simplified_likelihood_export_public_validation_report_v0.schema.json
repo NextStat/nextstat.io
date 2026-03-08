@@ -1,0 +1,429 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/simplified_likelihood_export_public_validation_report_v0.schema.json",
+  "title": "Simplified Likelihood Export Public Validation Report v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "surface",
+    "status",
+    "generated_at_utc",
+    "benchmark_artifact_source_path",
+    "benchmark_artifact_schema_version",
+    "catalog_path",
+    "catalog_schema_version",
+    "boundary",
+    "summary",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat_simplified_likelihood_export_public_validation_report_v0"
+    },
+    "surface": {
+      "type": "string",
+      "const": "simplified_likelihood_export_public_validation"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["ok", "fail"]
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "minLength": 1
+    },
+    "benchmark_artifact_source_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "benchmark_artifact_schema_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "catalog_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "catalog_schema_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "boundary": {
+      "$ref": "#/$defs/boundary"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    }
+  },
+  "$defs": {
+    "boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "surface_support_class",
+        "does_not_expand_promoted_runtime_claim",
+        "promoted_runtime_constraint_covariance_source",
+        "public_cases_outside_promoted_runtime_boundary_allowed"
+      ],
+      "properties": {
+        "surface_support_class": {
+          "type": "string",
+          "const": "stable-evidence"
+        },
+        "does_not_expand_promoted_runtime_claim": {
+          "type": "boolean"
+        },
+        "promoted_runtime_constraint_covariance_source": {
+          "type": "string",
+          "const": "source_model_constraints"
+        },
+        "public_cases_outside_promoted_runtime_boundary_allowed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "max_abs_q_mu_diff": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "max_upper_limit_ratio_deviation": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "min_net_end_to_end_upper_limit_speedup": {
+          "type": "number",
+          "minimum": 0.0
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "benchmark_host",
+        "benchmark_status",
+        "export_matrix_status",
+        "catalog_case_count",
+        "public_case_count",
+        "public_case_names",
+        "missing_catalog_case_ids",
+        "unexpected_public_case_names",
+        "all_schema_valid",
+        "all_fidelity_gates_pass",
+        "all_performance_gates_pass",
+        "all_cases_within_promoted_stable_runtime_boundary",
+        "all_cases_gaussian_constrained_source_workspaces",
+        "max_abs_q_mu_diff",
+        "max_upper_limit_ratio_deviation",
+        "min_net_end_to_end_upper_limit_speedup",
+        "fidelity_thresholds",
+        "performance_thresholds",
+        "cases_within_promoted_stable_runtime_boundary",
+        "cases_outside_promoted_stable_runtime_boundary",
+        "observed_constraint_covariance_sources",
+        "observed_source_workspace_modifier_types"
+      ],
+      "properties": {
+        "benchmark_host": {
+          "type": "string",
+          "minLength": 1
+        },
+        "benchmark_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "export_matrix_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "catalog_case_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "public_case_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "public_case_names": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "missing_catalog_case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "unexpected_public_case_names": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "all_schema_valid": {
+          "type": "boolean"
+        },
+        "all_fidelity_gates_pass": {
+          "type": "boolean"
+        },
+        "all_performance_gates_pass": {
+          "type": "boolean"
+        },
+        "all_cases_within_promoted_stable_runtime_boundary": {
+          "type": "boolean"
+        },
+        "all_cases_gaussian_constrained_source_workspaces": {
+          "type": "boolean"
+        },
+        "max_abs_q_mu_diff": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "max_upper_limit_ratio_deviation": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "min_net_end_to_end_upper_limit_speedup": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "fidelity_thresholds": {
+          "$ref": "#/$defs/thresholds"
+        },
+        "performance_thresholds": {
+          "$ref": "#/$defs/thresholds"
+        },
+        "cases_within_promoted_stable_runtime_boundary": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cases_outside_promoted_stable_runtime_boundary": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observed_constraint_covariance_sources": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "observed_source_workspace_modifier_types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "passes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mu_hat", "q_mu", "upper_limit"],
+      "properties": {
+        "mu_hat": { "type": "boolean" },
+        "q_mu": { "type": "boolean" },
+        "upper_limit": { "type": "boolean" }
+      }
+    },
+    "case_validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_valid",
+        "input_schema_valid",
+        "audit_schema_valid",
+        "export_report_schema_valid",
+        "runtime_export_ok"
+      ],
+      "properties": {
+        "schema_valid": { "type": "boolean" },
+        "input_schema_valid": { "type": "boolean" },
+        "audit_schema_valid": { "type": "boolean" },
+        "export_report_schema_valid": { "type": "boolean" },
+        "runtime_export_ok": { "type": "boolean" }
+      }
+    },
+    "case_fidelity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "delta_mu_hat_over_sigma_full",
+        "max_abs_q_mu_diff",
+        "upper_limit_ratio",
+        "passes"
+      ],
+      "properties": {
+        "delta_mu_hat_over_sigma_full": {
+          "type": "number"
+        },
+        "max_abs_q_mu_diff": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "upper_limit_ratio": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "passes": {
+          "$ref": "#/$defs/passes"
+        }
+      }
+    },
+    "case_performance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["net_end_to_end_upper_limit_speedup", "passes"],
+      "properties": {
+        "net_end_to_end_upper_limit_speedup": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "passes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["net_end_to_end_upper_limit_speedup"],
+          "properties": {
+            "net_end_to_end_upper_limit_speedup": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "case_output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "full_nuisance_count",
+        "reduced_nuisance_count",
+        "reduction_ratio",
+        "uncertainty_model_kind"
+      ],
+      "properties": {
+        "full_nuisance_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reduced_nuisance_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reduction_ratio": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "uncertainty_model_kind": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_id",
+        "name",
+        "title",
+        "analysis_id",
+        "experiment",
+        "reference",
+        "source_workspace_path",
+        "source_workspace_modifier_types",
+        "gaussian_constrained_source_workspace",
+        "constraint_covariance_source",
+        "within_promoted_stable_runtime_boundary",
+        "validation",
+        "fidelity",
+        "performance",
+        "output"
+      ],
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "analysis_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "experiment": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reference": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_workspace_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_workspace_modifier_types": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "gaussian_constrained_source_workspace": {
+          "type": "boolean"
+        },
+        "constraint_covariance_source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "within_promoted_stable_runtime_boundary": {
+          "type": "boolean"
+        },
+        "outside_promoted_stable_runtime_boundary_reason": {
+          "type": ["string", "null"]
+        },
+        "validation": {
+          "$ref": "#/$defs/case_validation"
+        },
+        "fidelity": {
+          "$ref": "#/$defs/case_fidelity"
+        },
+        "performance": {
+          "$ref": "#/$defs/case_performance"
+        },
+        "output": {
+          "$ref": "#/$defs/case_output"
+        }
+      }
+    }
+  }
+}

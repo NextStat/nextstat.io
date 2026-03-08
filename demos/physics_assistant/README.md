@@ -25,6 +25,7 @@ PYTHONPATH=bindings/ns-py/python python demos/physics_assistant/run_demo.py \
 ```bash
 # from repo root:
 export NEXTSTAT_SERVER_URL=http://127.0.0.1:3742
+export NEXTSTAT_SERVER_API_KEY=secret-key   # if server auth is enabled
 PYTHONPATH=bindings/ns-py/python python demos/physics_assistant/run_demo.py \
   --transport server \
   --out-dir demos/physics_assistant/out/server
@@ -40,6 +41,8 @@ docker compose -f demos/physics_assistant/env/docker/docker-compose.yml up --bui
 Outputs appear under `demos/physics_assistant/env/docker/out/` on the host.
 The agent container (`agent.Dockerfile`) uses `uproot` + `httpx` for ROOT ingest,
 then calls `nextstat-server` (`run_demo_server_only.py`) for all statistical tools.
+If the server is started with auth enabled, set `NEXTSTAT_SERVER_API_KEY` (or `NEXTSTAT_TOOLS_API_KEY`)
+for the agent as well.
 
 ## Outputs
 
@@ -61,4 +64,3 @@ The main artifact is `demo_result.json` in the chosen `--out-dir`, plus:
 | `env/docker/docker-compose.yml` | Two-container setup: `nextstat-server` + agent. |
 | `env/docker/agent.Dockerfile` | Lightweight Python agent image. |
 | `env/python/requirements.txt` | Pinned Python deps for the agent container. |
-

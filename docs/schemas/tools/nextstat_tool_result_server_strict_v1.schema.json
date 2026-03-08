@@ -1,0 +1,4902 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/tools/nextstat_tool_result_server_strict_v1.schema.json",
+  "title": "NextStat Tool Result Envelope v1 (Server-Safe Strict Result Shapes)",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "ok",
+    "result",
+    "error",
+    "meta"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.tool_result.v1"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "result": {},
+    "error": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "meta": {
+      "type": "object",
+      "required": [
+        "tool_name",
+        "nextstat_version"
+      ],
+      "properties": {
+        "tool_name": {
+          "type": "string",
+          "enum": [
+            "nextstat_fit",
+            "nextstat_hypotest",
+            "nextstat_hypotest_toys",
+            "nextstat_upper_limit",
+            "nextstat_ranking",
+            "nextstat_discovery_asymptotic",
+            "nextstat_scan",
+            "nextstat_workspace_audit",
+            "nextstat_read_root_histogram",
+            "nextstat_glm_fit",
+            "nextstat_bayesian_sample",
+            "nextstat_survival_fit",
+            "nextstat_kaplan_meier",
+            "nextstat_log_rank_test",
+            "nextstat_panel_fe",
+            "nextstat_did",
+            "nextstat_iv_2sls",
+            "nextstat_aipw",
+            "nextstat_meta_analysis",
+            "nextstat_kalman",
+            "nextstat_ads_cuped_adjust",
+            "nextstat_ads_cure_adjust",
+            "nextstat_churn_generate_data",
+            "nextstat_churn_risk_model",
+            "nextstat_churn_retention",
+            "nextstat_churn_compare",
+            "nextstat_churn_diagnostics",
+            "nextstat_churn_cohort_matrix",
+            "nextstat_churn_bootstrap_hr",
+            "nextstat_churn_ingest",
+            "nextstat_churn_uplift",
+            "nextstat_churn_uplift_survival",
+            "nextstat_chain_ladder",
+            "nextstat_pharma_fit",
+            "nextstat_pharma_vpc",
+            "nextstat_pk_gof",
+            "nextstat_pk_npde",
+            "nextstat_trial_simulate",
+            "nextstat_bioequivalence",
+            "nextstat_fault_tree_mc",
+            "nextstat_fault_tree_ce_is",
+            "nextstat_dose_response",
+            "nextstat_competing_risks",
+            "nextstat_event_study",
+            "nextstat_garch_fit"
+          ]
+        },
+        "nextstat_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "eval_mode": {
+          "type": "string"
+        },
+        "threads_requested": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "fit_result": {
+      "type": "object",
+      "required": [
+        "nll",
+        "converged",
+        "n_iter",
+        "poi_index",
+        "poi_value",
+        "poi_error",
+        "parameters"
+      ],
+      "properties": {
+        "nll": {
+          "type": "number"
+        },
+        "converged": {
+          "type": "boolean"
+        },
+        "n_iter": {
+          "type": "integer"
+        },
+        "poi_index": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "poi_value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "poi_error": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "parameters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "value",
+              "error"
+            ],
+            "properties": {
+              "value": {
+                "type": "number"
+              },
+              "error": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "hypotest_result": {
+      "type": "object",
+      "required": [
+        "mu",
+        "cls",
+        "clsb",
+        "clb"
+      ],
+      "properties": {
+        "mu": {
+          "type": "number"
+        },
+        "cls": {
+          "type": "number"
+        },
+        "clsb": {
+          "type": "number"
+        },
+        "clb": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "hypotest_toys_result": {
+      "type": "object",
+      "required": [
+        "mu",
+        "n_toys",
+        "seed",
+        "expected_set",
+        "raw"
+      ],
+      "properties": {
+        "mu": {
+          "type": "number"
+        },
+        "n_toys": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "expected_set": {
+          "type": "boolean"
+        },
+        "raw": {}
+      },
+      "additionalProperties": true
+    },
+    "upper_limit_result": {
+      "type": "object",
+      "required": [
+        "alpha",
+        "obs_limit"
+      ],
+      "properties": {
+        "alpha": {
+          "type": "number"
+        },
+        "obs_limit": {
+          "type": "number"
+        },
+        "exp_limits": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "ranking_result": {
+      "type": "object",
+      "required": [
+        "ranking"
+      ],
+      "properties": {
+        "ranking": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "scan_result": {
+      "type": "object",
+      "properties": {
+        "mu_values": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "mu",
+              "q_mu",
+              "nll_mu",
+              "converged",
+              "n_iter"
+            ],
+            "properties": {
+              "mu": {
+                "type": "number"
+              },
+              "q_mu": {
+                "type": "number"
+              },
+              "nll_mu": {
+                "type": "number"
+              },
+              "converged": {
+                "type": "boolean"
+              },
+              "n_iter": {
+                "type": "integer"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "workspace_audit_result": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "discovery_asymptotic_result": {
+      "type": "object",
+      "required": [
+        "q0",
+        "z0",
+        "p0",
+        "nll_hat",
+        "nll_mu0"
+      ],
+      "properties": {
+        "mu_hat": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "nll_hat": {
+          "type": "number"
+        },
+        "nll_mu0": {
+          "type": "number"
+        },
+        "q0": {
+          "type": "number"
+        },
+        "z0": {
+          "type": "number"
+        },
+        "p0": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "glm_result": {
+      "type": "object",
+      "required": [
+        "family",
+        "coef",
+        "standard_errors"
+      ],
+      "properties": {
+        "family": {
+          "type": "string",
+          "enum": [
+            "linear",
+            "logistic",
+            "poisson",
+            "negbin"
+          ]
+        },
+        "coef": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "standard_errors": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "sigma2_hat": {
+          "type": "number"
+        },
+        "alpha": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "bayesian_sample_result": {
+      "type": "object",
+      "required": [
+        "model_type",
+        "n_chains",
+        "n_warmup",
+        "n_samples",
+        "param_names",
+        "diagnostics",
+        "posterior_summary"
+      ],
+      "properties": {
+        "model_type": {
+          "type": "string",
+          "enum": [
+            "linear_regression",
+            "logistic_regression",
+            "poisson_regression",
+            "negbin_regression",
+            "cox_ph",
+            "weibull_survival",
+            "lognormal_aft",
+            "ordered_logit",
+            "ordered_probit",
+            "histfactory"
+          ]
+        },
+        "n_chains": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n_warmup": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n_samples": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "param_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "diagnostics": {
+          "type": "object",
+          "required": [
+            "r_hat",
+            "ess_bulk",
+            "ess_tail",
+            "divergence_rate",
+            "max_treedepth_rate",
+            "ebfmi",
+            "quality"
+          ],
+          "properties": {
+            "r_hat": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "ess_bulk": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "ess_tail": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "number"
+              }
+            },
+            "divergence_rate": {
+              "type": "number"
+            },
+            "max_treedepth_rate": {
+              "type": "number"
+            },
+            "ebfmi": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "quality": {
+              "type": "object",
+              "required": [
+                "status",
+                "enabled",
+                "warnings",
+                "failures",
+                "total_draws",
+                "max_r_hat",
+                "min_ess_bulk",
+                "min_ess_tail",
+                "min_ebfmi"
+              ],
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "ok",
+                    "warn",
+                    "fail"
+                  ]
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "warnings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "failures": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "total_draws": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "max_r_hat": {
+                  "type": "number"
+                },
+                "min_ess_bulk": {
+                  "type": "number"
+                },
+                "min_ess_tail": {
+                  "type": "number"
+                },
+                "min_ebfmi": {
+                  "type": "number"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "posterior_summary": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "mean"
+            ],
+            "properties": {
+              "mean": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "survival_fit_result": {
+      "type": "object",
+      "required": [
+        "model",
+        "parameters",
+        "uncertainties",
+        "nll",
+        "converged"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": [
+            "cox_ph",
+            "weibull",
+            "lognormal_aft",
+            "exponential"
+          ]
+        },
+        "parameters": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "uncertainties": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "nll": {
+          "type": "number"
+        },
+        "converged": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "kaplan_meier_result": {
+      "type": "object",
+      "required": [
+        "n",
+        "n_events",
+        "conf_level",
+        "median",
+        "time",
+        "n_risk",
+        "n_event",
+        "n_censored",
+        "survival",
+        "variance",
+        "ci_lower",
+        "ci_upper"
+      ],
+      "properties": {
+        "n": {
+          "type": "integer"
+        },
+        "n_events": {
+          "type": "integer"
+        },
+        "conf_level": {
+          "type": "number"
+        },
+        "median": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "time": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "n_risk": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "n_event": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "n_censored": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "survival": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "variance": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "ci_lower": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "ci_upper": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "log_rank": {
+          "type": "object",
+          "required": [
+            "n",
+            "chi_squared",
+            "df",
+            "p_value",
+            "group_ids",
+            "observed",
+            "expected"
+          ],
+          "properties": {
+            "n": {
+              "type": "integer"
+            },
+            "chi_squared": {
+              "type": "number"
+            },
+            "df": {
+              "type": "integer"
+            },
+            "p_value": {
+              "type": "number"
+            },
+            "group_ids": {
+              "type": "array",
+              "items": {
+                "type": "integer"
+              }
+            },
+            "observed": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "expected": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "log_rank_test_result": {
+      "type": "object",
+      "required": [
+        "n",
+        "chi_squared",
+        "df",
+        "p_value",
+        "group_ids",
+        "observed",
+        "expected"
+      ],
+      "properties": {
+        "n": {
+          "type": "integer"
+        },
+        "chi_squared": {
+          "type": "number"
+        },
+        "df": {
+          "type": "integer"
+        },
+        "p_value": {
+          "type": "number"
+        },
+        "group_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "observed": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "expected": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "churn_retention_result": {
+      "type": "object",
+      "required": [
+        "overall",
+        "by_group",
+        "log_rank"
+      ],
+      "properties": {
+        "overall": {
+          "type": "object",
+          "required": [
+            "n",
+            "n_events",
+            "median",
+            "time",
+            "survival"
+          ],
+          "properties": {
+            "n": {
+              "type": "integer"
+            },
+            "n_events": {
+              "type": "integer"
+            },
+            "median": {
+              "type": [
+                "number",
+                "null"
+              ]
+            },
+            "time": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "survival": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "by_group": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "group",
+              "n",
+              "n_events",
+              "median",
+              "time",
+              "survival"
+            ],
+            "properties": {
+              "group": {
+                "type": "integer"
+              },
+              "n": {
+                "type": "integer"
+              },
+              "n_events": {
+                "type": "integer"
+              },
+              "median": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "time": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "survival": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "log_rank": {
+          "type": "object",
+          "required": [
+            "chi_squared",
+            "df",
+            "p_value"
+          ],
+          "properties": {
+            "chi_squared": {
+              "type": "number"
+            },
+            "df": {
+              "type": "integer"
+            },
+            "p_value": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "churn_generate_data_result": {
+      "type": "object",
+      "required": [
+        "n",
+        "n_events",
+        "times",
+        "events",
+        "groups",
+        "treated",
+        "covariates",
+        "covariate_names",
+        "plan",
+        "region",
+        "cohort",
+        "usage_score"
+      ],
+      "properties": {
+        "n": {
+          "type": "integer"
+        },
+        "n_events": {
+          "type": "integer"
+        },
+        "times": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          }
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "treated": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "covariates": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "covariate_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "plan": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "region": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "cohort": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "usage_score": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "chain_ladder_result": {
+      "type": "object",
+      "required": [
+        "development_factors",
+        "ultimates",
+        "ibnr",
+        "latest",
+        "total_ibnr"
+      ],
+      "properties": {
+        "development_factors": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "cumulative_factors": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "ultimates": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "ibnr": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "latest": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "total_ibnr": {
+          "type": "number"
+        },
+        "projected": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "sigma_sq": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "se": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "cv": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "pi_lower": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "pi_upper": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "total_se": {
+          "type": "number"
+        },
+        "conf_level": {
+          "type": "number"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "cumulative_factors",
+            "projected"
+          ]
+        },
+        {
+          "required": [
+            "sigma_sq",
+            "se",
+            "cv",
+            "pi_lower",
+            "pi_upper",
+            "total_se",
+            "conf_level"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "pharma_fit_result": {
+      "type": "object",
+      "required": [
+        "theta",
+        "omega",
+        "omega_matrix",
+        "correlation",
+        "eta",
+        "ofv",
+        "converged",
+        "n_iter",
+        "sigma",
+        "sigma_init"
+      ],
+      "properties": {
+        "theta": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "omega": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "omega_matrix": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "correlation": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "eta": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "ofv": {
+          "type": "number"
+        },
+        "converged": {
+          "type": "boolean"
+        },
+        "n_iter": {
+          "type": "integer"
+        },
+        "sigma": {
+          "type": "number"
+        },
+        "sigma_init": {
+          "type": "number"
+        },
+        "covariance_step": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "parameter_names": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "r_matrix": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            },
+            "s_matrix": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            },
+            "covariance": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            },
+            "robust_covariance": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            },
+            "se": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "rse_pct": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "r_eigenvalues": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "r_condition_number": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": true
+        },
+        "imp": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "ofv_trace": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "ess_fraction_trace": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "max_weight_trace": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "saem": {
+          "type": "object",
+          "required": [
+            "acceptance_rates",
+            "ofv_trace",
+            "burn_in_only"
+          ],
+          "properties": {
+            "acceptance_rates": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "ofv_trace": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "burn_in_only": {
+              "type": "boolean"
+            },
+            "theta_trace": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            },
+            "relative_change": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "geweke_scores": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "covariance_step",
+            "imp"
+          ]
+        },
+        {
+          "required": [
+            "saem"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "pharma_vpc_result": {
+      "type": "object",
+      "required": [
+        "bins",
+        "quantiles",
+        "n_sim"
+      ],
+      "properties": {
+        "bins": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "time",
+              "n_obs",
+              "obs_quantiles",
+              "sim_pi_lower",
+              "sim_pi_median",
+              "sim_pi_upper"
+            ],
+            "properties": {
+              "time": {
+                "type": "number"
+              },
+              "n_obs": {
+                "type": "integer"
+              },
+              "obs_quantiles": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "sim_pi_lower": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "sim_pi_median": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "sim_pi_upper": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "quantiles": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "n_sim": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    },
+    "pk_gof_result": {
+      "type": "object",
+      "required": [
+        "model",
+        "n_subjects",
+        "n_records",
+        "records"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "n_subjects": {
+          "type": "integer"
+        },
+        "n_records": {
+          "type": "integer"
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "subject",
+              "time",
+              "dv",
+              "pred",
+              "ipred",
+              "iwres",
+              "cwres"
+            ],
+            "properties": {
+              "subject": {
+                "type": "integer"
+              },
+              "time": {
+                "type": "number"
+              },
+              "dv": {
+                "type": "number"
+              },
+              "pred": {
+                "type": "number"
+              },
+              "ipred": {
+                "type": "number"
+              },
+              "iwres": {
+                "type": "number"
+              },
+              "cwres": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "pk_npde_result": {
+      "type": "object",
+      "required": [
+        "model",
+        "n_subjects",
+        "n_records",
+        "n_sim",
+        "seed",
+        "records",
+        "mean",
+        "variance"
+      ],
+      "properties": {
+        "model": {
+          "type": "string"
+        },
+        "n_subjects": {
+          "type": "integer"
+        },
+        "n_records": {
+          "type": "integer"
+        },
+        "n_sim": {
+          "type": "integer"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "subject",
+              "time",
+              "dv",
+              "percentile",
+              "npde"
+            ],
+            "properties": {
+              "subject": {
+                "type": "integer"
+              },
+              "time": {
+                "type": "number"
+              },
+              "dv": {
+                "type": "number"
+              },
+              "percentile": {
+                "type": "number"
+              },
+              "npde": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "mean": {
+          "type": "number"
+        },
+        "variance": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "trial_simulate_result": {
+      "type": "object",
+      "required": [
+        "concentrations",
+        "individual_params",
+        "auc",
+        "cmax",
+        "tmax",
+        "ctrough"
+      ],
+      "properties": {
+        "concentrations": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "individual_params": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "auc": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "cmax": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "tmax": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "ctrough": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "bioequivalence_result": {
+      "type": "object",
+      "anyOf": [
+        {
+          "required": [
+            "geometric_mean_ratio",
+            "ci_lower",
+            "ci_upper",
+            "pe_log",
+            "se_log",
+            "df",
+            "t_lower",
+            "t_upper",
+            "p_lower",
+            "p_upper",
+            "conclusion"
+          ]
+        },
+        {
+          "required": [
+            "power"
+          ]
+        },
+        {
+          "required": [
+            "n_per_sequence",
+            "n_total",
+            "achieved_power"
+          ]
+        }
+      ],
+      "properties": {
+        "geometric_mean_ratio": {
+          "type": "number"
+        },
+        "ci_lower": {
+          "type": "number"
+        },
+        "ci_upper": {
+          "type": "number"
+        },
+        "pe_log": {
+          "type": "number"
+        },
+        "se_log": {
+          "type": "number"
+        },
+        "df": {
+          "type": "number"
+        },
+        "t_lower": {
+          "type": "number"
+        },
+        "t_upper": {
+          "type": "number"
+        },
+        "p_lower": {
+          "type": "number"
+        },
+        "p_upper": {
+          "type": "number"
+        },
+        "conclusion": {
+          "type": "string"
+        },
+        "power": {
+          "type": "number"
+        },
+        "n_per_sequence": {
+          "type": "integer"
+        },
+        "n_total": {
+          "type": "integer"
+        },
+        "achieved_power": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "dose_response_result": {
+      "type": "object",
+      "required": [
+        "model"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "enum": [
+            "emax",
+            "sigmoid_emax"
+          ]
+        },
+        "predictions": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "e0": {
+          "type": "number"
+        },
+        "emax": {
+          "type": "number"
+        },
+        "ec50": {
+          "type": "number"
+        },
+        "gamma": {
+          "type": "number"
+        },
+        "nll": {
+          "type": "number"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "predictions",
+            "e0",
+            "emax",
+            "ec50"
+          ]
+        },
+        {
+          "required": [
+            "nll"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "competing_risks_result": {
+      "type": "object",
+      "properties": {
+        "cause": {
+          "type": "integer"
+        },
+        "times": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "cif": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "se": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "ci_lower": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "ci_upper": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "n": {
+          "type": "integer"
+        },
+        "n_events": {
+          "type": "integer"
+        },
+        "statistic": {
+          "type": "number"
+        },
+        "df": {
+          "type": "integer"
+        },
+        "p_value": {
+          "type": "number"
+        },
+        "coefficients": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "z": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "p_values": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "log_likelihood": {
+          "type": "number"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "cause",
+            "times",
+            "cif",
+            "se",
+            "ci_lower",
+            "ci_upper",
+            "n",
+            "n_events"
+          ]
+        },
+        {
+          "required": [
+            "statistic",
+            "df",
+            "p_value"
+          ]
+        },
+        {
+          "required": [
+            "coefficients",
+            "se",
+            "z",
+            "p_values",
+            "n",
+            "n_events",
+            "log_likelihood"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "fault_tree_mc_result": {
+      "type": "object",
+      "required": [
+        "n_scenarios",
+        "n_top_failures",
+        "p_failure",
+        "se",
+        "ci_lower",
+        "ci_upper",
+        "component_importance"
+      ],
+      "properties": {
+        "n_scenarios": {
+          "type": "integer"
+        },
+        "n_top_failures": {
+          "type": "integer"
+        },
+        "p_failure": {
+          "type": "number"
+        },
+        "se": {
+          "type": "number"
+        },
+        "ci_lower": {
+          "type": "number"
+        },
+        "ci_upper": {
+          "type": "number"
+        },
+        "wall_time_s": {
+          "type": "number"
+        },
+        "scenarios_per_sec": {
+          "type": "number"
+        },
+        "component_importance": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "fault_tree_ce_is_result": {
+      "type": "object",
+      "required": [
+        "p_failure",
+        "se",
+        "ci_lower",
+        "ci_upper",
+        "n_levels",
+        "n_total_scenarios",
+        "final_proposal",
+        "coefficient_of_variation"
+      ],
+      "properties": {
+        "p_failure": {
+          "type": "number"
+        },
+        "se": {
+          "type": "number"
+        },
+        "ci_lower": {
+          "type": "number"
+        },
+        "ci_upper": {
+          "type": "number"
+        },
+        "n_levels": {
+          "type": "integer"
+        },
+        "n_total_scenarios": {
+          "type": "integer"
+        },
+        "final_proposal": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "coefficient_of_variation": {
+          "type": "number"
+        },
+        "wall_time_s": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "panel_fe_result": {
+      "type": "object",
+      "required": [
+        "coef",
+        "standard_errors",
+        "n_obs",
+        "n_entities",
+        "cluster_kind",
+        "n_clusters",
+        "cluster"
+      ],
+      "properties": {
+        "coef": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "standard_errors": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "n_obs": {
+          "type": "integer"
+        },
+        "n_entities": {
+          "type": "integer"
+        },
+        "cluster_kind": {
+          "type": "string",
+          "enum": [
+            "entity",
+            "time",
+            "two_way",
+            "none"
+          ]
+        },
+        "n_clusters": {
+          "type": "integer"
+        },
+        "cluster": {
+          "type": "string",
+          "enum": [
+            "entity",
+            "time",
+            "two_way",
+            "none"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "did_result": {
+      "type": "object",
+      "required": [
+        "att",
+        "att_se",
+        "coef",
+        "standard_errors",
+        "n_obs",
+        "cluster"
+      ],
+      "properties": {
+        "att": {
+          "type": "number"
+        },
+        "att_se": {
+          "type": "number"
+        },
+        "coef": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "standard_errors": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "n_obs": {
+          "type": "integer"
+        },
+        "cluster": {
+          "type": "string",
+          "enum": [
+            "entity",
+            "time",
+            "two_way",
+            "none"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "iv_2sls_result": {
+      "type": "object",
+      "required": [
+        "coef",
+        "standard_errors",
+        "n_obs",
+        "diagnostics"
+      ],
+      "properties": {
+        "coef": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "standard_errors": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "n_obs": {
+          "type": "integer"
+        },
+        "diagnostics": {
+          "type": "object",
+          "required": [
+            "first_stage_f"
+          ],
+          "properties": {
+            "first_stage_f": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "aipw_result": {
+      "type": "object",
+      "required": [
+        "estimand",
+        "estimate",
+        "standard_error",
+        "n_obs"
+      ],
+      "properties": {
+        "estimand": {
+          "type": "string",
+          "enum": [
+            "ate",
+            "att"
+          ]
+        },
+        "estimate": {
+          "type": "number"
+        },
+        "standard_error": {
+          "type": "number"
+        },
+        "n_obs": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": true
+    },
+    "event_study_result": {
+      "type": "object",
+      "required": [
+        "rel_times",
+        "coef",
+        "standard_errors",
+        "covariance",
+        "reference",
+        "n_obs",
+        "n_entities",
+        "n_times",
+        "cluster"
+      ],
+      "properties": {
+        "rel_times": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "coef": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "standard_errors": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "covariance": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "reference": {
+          "type": "integer"
+        },
+        "n_obs": {
+          "type": "integer"
+        },
+        "n_entities": {
+          "type": "integer"
+        },
+        "n_times": {
+          "type": "integer"
+        },
+        "cluster": {
+          "type": "string",
+          "enum": [
+            "entity",
+            "time",
+            "two_way"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "churn_risk_model_result": {
+      "type": "object",
+      "required": [
+        "n",
+        "n_events",
+        "nll",
+        "names",
+        "coefficients",
+        "se",
+        "hazard_ratios",
+        "hr_ci_lower",
+        "hr_ci_upper"
+      ],
+      "properties": {
+        "n": {
+          "type": "integer"
+        },
+        "n_events": {
+          "type": "integer"
+        },
+        "nll": {
+          "type": "number"
+        },
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "coefficients": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "se": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "hazard_ratios": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "hr_ci_lower": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "hr_ci_upper": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "churn_compare_result": {
+      "type": "object",
+      "required": [
+        "overall_chi_squared",
+        "overall_p_value",
+        "overall_df",
+        "alpha",
+        "n",
+        "n_events",
+        "correction_method",
+        "segments",
+        "pairwise"
+      ],
+      "properties": {
+        "overall_chi_squared": {
+          "type": "number"
+        },
+        "overall_p_value": {
+          "type": "number"
+        },
+        "overall_df": {
+          "type": "integer"
+        },
+        "alpha": {
+          "type": "number"
+        },
+        "n": {
+          "type": "integer"
+        },
+        "n_events": {
+          "type": "integer"
+        },
+        "correction_method": {
+          "type": "string",
+          "enum": [
+            "bonferroni",
+            "benjamini_hochberg"
+          ]
+        },
+        "segments": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "group",
+              "n",
+              "n_events",
+              "median",
+              "observed",
+              "expected"
+            ],
+            "properties": {
+              "group": {
+                "type": "integer"
+              },
+              "n": {
+                "type": "integer"
+              },
+              "n_events": {
+                "type": "integer"
+              },
+              "median": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "observed": {
+                "type": "number"
+              },
+              "expected": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "pairwise": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "group_a",
+              "group_b",
+              "chi_squared",
+              "p_value",
+              "p_adjusted",
+              "hazard_ratio_proxy",
+              "median_diff",
+              "significant"
+            ],
+            "properties": {
+              "group_a": {
+                "type": "integer"
+              },
+              "group_b": {
+                "type": "integer"
+              },
+              "chi_squared": {
+                "type": "number"
+              },
+              "p_value": {
+                "type": "number"
+              },
+              "p_adjusted": {
+                "type": "number"
+              },
+              "hazard_ratio_proxy": {
+                "type": "number"
+              },
+              "median_diff": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "significant": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "churn_uplift_result": {
+      "type": "object",
+      "required": [
+        "ate",
+        "se",
+        "ci_lower",
+        "ci_upper",
+        "n_treated",
+        "n_control",
+        "gamma_critical",
+        "horizon"
+      ],
+      "properties": {
+        "ate": {
+          "type": "number"
+        },
+        "se": {
+          "type": "number"
+        },
+        "ci_lower": {
+          "type": "number"
+        },
+        "ci_upper": {
+          "type": "number"
+        },
+        "n_treated": {
+          "type": "integer"
+        },
+        "n_control": {
+          "type": "integer"
+        },
+        "gamma_critical": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "horizon": {
+          "type": "number"
+        }
+      },
+      "additionalProperties": true
+    },
+    "churn_diagnostics_result": {
+      "type": "object",
+      "required": [
+        "n",
+        "n_events",
+        "overall_censoring_frac",
+        "trust_gate_passed",
+        "censoring_by_segment",
+        "covariate_balance",
+        "propensity_overlap",
+        "warnings"
+      ],
+      "properties": {
+        "n": {
+          "type": "integer"
+        },
+        "n_events": {
+          "type": "integer"
+        },
+        "overall_censoring_frac": {
+          "type": "number"
+        },
+        "trust_gate_passed": {
+          "type": "boolean"
+        },
+        "censoring_by_segment": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "group",
+              "n",
+              "n_events",
+              "n_censored",
+              "frac_censored"
+            ],
+            "properties": {
+              "group": {
+                "type": "integer"
+              },
+              "n": {
+                "type": "integer"
+              },
+              "n_events": {
+                "type": "integer"
+              },
+              "n_censored": {
+                "type": "integer"
+              },
+              "frac_censored": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "covariate_balance": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "smd_raw",
+              "mean_treated",
+              "mean_control"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "smd_raw": {
+                "type": "number"
+              },
+              "mean_treated": {
+                "type": "number"
+              },
+              "mean_control": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "propensity_overlap": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "properties": {
+            "quantiles": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "mean": {
+              "type": "number"
+            },
+            "n_trimmed_low": {
+              "type": "integer"
+            },
+            "n_trimmed_high": {
+              "type": "integer"
+            },
+            "trim": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": true
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "category",
+              "severity",
+              "message"
+            ],
+            "properties": {
+              "category": {
+                "type": "string"
+              },
+              "severity": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "churn_cohort_matrix_result": {
+      "type": "object",
+      "required": [
+        "period_boundaries",
+        "cohorts",
+        "overall"
+      ],
+      "properties": {
+        "period_boundaries": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "cohorts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "cohort",
+              "n_total",
+              "n_events",
+              "periods"
+            ],
+            "properties": {
+              "cohort": {
+                "type": "integer"
+              },
+              "n_total": {
+                "type": "integer"
+              },
+              "n_events": {
+                "type": "integer"
+              },
+              "periods": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "n_at_risk",
+                    "n_events",
+                    "n_censored",
+                    "retention_rate",
+                    "cumulative_retention"
+                  ],
+                  "properties": {
+                    "n_at_risk": {
+                      "type": "integer"
+                    },
+                    "n_events": {
+                      "type": "integer"
+                    },
+                    "n_censored": {
+                      "type": "integer"
+                    },
+                    "retention_rate": {
+                      "type": "number"
+                    },
+                    "cumulative_retention": {
+                      "type": "number"
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "overall": {
+          "type": "object",
+          "required": [
+            "cohort",
+            "n_total",
+            "n_events",
+            "periods"
+          ],
+          "properties": {
+            "cohort": {
+              "type": "integer"
+            },
+            "n_total": {
+              "type": "integer"
+            },
+            "n_events": {
+              "type": "integer"
+            },
+            "periods": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "n_at_risk",
+                  "n_events",
+                  "n_censored",
+                  "retention_rate",
+                  "cumulative_retention"
+                ],
+                "properties": {
+                  "n_at_risk": {
+                    "type": "integer"
+                  },
+                  "n_events": {
+                    "type": "integer"
+                  },
+                  "n_censored": {
+                    "type": "integer"
+                  },
+                  "retention_rate": {
+                    "type": "number"
+                  },
+                  "cumulative_retention": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "churn_bootstrap_hr_result": {
+      "type": "object",
+      "required": [
+        "names",
+        "hr_point",
+        "hr_ci_lower",
+        "hr_ci_upper",
+        "n_bootstrap",
+        "n_jackknife_requested",
+        "n_jackknife_attempted",
+        "n_converged",
+        "ci_method_requested",
+        "ci_method_effective",
+        "ci_diagnostics"
+      ],
+      "properties": {
+        "names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "hr_point": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "hr_ci_lower": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "hr_ci_upper": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "n_bootstrap": {
+          "type": "integer"
+        },
+        "n_jackknife_requested": {
+          "type": "integer"
+        },
+        "n_jackknife_attempted": {
+          "type": "integer"
+        },
+        "n_converged": {
+          "type": "integer"
+        },
+        "ci_method_requested": {
+          "type": "string"
+        },
+        "ci_method_effective": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ci_diagnostics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "requested_method",
+              "effective_method",
+              "alpha_low",
+              "alpha_high",
+              "n_bootstrap",
+              "n_jackknife",
+              "fallback_reason"
+            ],
+            "properties": {
+              "requested_method": {
+                "type": "string"
+              },
+              "effective_method": {
+                "type": "string"
+              },
+              "z0": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "acceleration": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "alpha_low": {
+                "type": "number"
+              },
+              "alpha_high": {
+                "type": "number"
+              },
+              "alpha_low_adj": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "alpha_high_adj": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "n_bootstrap": {
+                "type": "integer"
+              },
+              "n_jackknife": {
+                "type": "integer"
+              },
+              "fallback_reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "churn_ingest_result": {
+      "type": "object",
+      "required": [
+        "n",
+        "n_events",
+        "times",
+        "events",
+        "groups",
+        "treated",
+        "covariates",
+        "covariate_names",
+        "n_dropped",
+        "warnings"
+      ],
+      "properties": {
+        "n": {
+          "type": "integer"
+        },
+        "n_events": {
+          "type": "integer"
+        },
+        "times": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "boolean"
+          }
+        },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "treated": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "covariates": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "covariate_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "n_dropped": {
+          "type": "integer"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "kalman_result": {
+      "type": "object",
+      "properties": {
+        "log_likelihood": {
+          "type": "number"
+        },
+        "predicted_means": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "predicted_covs": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "filtered_means": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "filtered_covs": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "smoothed_means": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "smoothed_covs": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "state_means": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "state_covs": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "obs_means": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "obs_covs": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "alpha": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "obs_lower": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "obs_upper": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "xs": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "ys": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "converged": {
+          "type": "boolean"
+        },
+        "n_iter": {
+          "type": "integer"
+        },
+        "loglik_trace": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "f": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "h": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "q": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "r": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "log_likelihood",
+            "predicted_means",
+            "predicted_covs",
+            "filtered_means",
+            "filtered_covs"
+          ]
+        },
+        {
+          "required": [
+            "log_likelihood",
+            "filtered_means",
+            "filtered_covs",
+            "smoothed_means",
+            "smoothed_covs"
+          ]
+        },
+        {
+          "required": [
+            "state_means",
+            "state_covs",
+            "obs_means",
+            "obs_covs"
+          ]
+        },
+        {
+          "required": [
+            "xs",
+            "ys"
+          ]
+        },
+        {
+          "required": [
+            "converged",
+            "n_iter",
+            "loglik_trace",
+            "f",
+            "h",
+            "q",
+            "r"
+          ]
+        }
+      ],
+      "additionalProperties": true
+    },
+    "garch_result": {
+      "type": "object",
+      "required": [
+        "params",
+        "log_likelihood",
+        "conditional_variance",
+        "conditional_sigma",
+        "converged",
+        "n_iter",
+        "n_fev",
+        "n_gev",
+        "fval",
+        "message"
+      ],
+      "properties": {
+        "params": {
+          "type": "object",
+          "required": [
+            "mu",
+            "omega",
+            "alpha",
+            "beta"
+          ],
+          "properties": {
+            "mu": {
+              "type": "number"
+            },
+            "omega": {
+              "type": "number"
+            },
+            "alpha": {
+              "type": "number"
+            },
+            "beta": {
+              "type": "number"
+            },
+            "gamma": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": true
+        },
+        "log_likelihood": {
+          "type": "number"
+        },
+        "conditional_variance": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "conditional_sigma": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "converged": {
+          "type": "boolean"
+        },
+        "n_iter": {
+          "type": "integer"
+        },
+        "n_fev": {
+          "type": "integer"
+        },
+        "n_gev": {
+          "type": "integer"
+        },
+        "fval": {
+          "type": "number"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ads_covariate_provenance": {
+      "type": "object",
+      "required": [
+        "name",
+        "timing"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "timing": {
+          "type": "string",
+          "enum": [
+            "pre_treatment",
+            "unknown",
+            "post_treatment",
+            "mixed"
+          ]
+        },
+        "source_dataset": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": true
+    },
+    "ads_cuped_adjust_result": {
+      "type": "object",
+      "required": [
+        "method",
+        "adjusted_mean_control",
+        "adjusted_mean_variant",
+        "effect",
+        "theta",
+        "rho",
+        "r_squared",
+        "variance_reduction_factor",
+        "effective_sample_multiplier",
+        "num_covariates",
+        "selected_covariates",
+        "covariate_provenance",
+        "provenance_validated",
+        "solver",
+        "regression_rank",
+        "pre_treatment_only"
+      ],
+      "properties": {
+        "method": {
+          "const": "cuped"
+        },
+        "mean_control": {
+          "type": "number"
+        },
+        "mean_variant": {
+          "type": "number"
+        },
+        "adjusted_mean_control": {
+          "type": "number"
+        },
+        "adjusted_mean_variant": {
+          "type": "number"
+        },
+        "effect": {
+          "type": "number"
+        },
+        "theta": {
+          "type": "number"
+        },
+        "rho": {
+          "type": "number"
+        },
+        "r_squared": {
+          "type": "number"
+        },
+        "variance_reduction_factor": {
+          "type": "number"
+        },
+        "original_variance": {
+          "type": "number"
+        },
+        "adjusted_variance": {
+          "type": "number"
+        },
+        "effective_sample_multiplier": {
+          "type": "number"
+        },
+        "num_covariates": {
+          "type": "integer"
+        },
+        "selected_covariates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "covariate_provenance": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ads_covariate_provenance"
+          }
+        },
+        "provenance_validated": {
+          "type": "boolean"
+        },
+        "solver": {
+          "type": "string",
+          "enum": [
+            "svd",
+            "ridge"
+          ]
+        },
+        "regression_rank": {
+          "type": "integer"
+        },
+        "condition_number": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "ridge_lambda": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "pre_treatment_only": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "ads_cure_adjust_result": {
+      "type": "object",
+      "required": [
+        "method",
+        "adjusted_mean_control",
+        "adjusted_mean_variant",
+        "effect",
+        "theta",
+        "r_squared",
+        "variance_reduction_factor",
+        "effective_sample_multiplier",
+        "num_covariates",
+        "selected_covariates",
+        "covariate_provenance",
+        "provenance_validated",
+        "solver",
+        "regression_rank",
+        "pre_treatment_only"
+      ],
+      "properties": {
+        "method": {
+          "const": "cure"
+        },
+        "mean_control": {
+          "type": "number"
+        },
+        "mean_variant": {
+          "type": "number"
+        },
+        "adjusted_mean_control": {
+          "type": "number"
+        },
+        "adjusted_mean_variant": {
+          "type": "number"
+        },
+        "effect": {
+          "type": "number"
+        },
+        "theta": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "r_squared": {
+          "type": "number"
+        },
+        "variance_reduction_factor": {
+          "type": "number"
+        },
+        "original_variance": {
+          "type": "number"
+        },
+        "adjusted_variance": {
+          "type": "number"
+        },
+        "effective_sample_multiplier": {
+          "type": "number"
+        },
+        "num_covariates": {
+          "type": "integer"
+        },
+        "selected_covariates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "covariate_provenance": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ads_covariate_provenance"
+          }
+        },
+        "provenance_validated": {
+          "type": "boolean"
+        },
+        "solver": {
+          "type": "string",
+          "enum": [
+            "svd",
+            "ridge"
+          ]
+        },
+        "regression_rank": {
+          "type": "integer"
+        },
+        "condition_number": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "ridge_lambda": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "pre_treatment_only": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "meta_analysis_result": {
+      "type": "object",
+      "required": [
+        "estimate",
+        "se",
+        "ci_lower",
+        "ci_upper",
+        "z",
+        "p_value",
+        "method",
+        "conf_level",
+        "k",
+        "heterogeneity",
+        "forest"
+      ],
+      "properties": {
+        "estimate": {
+          "type": "number"
+        },
+        "se": {
+          "type": "number"
+        },
+        "ci_lower": {
+          "type": "number"
+        },
+        "ci_upper": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "p_value": {
+          "type": "number"
+        },
+        "method": {
+          "type": "string",
+          "enum": [
+            "fixed",
+            "random"
+          ]
+        },
+        "conf_level": {
+          "type": "number"
+        },
+        "k": {
+          "type": "integer"
+        },
+        "heterogeneity": {
+          "type": "object",
+          "required": [
+            "q",
+            "df",
+            "p_value",
+            "i_squared",
+            "h_squared",
+            "tau_squared"
+          ],
+          "properties": {
+            "q": {
+              "type": "number"
+            },
+            "df": {
+              "type": "integer"
+            },
+            "p_value": {
+              "type": "number"
+            },
+            "i_squared": {
+              "type": "number"
+            },
+            "h_squared": {
+              "type": "number"
+            },
+            "tau_squared": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": true
+        },
+        "forest": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "estimate",
+              "se",
+              "ci_lower",
+              "ci_upper",
+              "weight"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "estimate": {
+                "type": "number"
+              },
+              "se": {
+                "type": "number"
+              },
+              "ci_lower": {
+                "type": "number"
+              },
+              "ci_upper": {
+                "type": "number"
+              },
+              "weight": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": false
+          }
+        },
+        "required": [
+          "ok"
+        ]
+      },
+      "then": {
+        "properties": {
+          "error": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_fit"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/fit_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_hypotest"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/hypotest_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_hypotest_toys"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/hypotest_toys_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_upper_limit"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/upper_limit_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_ranking"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/ranking_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_discovery_asymptotic"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/discovery_asymptotic_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_scan"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/scan_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_workspace_audit"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/workspace_audit_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_read_root_histogram"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/root_histogram_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_glm_fit"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/glm_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_bayesian_sample"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/bayesian_sample_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_survival_fit"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/survival_fit_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_kaplan_meier"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/kaplan_meier_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_log_rank_test"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/log_rank_test_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_panel_fe"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/panel_fe_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_did"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/did_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_iv_2sls"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/iv_2sls_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_aipw"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/aipw_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_meta_analysis"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/meta_analysis_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_kalman"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/kalman_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_ads_cuped_adjust"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/ads_cuped_adjust_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_ads_cure_adjust"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/ads_cure_adjust_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_churn_generate_data"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/churn_generate_data_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_churn_risk_model"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/churn_risk_model_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_churn_retention"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/churn_retention_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_churn_compare"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/churn_compare_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_churn_diagnostics"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/churn_diagnostics_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_churn_cohort_matrix"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/churn_cohort_matrix_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_churn_bootstrap_hr"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/churn_bootstrap_hr_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_churn_ingest"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/churn_ingest_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_churn_uplift"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/churn_uplift_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_churn_uplift_survival"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/churn_uplift_survival_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_chain_ladder"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/chain_ladder_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_pharma_fit"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/pharma_fit_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_pharma_vpc"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/pharma_vpc_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_pk_gof"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/pk_gof_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_pk_npde"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/pk_npde_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_trial_simulate"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/trial_simulate_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_bioequivalence"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/bioequivalence_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_fault_tree_mc"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/fault_tree_mc_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_fault_tree_ce_is"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/fault_tree_ce_is_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_dose_response"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/dose_response_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_competing_risks"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/competing_risks_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_event_study"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/event_study_result"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "meta": {
+            "properties": {
+              "tool_name": {
+                "const": "nextstat_garch_fit"
+              }
+            },
+            "required": [
+              "tool_name"
+            ]
+          }
+        },
+        "required": [
+          "ok",
+          "meta"
+        ]
+      },
+      "then": {
+        "properties": {
+          "result": {
+            "$ref": "#/$defs/garch_result"
+          }
+        }
+      }
+    }
+  ]
+}

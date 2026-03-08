@@ -1,0 +1,155 @@
+{
+  "repeatability_gate": {
+    "failures": [],
+    "passed": true,
+    "policy": {
+      "max_r_hat": 1.01,
+      "parity_fail_z": 12.0,
+      "parity_warn_z": 8.0,
+      "require_all_backend_statuses_ok": true,
+      "require_all_parity_statuses_ok": true,
+      "require_complete_seed_coverage": true
+    },
+    "review_summary": {
+      "failing_cases": [],
+      "n_failing_cases": 0,
+      "n_failures": 0,
+      "n_reviewed_cases": 4,
+      "n_reviewed_parity_cases": 4,
+      "worst_accept_rate": {
+        "case": "neal_funnel_2d",
+        "value": 0.9725724476343856
+      },
+      "worst_ess_per_sec": {
+        "case": "neal_funnel_2d",
+        "value": 1098.464168758134
+      },
+      "worst_max_r_hat": {
+        "case": "neal_funnel_2d",
+        "value": 1.0087217815047962
+      },
+      "worst_min_ess_bulk": {
+        "case": "neal_funnel_2d",
+        "value": 1092.5183505785126
+      },
+      "worst_min_ess_tail": {
+        "case": "neal_funnel_2d",
+        "value": 491.4354189667535
+      },
+      "worst_parity_max_z": {
+        "case": "neal_funnel_2d",
+        "value": 3.9493480630394653
+      }
+    },
+    "reviewed_cases": [
+      {
+        "backend": "nextstat_mams",
+        "case": "eight_schools",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_accept_rate": 0.9788431958861676,
+        "worst_ess_per_sec": 24649.208831450156,
+        "worst_max_r_hat": 1.008335229673906,
+        "worst_min_ess_bulk": 4116.015401388176,
+        "worst_min_ess_tail": 1769.9857546680487
+      },
+      {
+        "backend": "nextstat_mams",
+        "case": "glm_logistic",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_accept_rate": 0.9818841515364708,
+        "worst_ess_per_sec": 1117.7823969906428,
+        "worst_max_r_hat": 1.0061242007284081,
+        "worst_min_ess_bulk": 1714.9372501500136,
+        "worst_min_ess_tail": 2355.206187421539
+      },
+      {
+        "backend": "nextstat_mams",
+        "case": "neal_funnel_2d",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_accept_rate": 0.9725724476343856,
+        "worst_ess_per_sec": 1098.464168758134,
+        "worst_max_r_hat": 1.0087217815047962,
+        "worst_min_ess_bulk": 1092.5183505785126,
+        "worst_min_ess_tail": 491.4354189667535
+      },
+      {
+        "backend": "nextstat_mams",
+        "case": "std_normal_10d",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_accept_rate": 0.9818813741746254,
+        "worst_ess_per_sec": 50029.28787725271,
+        "worst_max_r_hat": 1.0085782729615687,
+        "worst_min_ess_bulk": 6384.055867328123,
+        "worst_min_ess_tail": 6020.715059051951
+      }
+    ],
+    "reviewed_parity_cases": [
+      {
+        "case": "eight_schools",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_max_z": 2.9462491818665155
+      },
+      {
+        "case": "glm_logistic",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_max_z": 2.023630948433335
+      },
+      {
+        "case": "neal_funnel_2d",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_max_z": 3.9493480630394653
+      },
+      {
+        "case": "std_normal_10d",
+        "n_observed_seeds": 3,
+        "statuses": [
+          "ok",
+          "ok",
+          "ok"
+        ],
+        "worst_max_z": 0.8710229465948603
+      }
+    ],
+    "status": "passed",
+    "target_backend": "nextstat_mams"
+  },
+  "schema_version": "nextstat.mams_multiseed_assessment.v1",
+  "source_summary_path": "mams_multiseed_summary.json",
+  "source_summary_sha256": "1c673eca3ee0a946dcdd25e3dd2baf395fe3daf96ab6146f51452d3e18d4ec13",
+  "suite": "mams"
+}

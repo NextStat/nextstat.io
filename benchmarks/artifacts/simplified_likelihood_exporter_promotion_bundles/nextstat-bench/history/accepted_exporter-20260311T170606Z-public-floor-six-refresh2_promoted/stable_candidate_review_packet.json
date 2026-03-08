@@ -1,0 +1,114 @@
+{
+  "automatic_stable_promotion": false,
+  "bundle_dir": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted",
+  "evidence_snapshot": {
+    "benchmark_host": "nextstat-bench",
+    "future_stable_review_ready": true,
+    "max_abs_q_mu_diff": 0.09089073579143658,
+    "max_upper_limit_ratio_deviation": 0.0093663653819136,
+    "min_net_end_to_end_upper_limit_speedup": 2.0581999472135606,
+    "public_reinterpretation_style_case_count": 6,
+    "stable_candidate_status": "ready",
+    "stable_review_status": "review_ready"
+  },
+  "generated_at_utc": "1970-01-01T00:00:00Z",
+  "packet_validity": {
+    "failures": [],
+    "passed": true,
+    "status": "passed",
+    "warnings": []
+  },
+  "remaining_blockers": [],
+  "review_documents": {
+    "acceptance_doc": "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md",
+    "artifact_reference_doc": "docs/references/simplified-likelihood-artifacts.md",
+    "blocker_matrix_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-blocker-matrix-2026-03-09.md",
+    "promotion_runbook_doc": "docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md",
+    "review_packet_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-review-packet-2026-03-09.md",
+    "runtime_gate_doc": "docs/benchmarks/simplified-likelihood-exporter-runtime-gate.md",
+    "stable_promotion_decision_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-promotion-decision-2026-03-09.md",
+    "stable_promotion_release_pr_checklist_doc": "docs/benchmarks/simplified-likelihood-exporter-release-pr-checklist-2026-03-09.md",
+    "stable_review_checklist_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-review-checklist-2026-03-09.md",
+    "stable_source_semantics_boundary_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-source-semantics-boundary-2026-03-09.md"
+  },
+  "review_packet": {
+    "maintainer_recommendation": "the narrow stable exporter subset is explicitly promoted; maintain the release-facing evidence and keep wider fallback modes research-grade",
+    "next_action": "keep the accepted narrow stable exporter subset aligned and retain wider fallback modes as research-grade",
+    "open_blocker_count": 0,
+    "ready": true,
+    "recommendation_status": "stable_promoted",
+    "recommended_support_class": "stable",
+    "resolved_blocker_count": 4,
+    "status": "ready",
+    "target_support_class": "stable"
+  },
+  "schema_version": "nextstat_simplified_likelihood_exporter_stable_candidate_review_packet_v0",
+  "source_artifacts": {
+    "benchmark_artifact": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
+      "schema_version": "nextstat_apex2_simplified_likelihood_report_v0",
+      "sha256": "a8bf1a8ec09c81edd1fbd060f7d0575ffe81681447f1ebed0647c620a89d8169",
+      "status": null
+    },
+    "promotion_evidence": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_bundle_v0",
+      "sha256": "bbd6905a34b6ab8958cde51aca4fe0e8c7ac53d57b853045e565c23f230c0756",
+      "status": null
+    },
+    "promotion_evidence_check": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence_check.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_check_v0",
+      "sha256": "c4302a3e58b4f7e729997533bb113dd56cc187303589f864298b6047de5ceeac",
+      "status": "passed"
+    },
+    "promotion_report": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_bundle_promotion_report.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_promotion_bundle_promotion_report_v0",
+      "sha256": "b4be70f3baa67858db0c06284cbe748f5369a06f236cdff43994a183b935d722",
+      "status": "promoted"
+    },
+    "stable_candidate_blocker_matrix": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_candidate_blocker_matrix.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0",
+      "sha256": "d48c9e0f6828c8633ffa8c92e478ca0661ce0b9202218258d4d03a209ae87a3f",
+      "status": null
+    },
+    "stable_promotion_decision": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_stable_promotion_decision_v0",
+      "sha256": null,
+      "status": "accepted"
+    },
+    "stable_review_assessment": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_review_assessment.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_stable_review_assessment_v0",
+      "sha256": "47619d0e1ca9ba2dd9230c09a71a07896a0e1d951bbb82ccf20b9092905e5cff",
+      "status": null
+    },
+    "stable_source_semantics_boundary": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_source_semantics_boundary.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_stable_source_semantics_boundary_v0",
+      "sha256": "294d8a6a08148eedf582ddd9a6f0c54c29869f4f428347fea016fb4b5ddedeaa",
+      "status": "published"
+    }
+  },
+  "summary": {
+    "benchmark_host": "nextstat-bench",
+    "next_action": "keep the accepted narrow stable exporter subset aligned and retain wider fallback modes as research-grade",
+    "open_blocker_count": 0,
+    "recommendation_status": "stable_promoted",
+    "review_packet_ready": true,
+    "status": "ready"
+  },
+  "support_class": "stable",
+  "surface": "simplified_likelihood_exporter"
+}

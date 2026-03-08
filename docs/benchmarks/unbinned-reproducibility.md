@@ -109,8 +109,8 @@ This runbook executes CPU + CUDA host + CUDA device-sharded toy fits and pulls a
 artifacts (`*.meta.json`, `*.metrics.json`, `*.out.json`, `*.err`) locally.
 
 ```bash
-PF31_HOST=88.198.23.172 \
-PF31_KEY=~/.ssh/rundesk_hetzner \
+PF31_HOST=<bench-host-ip> \
+PF31_KEY=~/.ssh/<bench-key> \
 PF31_BIN=$NEXTSTAT_BIN \
 PF31_SPEC=$NEXTSTAT_ROOT/benchmarks/unbinned/specs/pf31_gauss_exp_10k.json \
 PF31_TOYS=10000,100000 \

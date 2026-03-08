@@ -1,0 +1,84 @@
+name: GVM Stable-First
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - "crates/ns-inference/src/measurement_combine.rs"
+      - "crates/ns-inference/src/optimizer.rs"
+      - "crates/ns-cli/src/main.rs"
+      - "crates/ns-cli/tests/cli_measurement_combine.rs"
+      - "bindings/ns-py/**"
+      - "tests/python/test_hep_module_api.py"
+      - "tests/fixtures/measurement_combine_*"
+      - "docs/references/cli.md"
+      - "docs/references/python-api.md"
+      - "docs/tutorials/hep-gvm-measurement-combinations.md"
+      - "docs/ru/tutorials/hep-gvm-measurement-combinations.md"
+      - "docs/benchmarks/gvm-*"
+      - "scripts/gvm/**"
+      - "Makefile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - "crates/ns-inference/src/measurement_combine.rs"
+      - "crates/ns-inference/src/optimizer.rs"
+      - "crates/ns-cli/src/main.rs"
+      - "crates/ns-cli/tests/cli_measurement_combine.rs"
+      - "bindings/ns-py/**"
+      - "tests/python/test_hep_module_api.py"
+      - "tests/fixtures/measurement_combine_*"
+      - "docs/references/cli.md"
+      - "docs/references/python-api.md"
+      - "docs/tutorials/hep-gvm-measurement-combinations.md"
+      - "docs/ru/tutorials/hep-gvm-measurement-combinations.md"
+      - "docs/benchmarks/gvm-*"
+      - "scripts/gvm/**"
+      - "Makefile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+concurrency:
+  group: gvm-stable-first-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    name: Stable-First Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Create virtualenv
+        run: python -m venv .venv
+
+      - name: Install Python dependencies
+        run: |
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install "maturin>=1.11,<2.0" "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "jsonschema>=4.0" "pyarrow>=18.0" "polars>=1.0" "duckdb>=1.0"
+
+      - name: Shellcheck (bash -n) stable-first gate
+        run: bash -n scripts/gvm/stable_first_gate.sh
+
+      - name: Run stable-first GVM gate
+        run: bash scripts/gvm/stable_first_gate.sh

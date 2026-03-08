@@ -316,6 +316,7 @@ EOF
 | **staterror** | `staterror` | Gaussian | MC statistical uncertainty (Barlow-Beeston) |
 | **lumi** | `lumi` | Gaussian | Luminosity uncertainty (correlated across samples) |
 | **shapefactor** | `shapefactor` | None (free) | Per-bin free normalization (data-driven bkg) |
+| **template_morphing** | `template_morphing` | None | Per-bin polynomial signal morphing (TRExFitter ghost samples) |
 
 #### normfactor — free normalization
 
@@ -390,6 +391,24 @@ actual uncertainty value comes from the measurement's `parameters` block (see Se
 
 One free (unconstrained) parameter per bin. Used for data-driven background estimation
 in control regions.
+
+#### template_morphing — polynomial signal morphing
+
+```json
+{
+  "name": "Ytsq",
+  "type": "template_morphing",
+  "data": {
+    "coefficients": [[0.5, 0.3, 0.2], [1.0, -0.1, 0.05]]
+  }
+}
+```
+
+Replaces the signal nominal with a per-bin polynomial evaluated at the current
+POI value: `nominal[b] = c[b][0] + c[b][1]·POI + c[b][2]·POI² + …`. This is
+built automatically from TRExFitter ghost samples (`Type: GHOST` with
+`Template: POI:value`). You typically don't write this by hand — it's produced
+during `nextstat import trex-config` in HIST mode.
 
 ### 3.4 Measurement configuration
 
@@ -782,10 +801,11 @@ You can render them with matplotlib, ROOT, or any plotting library.
 
 ### 8.1 Nuisance parameter ranking (impact)
 
-The ranking shows which systematics have the largest impact on μ:
+The ranking shows which systematics have the largest impact on μ.
+Pass `--fit` with a previous fit result to skip the redundant nominal fit and speed things up:
 
 ```bash
-nextstat viz ranking --input multichannel.json --output ranking.json
+nextstat viz ranking --input multichannel.json --fit fit.json --output ranking.json
 ```
 
 ```python
@@ -807,8 +827,12 @@ Pulls show how much each nuisance parameter shifted from its nominal value:
 # First, save the fit result
 nextstat fit --input multichannel.json > fit.json
 
-# Then generate pull artifact
+# Then generate pull artifact (JSON)
 nextstat viz pulls --input multichannel.json --fit fit.json --output pulls.json
+
+# Render to PNG or PDF
+nextstat viz render --kind pulls --input pulls.json --output pulls.png
+nextstat viz render --kind pulls --input pulls.json --output pulls.pdf
 ```
 
 ```python
@@ -1207,7 +1231,7 @@ plt.show()
 | Upper limit (bisection) | `nextstat upper-limit --input ws.json --expected` |
 | Upper limit (scan) | `nextstat upper-limit --input ws.json --scan-start 0 --scan-stop 5 --scan-points 201` |
 | Profile scan | `nextstat scan --input ws.json --start 0 --stop 3 --points 31` |
-| NP ranking | `nextstat viz ranking --input ws.json` |
+| NP ranking | `nextstat viz ranking --input ws.json --fit fit.json` |
 | Pull plot | `nextstat viz pulls --input ws.json --fit fit.json` |
 | Correlation matrix | `nextstat viz corr --input ws.json --fit fit.json` |
 | Distributions | `nextstat viz distributions --input ws.json --histfactory-xml combination.xml --fit fit.json` |

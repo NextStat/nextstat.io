@@ -1,0 +1,311 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/validation/m15_config_v1.schema.json",
+  "title": "NextStat ICH M15 Config v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "deterministic",
+    "jurisdiction_profile",
+    "product_context",
+    "context_of_use",
+    "questions_of_interest",
+    "planned_datasets",
+    "methods",
+    "authors",
+    "technical_acceptance_criteria",
+    "supporting_artifacts",
+    "review_plan",
+    "reporting_strategy"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "m15_config_v1"
+    },
+    "deterministic": {
+      "type": "boolean"
+    },
+    "jurisdiction_profile": {
+      "type": "string",
+      "enum": ["ich_core", "ema_step5_2026", "fda_draft_2024"]
+    },
+    "product_context": {
+      "$ref": "#/$defs/product_context"
+    },
+    "context_of_use": {
+      "type": "string",
+      "minLength": 1
+    },
+    "questions_of_interest": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/question_of_interest"
+      }
+    },
+    "planned_datasets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/dataset_ref"
+      }
+    },
+    "methods": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/method_ref"
+      }
+    },
+    "authors": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/person_role"
+      }
+    },
+    "technical_acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/criterion"
+      }
+    },
+    "supporting_artifacts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/artifact_ref"
+      }
+    },
+    "review_plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["primary_author", "qa_reviewer", "approver", "status"],
+      "properties": {
+        "primary_author": {
+          "type": "string",
+          "minLength": 1
+        },
+        "qa_reviewer": {
+          "type": "string",
+          "minLength": 1
+        },
+        "approver": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": ["draft", "review_ready", "approved"]
+        }
+      }
+    },
+    "reporting_strategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assessment_table_required", "map_required", "mar_required"],
+      "properties": {
+        "assessment_table_required": {
+          "type": "boolean"
+        },
+        "map_required": {
+          "type": "boolean"
+        },
+        "mar_required": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_type", "path", "sha256"],
+      "properties": {
+        "artifact_type": {
+          "type": "string",
+          "enum": [
+            "validation_report",
+            "pharma_validation",
+            "workspace",
+            "assessment_table",
+            "map",
+            "mar",
+            "other"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "role": {
+          "type": "string"
+        }
+      }
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "criterion_id",
+        "description",
+        "rationale",
+        "target",
+        "source",
+        "applies_to_qoi"
+      ],
+      "properties": {
+        "criterion_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "enum": ["regulatory", "scientific", "operational"]
+        },
+        "applies_to_qoi": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "dataset_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["dataset_id", "description", "purpose"],
+      "properties": {
+        "dataset_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "method_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method_id", "description"],
+      "properties": {
+        "method_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "software_ref": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "person_role": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "role"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "organization": {
+          "type": "string"
+        }
+      }
+    },
+    "product_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["program_name", "compound_name", "indication", "sponsor"],
+      "properties": {
+        "program_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "compound_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "indication": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sponsor": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "question_of_interest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qoi_id",
+        "question",
+        "context_of_use",
+        "model_influence",
+        "consequence_of_wrong_decision",
+        "decision_impact"
+      ],
+      "properties": {
+        "qoi_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "context_of_use": {
+          "type": "string",
+          "minLength": 1
+        },
+        "model_influence": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "consequence_of_wrong_decision": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        },
+        "decision_impact": {
+          "type": "string",
+          "enum": ["low", "medium", "high"]
+        }
+      }
+    }
+  }
+}

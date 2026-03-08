@@ -1,0 +1,363 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/hep/simplified_likelihood_v0.schema.json",
+  "title": "NextStat Simplified Likelihood v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "metadata",
+    "poi",
+    "bins",
+    "observed",
+    "background_nominal",
+    "uncertainty_model"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_simplified_likelihood_v0"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "experiment",
+        "analysis_id",
+        "source_format",
+        "reference"
+      ],
+      "properties": {
+        "experiment": { "type": "string", "minLength": 1 },
+        "analysis_id": { "type": "string", "minLength": 1 },
+        "source_format": {
+          "type": "string",
+          "enum": ["basis", "covariance", "derived_from_workspace"]
+        },
+        "reference": { "type": "string", "minLength": 1 },
+        "description": {
+          "type": ["string", "null"],
+          "minLength": 1
+        }
+      }
+    },
+    "poi": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "init", "bounds"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "init": { "type": "number" },
+        "bounds": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        }
+      }
+    },
+    "bins": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["channel", "name"],
+        "properties": {
+          "channel": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "observed": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "number", "minimum": 0.0 }
+    },
+    "background_nominal": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "number", "minimum": 0.0 }
+    },
+    "signal_nominal": {
+      "type": ["array", "null"],
+      "items": { "type": "number", "minimum": 0.0 }
+    },
+    "uncertainty_model": {
+      "oneOf": [
+        { "$ref": "#/$defs/basis_uncertainty_model" },
+        { "$ref": "#/$defs/covariance_uncertainty_model" }
+      ]
+    },
+    "derivation": {
+      "oneOf": [
+        { "$ref": "#/$defs/derivation" },
+        { "type": "null" }
+      ]
+    },
+    "diagnostics": {
+      "oneOf": [
+        { "$ref": "#/$defs/diagnostics" },
+        { "type": "null" }
+      ]
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "source_format": {
+                "const": "derived_from_workspace"
+              }
+            },
+            "required": ["source_format"]
+          }
+        },
+        "required": ["metadata"]
+      },
+      "then": {
+        "required": ["derivation", "diagnostics"],
+        "properties": {
+          "derivation": {
+            "$ref": "#/$defs/derivation"
+          },
+          "diagnostics": {
+            "type": "object",
+            "required": ["fidelity"],
+            "properties": {
+              "fidelity": {
+                "$ref": "#/$defs/derived_fidelity_diagnostics"
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "nonnegative_vector": {
+      "type": "array",
+      "items": { "type": "number", "minimum": 0.0 }
+    },
+    "matrix": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "array",
+        "minItems": 1,
+        "items": { "type": "number" }
+      }
+    },
+    "basis_component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "hi", "lo"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "hi": { "$ref": "#/$defs/nonnegative_vector" },
+        "lo": { "$ref": "#/$defs/nonnegative_vector" }
+      }
+    },
+    "basis_uncertainty_model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "const": "basis" },
+        "components": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/basis_component" }
+        }
+      }
+    },
+    "covariance_uncertainty_model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "total_covariance"],
+      "properties": {
+        "kind": { "const": "covariance" },
+        "total_covariance": { "$ref": "#/$defs/matrix" },
+        "stat_covariance": {
+          "oneOf": [
+            { "$ref": "#/$defs/matrix" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "derivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_workspace_format",
+        "selected_channels",
+        "basis_method",
+        "explained_variance_target",
+        "constraint_covariance_source",
+        "jacobian_method",
+        "split_stat_covariance"
+      ],
+      "properties": {
+        "source_workspace_format": {
+          "type": "string",
+          "enum": ["pyhf", "hs3"]
+        },
+        "source_workspace_schema_version": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "fit_result_schema_version": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "selected_channels": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "selected_bins": {
+          "type": ["array", "null"],
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "basis_method": {
+          "type": "string",
+          "const": "eigen"
+        },
+        "explained_variance_target": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "maximum": 1.0
+        },
+        "constraint_covariance_source": {
+          "type": "string",
+          "enum": ["source_model_constraints", "aligned_fit_covariance"]
+        },
+        "jacobian_method": {
+          "type": "string",
+          "const": "finite_difference"
+        },
+        "split_stat_covariance": {
+          "type": "boolean"
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "factorization": {
+          "oneOf": [
+            { "$ref": "#/$defs/factorization_diagnostics" },
+            { "type": "null" }
+          ]
+        },
+        "fidelity": {
+          "oneOf": [
+            { "$ref": "#/$defs/fidelity_diagnostics" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "factorization_diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "method",
+        "original_rank",
+        "retained_rank",
+        "explained_variance_fraction",
+        "frobenius_residual"
+      ],
+      "properties": {
+        "method": { "type": "string", "minLength": 1 },
+        "original_rank": { "type": "integer", "minimum": 0 },
+        "retained_rank": { "type": "integer", "minimum": 0 },
+        "explained_variance_fraction": { "type": "number" },
+        "frobenius_residual": { "type": "number", "minimum": 0.0 },
+        "clipped_negative_eigenvalues": { "type": "integer", "minimum": 0 },
+        "max_clipped_negative_eigenvalue_magnitude": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "input_trace": { "type": "number", "minimum": 0.0 },
+        "retained_trace": { "type": "number", "minimum": 0.0 },
+        "stat_covariance_trace": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        },
+        "shared_systematic_trace": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        }
+      }
+    },
+    "fidelity_diagnostics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "nuisance_count_full": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "nuisance_count_reduced": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "bins_count": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "relative_background_cov_residual": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        },
+        "max_abs_expected_delta_at_nominal": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        },
+        "max_abs_expected_delta_random_draws": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        },
+        "qmu_delta_smoke": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        },
+        "upper_limit_ratio_smoke": {
+          "type": ["number", "null"],
+          "exclusiveMinimum": 0.0
+        },
+        "max_abs_yield_delta": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        },
+        "max_rel_yield_delta": {
+          "type": ["number", "null"],
+          "minimum": 0.0
+        }
+      }
+    },
+    "derived_fidelity_diagnostics": {
+      "allOf": [
+        { "$ref": "#/$defs/fidelity_diagnostics" },
+        {
+          "type": "object",
+          "required": [
+            "nuisance_count_full",
+            "nuisance_count_reduced",
+            "bins_count",
+            "relative_background_cov_residual",
+            "max_abs_expected_delta_at_nominal",
+            "max_abs_expected_delta_random_draws",
+            "qmu_delta_smoke",
+            "upper_limit_ratio_smoke"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "case_name": "competing_risks_cif_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_competing_risks": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_competing_risks"
+      },
+      "ok": true,
+      "result": {
+        "cause": 1,
+        "ci_lower": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "ci_upper": [
+          0.4708380577836657,
+          0.9102597876033485,
+          1.0
+        ],
+        "cif": [
+          0.16666666666666666,
+          0.3888888888888889,
+          0.6111111111111112
+        ],
+        "n": 6,
+        "n_events": 3,
+        "se": [
+          0.1551582227085438,
+          0.2659519743767606,
+          0.529237746757157
+        ],
+        "times": [
+          1.0,
+          4.0,
+          6.0
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

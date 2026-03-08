@@ -1,0 +1,55 @@
+{
+  "schema_version": "nextstat_normal_normal_operating_characteristics_v0",
+  "stability": "research-grade",
+  "design_id": "continuous_superiority_demo",
+  "n_replicates": 32,
+  "seed": 456,
+  "scenarios": [
+    {
+      "scenario_id": "null",
+      "mean_control": 0.0,
+      "mean_treatment": 0.0,
+      "success_rate": 0.03125,
+      "futility_rate": 0.1875,
+      "no_decision_rate": 0.78125,
+      "expected_total_sample_size": 36.875,
+      "look_summaries": [
+        {
+          "look_id": "interim",
+          "stop_probability": 0.15625,
+          "success_probability": 0.03125,
+          "futility_probability": 0.125
+        },
+        {
+          "look_id": "final",
+          "stop_probability": 0.0625,
+          "success_probability": 0.0,
+          "futility_probability": 0.0625
+        }
+      ]
+    },
+    {
+      "scenario_id": "alt",
+      "mean_control": 0.0,
+      "mean_treatment": 0.75,
+      "success_rate": 0.625,
+      "futility_rate": 0.0,
+      "no_decision_rate": 0.375,
+      "expected_total_sample_size": 33.125,
+      "look_summaries": [
+        {
+          "look_id": "interim",
+          "stop_probability": 0.34375,
+          "success_probability": 0.34375,
+          "futility_probability": 0.0
+        },
+        {
+          "look_id": "final",
+          "stop_probability": 0.28125,
+          "success_probability": 0.28125,
+          "futility_probability": 0.0
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/mams_multiseed_summary_v1.schema.json",
+  "title": "NextStat MAMS Multi-Seed Summary v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "generated_at", "suite", "seeds", "backends", "config", "cases", "parity"],
+  "properties": {
+    "schema_version": { "const": "nextstat.mams_multiseed_summary.v1" },
+    "generated_at": { "type": "string", "minLength": 1 },
+    "suite": { "const": "mams" },
+    "seeds": { "type": "array", "items": { "type": "integer" }, "minItems": 1 },
+    "backends": { "type": "string", "minLength": 1 },
+    "config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n_chains", "n_warmup", "n_samples", "dataset_seed", "target_accept", "run_timeout_s", "parity_warn_z", "parity_fail_z", "deterministic"],
+      "properties": {
+        "n_chains": { "type": "integer", "minimum": 1 },
+        "n_warmup": { "type": "integer", "minimum": 0 },
+        "n_samples": { "type": "integer", "minimum": 1 },
+        "dataset_seed": { "type": "integer", "minimum": 0 },
+        "target_accept": { "type": "number", "minimum": 0, "maximum": 1 },
+        "run_timeout_s": { "type": "number", "minimum": 0 },
+        "parity_warn_z": { "type": "number", "minimum": 0 },
+        "parity_fail_z": { "type": "number", "minimum": 0 },
+        "deterministic": { "type": "boolean" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["case", "backend", "statuses", "wall_time_s", "n_grad_evals", "ess_per_grad", "ess_per_sec", "ess_per_sec_warm", "min_ess_bulk", "min_ess_tail", "max_r_hat", "accept_rate", "configs"],
+        "properties": {
+          "case": { "type": "string", "minLength": 1 },
+          "backend": { "type": "string", "minLength": 1 },
+          "statuses": { "type": "array", "items": { "type": "string" } },
+          "wall_time_s": { "type": "array", "items": { "type": "number" } },
+          "n_grad_evals": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+          "n_integration_steps": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+          "ess_per_grad": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+          "ess_per_sec": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+          "ess_per_sec_warm": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+          "min_ess_bulk": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+          "min_ess_tail": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+          "max_r_hat": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+          "accept_rate": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1 } },
+          "configs": { "type": "array", "items": { "type": "object" } }
+        }
+      }
+    },
+    "parity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "warn_z", "fail_z", "rows"],
+      "properties": {
+        "method": { "type": "string", "minLength": 1 },
+        "note": { "type": "string" },
+        "warn_z": { "type": "number", "minimum": 0 },
+        "fail_z": { "type": "number", "minimum": 0 },
+        "rows": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["case", "statuses", "max_z", "seed_rows"],
+            "properties": {
+              "case": { "type": "string", "minLength": 1 },
+              "statuses": { "type": "array", "items": { "type": "string" } },
+              "max_z": { "type": "array", "items": { "type": "number", "minimum": 0 } },
+              "seed_rows": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["seed", "status", "max_z", "worst"],
+                  "properties": {
+                    "seed": { "type": "integer", "minimum": 0 },
+                    "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
+                    "max_z": { "type": ["number", "null"], "minimum": 0 },
+                    "worst": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["param", "z"],
+                        "properties": {
+                          "param": { "type": "string", "minLength": 1 },
+                          "z": { "type": "number", "minimum": 0 }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

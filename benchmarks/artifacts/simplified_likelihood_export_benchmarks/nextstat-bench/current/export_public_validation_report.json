@@ -1,0 +1,447 @@
+{
+  "benchmark_artifact_schema_version": "nextstat_apex2_simplified_likelihood_report_v0",
+  "benchmark_artifact_source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
+  "boundary": {
+    "does_not_expand_promoted_runtime_claim": true,
+    "promoted_runtime_constraint_covariance_source": "source_model_constraints",
+    "public_cases_outside_promoted_runtime_boundary_allowed": false,
+    "surface_support_class": "stable-evidence"
+  },
+  "cases": [
+    {
+      "analysis_id": "atlas.public.dual_sr_dual_cr_gaussian.export.stable.example",
+      "case_id": "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
+      "constraint_covariance_source": "source_model_constraints",
+      "experiment": "ATLAS",
+      "fidelity": {
+        "delta_mu_hat_over_sigma_full": 0.005404086416542543,
+        "max_abs_q_mu_diff": 0.02608528596566373,
+        "passes": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "upper_limit_ratio": 0.9991589823686661
+      },
+      "gaussian_constrained_source_workspace": true,
+      "name": "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
+      "output": {
+        "full_nuisance_count": 6,
+        "reduced_nuisance_count": 4,
+        "reduction_ratio": 0.6666666666666666,
+        "uncertainty_model_kind": "basis"
+      },
+      "outside_promoted_stable_runtime_boundary_reason": null,
+      "performance": {
+        "net_end_to_end_upper_limit_speedup": 1.9266417121762913,
+        "passes": {
+          "net_end_to_end_upper_limit_speedup": true
+        }
+      },
+      "reference": "https://nextstat.io/examples/atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
+      "source_workspace_modifier_types": [
+        "histosys",
+        "lumi",
+        "normfactor",
+        "normsys"
+      ],
+      "source_workspace_path": "tests/fixtures/atlas_public_dual_sr_dual_cr_gaussian_workspace.json",
+      "title": "ATLAS-style dual-SR plus dual-control-region Gaussian export stable example",
+      "validation": {
+        "audit_schema_valid": true,
+        "export_report_schema_valid": true,
+        "input_schema_valid": true,
+        "runtime_export_ok": true,
+        "schema_valid": true
+      },
+      "within_promoted_stable_runtime_boundary": true
+    },
+    {
+      "analysis_id": "atlas.public.dual_sr_vr_dual_cr_gaussian.export.stable.example",
+      "case_id": "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+      "constraint_covariance_source": "source_model_constraints",
+      "experiment": "ATLAS",
+      "fidelity": {
+        "delta_mu_hat_over_sigma_full": 0.0035290771019297735,
+        "max_abs_q_mu_diff": 0.05788020569147534,
+        "passes": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "upper_limit_ratio": 0.9970556663088483
+      },
+      "gaussian_constrained_source_workspace": true,
+      "name": "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+      "output": {
+        "full_nuisance_count": 6,
+        "reduced_nuisance_count": 5,
+        "reduction_ratio": 0.8333333333333334,
+        "uncertainty_model_kind": "basis"
+      },
+      "outside_promoted_stable_runtime_boundary_reason": null,
+      "performance": {
+        "net_end_to_end_upper_limit_speedup": 1.9063922871235959,
+        "passes": {
+          "net_end_to_end_upper_limit_speedup": true
+        }
+      },
+      "reference": "https://nextstat.io/examples/atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+      "source_workspace_modifier_types": [
+        "histosys",
+        "lumi",
+        "normfactor",
+        "normsys"
+      ],
+      "source_workspace_path": "tests/fixtures/atlas_public_dual_sr_vr_dual_cr_gaussian_workspace.json",
+      "title": "ATLAS-style dual-SR plus validation-region and dual-control-region Gaussian export stable example",
+      "validation": {
+        "audit_schema_valid": true,
+        "export_report_schema_valid": true,
+        "input_schema_valid": true,
+        "runtime_export_ok": true,
+        "schema_valid": true
+      },
+      "within_promoted_stable_runtime_boundary": true
+    },
+    {
+      "analysis_id": "atlas.public.sr_cr_gaussian.export.stable.example",
+      "case_id": "atlas_public_sr_cr_gaussian_export_stable_example",
+      "constraint_covariance_source": "source_model_constraints",
+      "experiment": "ATLAS",
+      "fidelity": {
+        "delta_mu_hat_over_sigma_full": 0.016863095357083455,
+        "max_abs_q_mu_diff": 0.07062630565858541,
+        "passes": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "upper_limit_ratio": 0.9937054472091459
+      },
+      "gaussian_constrained_source_workspace": true,
+      "name": "atlas_public_sr_cr_gaussian_export_stable_example",
+      "output": {
+        "full_nuisance_count": 4,
+        "reduced_nuisance_count": 3,
+        "reduction_ratio": 0.75,
+        "uncertainty_model_kind": "basis"
+      },
+      "outside_promoted_stable_runtime_boundary_reason": null,
+      "performance": {
+        "net_end_to_end_upper_limit_speedup": 1.2558515460968596,
+        "passes": {
+          "net_end_to_end_upper_limit_speedup": true
+        }
+      },
+      "reference": "https://nextstat.io/examples/atlas_public_sr_cr_gaussian_export_stable_example",
+      "source_workspace_modifier_types": [
+        "histosys",
+        "lumi",
+        "normfactor",
+        "normsys"
+      ],
+      "source_workspace_path": "tests/fixtures/atlas_public_sr_cr_gaussian_workspace.json",
+      "title": "ATLAS-style SR plus dual control-region Gaussian export stable example",
+      "validation": {
+        "audit_schema_valid": true,
+        "export_report_schema_valid": true,
+        "input_schema_valid": true,
+        "runtime_export_ok": true,
+        "schema_valid": true
+      },
+      "within_promoted_stable_runtime_boundary": true
+    },
+    {
+      "analysis_id": "cms.public.sr_cr.export.stable.example",
+      "case_id": "cms_public_sr_cr_export_stable_example",
+      "constraint_covariance_source": "source_model_constraints",
+      "experiment": "CMS",
+      "fidelity": {
+        "delta_mu_hat_over_sigma_full": 0.01296020407101485,
+        "max_abs_q_mu_diff": 0.027635576167714504,
+        "passes": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "upper_limit_ratio": 0.9975456107338624
+      },
+      "gaussian_constrained_source_workspace": true,
+      "name": "cms_public_sr_cr_export_stable_example",
+      "output": {
+        "full_nuisance_count": 3,
+        "reduced_nuisance_count": 2,
+        "reduction_ratio": 0.6666666666666666,
+        "uncertainty_model_kind": "basis"
+      },
+      "outside_promoted_stable_runtime_boundary_reason": null,
+      "performance": {
+        "net_end_to_end_upper_limit_speedup": 0.9147416386115276,
+        "passes": {
+          "net_end_to_end_upper_limit_speedup": true
+        }
+      },
+      "reference": "https://nextstat.io/examples/cms_public_sr_cr_export_stable_example",
+      "source_workspace_modifier_types": [
+        "histosys",
+        "lumi",
+        "normfactor",
+        "normsys"
+      ],
+      "source_workspace_path": "tests/fixtures/cms_public_sr_cr_gaussian_workspace.json",
+      "title": "CMS-style SR+CR public export stable example",
+      "validation": {
+        "audit_schema_valid": true,
+        "export_report_schema_valid": true,
+        "input_schema_valid": true,
+        "runtime_export_ok": true,
+        "schema_valid": true
+      },
+      "within_promoted_stable_runtime_boundary": true
+    },
+    {
+      "analysis_id": "cms.public.sr_cr_asymmetric_gaussian.export.stable.example",
+      "case_id": "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+      "constraint_covariance_source": "source_model_constraints",
+      "experiment": "CMS",
+      "fidelity": {
+        "delta_mu_hat_over_sigma_full": 0.03077025341790298,
+        "max_abs_q_mu_diff": 0.09089073579143658,
+        "passes": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "upper_limit_ratio": 0.9906336346180864
+      },
+      "gaussian_constrained_source_workspace": true,
+      "name": "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+      "output": {
+        "full_nuisance_count": 3,
+        "reduced_nuisance_count": 2,
+        "reduction_ratio": 0.6666666666666666,
+        "uncertainty_model_kind": "basis"
+      },
+      "outside_promoted_stable_runtime_boundary_reason": null,
+      "performance": {
+        "net_end_to_end_upper_limit_speedup": 0.8777103422927768,
+        "passes": {
+          "net_end_to_end_upper_limit_speedup": true
+        }
+      },
+      "reference": "https://nextstat.io/examples/cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+      "source_workspace_modifier_types": [
+        "histosys",
+        "lumi",
+        "normfactor",
+        "normsys"
+      ],
+      "source_workspace_path": "tests/fixtures/cms_public_sr_cr_asymmetric_gaussian_workspace.json",
+      "title": "CMS-style asymmetric SR+CR Gaussian export stable example",
+      "validation": {
+        "audit_schema_valid": true,
+        "export_report_schema_valid": true,
+        "input_schema_valid": true,
+        "runtime_export_ok": true,
+        "schema_valid": true
+      },
+      "within_promoted_stable_runtime_boundary": true
+    },
+    {
+      "analysis_id": "cms.public.dual_sr_cr_gaussian.export.stable.example",
+      "case_id": "cms_public_dual_sr_cr_gaussian_export_stable_example",
+      "constraint_covariance_source": "source_model_constraints",
+      "experiment": "CMS",
+      "fidelity": {
+        "delta_mu_hat_over_sigma_full": 0.017119700454164694,
+        "max_abs_q_mu_diff": 0.07556543092300672,
+        "passes": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "upper_limit_ratio": 0.992664727456684
+      },
+      "gaussian_constrained_source_workspace": true,
+      "name": "cms_public_dual_sr_cr_gaussian_export_stable_example",
+      "output": {
+        "full_nuisance_count": 6,
+        "reduced_nuisance_count": 3,
+        "reduction_ratio": 0.5,
+        "uncertainty_model_kind": "basis"
+      },
+      "outside_promoted_stable_runtime_boundary_reason": null,
+      "performance": {
+        "net_end_to_end_upper_limit_speedup": 1.6702208664254055,
+        "passes": {
+          "net_end_to_end_upper_limit_speedup": true
+        }
+      },
+      "reference": "https://nextstat.io/examples/cms_public_dual_sr_cr_gaussian_export_stable_example",
+      "source_workspace_modifier_types": [
+        "histosys",
+        "lumi",
+        "normfactor",
+        "normsys"
+      ],
+      "source_workspace_path": "tests/fixtures/cms_public_dual_sr_cr_gaussian_workspace.json",
+      "title": "CMS-style dual-SR plus shared control-region Gaussian export stable example",
+      "validation": {
+        "audit_schema_valid": true,
+        "export_report_schema_valid": true,
+        "input_schema_valid": true,
+        "runtime_export_ok": true,
+        "schema_valid": true
+      },
+      "within_promoted_stable_runtime_boundary": true
+    },
+    {
+      "analysis_id": "cms.public.sr_dual_cr_gaussian.export.stable.example",
+      "case_id": "cms_public_sr_dual_cr_gaussian_export_stable_example",
+      "constraint_covariance_source": "source_model_constraints",
+      "experiment": "CMS",
+      "fidelity": {
+        "delta_mu_hat_over_sigma_full": 0.011976456822630422,
+        "max_abs_q_mu_diff": 0.0699530228330083,
+        "passes": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "upper_limit_ratio": 0.9908141962421712
+      },
+      "gaussian_constrained_source_workspace": true,
+      "name": "cms_public_sr_dual_cr_gaussian_export_stable_example",
+      "output": {
+        "full_nuisance_count": 6,
+        "reduced_nuisance_count": 3,
+        "reduction_ratio": 0.5,
+        "uncertainty_model_kind": "basis"
+      },
+      "outside_promoted_stable_runtime_boundary_reason": null,
+      "performance": {
+        "net_end_to_end_upper_limit_speedup": 1.5808319659542889,
+        "passes": {
+          "net_end_to_end_upper_limit_speedup": true
+        }
+      },
+      "reference": "https://nextstat.io/examples/cms_public_sr_dual_cr_gaussian_export_stable_example",
+      "source_workspace_modifier_types": [
+        "histosys",
+        "lumi",
+        "normfactor",
+        "normsys"
+      ],
+      "source_workspace_path": "tests/fixtures/cms_public_sr_dual_cr_gaussian_workspace.json",
+      "title": "CMS-style SR plus dual control-region Gaussian export stable example",
+      "validation": {
+        "audit_schema_valid": true,
+        "export_report_schema_valid": true,
+        "input_schema_valid": true,
+        "runtime_export_ok": true,
+        "schema_valid": true
+      },
+      "within_promoted_stable_runtime_boundary": true
+    },
+    {
+      "analysis_id": "cms.public.sr_vr_dual_cr_gaussian.export.stable.example",
+      "case_id": "cms_public_sr_vr_dual_cr_gaussian_export_stable_example",
+      "constraint_covariance_source": "source_model_constraints",
+      "experiment": "CMS",
+      "fidelity": {
+        "delta_mu_hat_over_sigma_full": 0.021120606697488276,
+        "max_abs_q_mu_diff": 0.09618848026584459,
+        "passes": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "upper_limit_ratio": 0.9888093318791787
+      },
+      "gaussian_constrained_source_workspace": true,
+      "name": "cms_public_sr_vr_dual_cr_gaussian_export_stable_example",
+      "output": {
+        "full_nuisance_count": 6,
+        "reduced_nuisance_count": 3,
+        "reduction_ratio": 0.5,
+        "uncertainty_model_kind": "basis"
+      },
+      "outside_promoted_stable_runtime_boundary_reason": null,
+      "performance": {
+        "net_end_to_end_upper_limit_speedup": 1.9760145143886485,
+        "passes": {
+          "net_end_to_end_upper_limit_speedup": true
+        }
+      },
+      "reference": "https://nextstat.io/examples/cms_public_sr_vr_dual_cr_gaussian_export_stable_example",
+      "source_workspace_modifier_types": [
+        "histosys",
+        "lumi",
+        "normfactor",
+        "normsys"
+      ],
+      "source_workspace_path": "tests/fixtures/cms_public_sr_vr_dual_cr_gaussian_workspace.json",
+      "title": "CMS-style SR plus validation region and dual control-region Gaussian export stable example",
+      "validation": {
+        "audit_schema_valid": true,
+        "export_report_schema_valid": true,
+        "input_schema_valid": true,
+        "runtime_export_ok": true,
+        "schema_valid": true
+      },
+      "within_promoted_stable_runtime_boundary": true
+    }
+  ],
+  "catalog_path": "docs/specs/apex2_simplified_likelihood_export_public_case_catalog_v0.example.json",
+  "catalog_schema_version": "nextstat_simplified_likelihood_export_public_case_catalog_v0",
+  "generated_at_utc": "2026-03-11T21:15:18Z",
+  "schema_version": "nextstat_simplified_likelihood_export_public_validation_report_v0",
+  "status": "ok",
+  "summary": {
+    "all_cases_gaussian_constrained_source_workspaces": true,
+    "all_cases_within_promoted_stable_runtime_boundary": true,
+    "all_fidelity_gates_pass": true,
+    "all_performance_gates_pass": true,
+    "all_schema_valid": true,
+    "benchmark_host": "nextstat-bench",
+    "benchmark_status": "ok",
+    "cases_outside_promoted_stable_runtime_boundary": 0,
+    "cases_within_promoted_stable_runtime_boundary": 8,
+    "catalog_case_count": 8,
+    "export_matrix_status": "ok",
+    "fidelity_thresholds": {
+      "max_abs_q_mu_diff": 0.1,
+      "max_upper_limit_ratio_deviation": 0.05
+    },
+    "max_abs_q_mu_diff": 0.09618848026584459,
+    "max_upper_limit_ratio_deviation": 0.011190668120821257,
+    "min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
+    "missing_catalog_case_ids": [],
+    "observed_constraint_covariance_sources": [
+      "source_model_constraints"
+    ],
+    "observed_source_workspace_modifier_types": [
+      "histosys",
+      "lumi",
+      "normfactor",
+      "normsys"
+    ],
+    "performance_thresholds": {
+      "min_net_end_to_end_upper_limit_speedup": 0.75
+    },
+    "public_case_count": 8,
+    "public_case_names": [
+      "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
+      "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+      "atlas_public_sr_cr_gaussian_export_stable_example",
+      "cms_public_sr_cr_export_stable_example",
+      "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+      "cms_public_dual_sr_cr_gaussian_export_stable_example",
+      "cms_public_sr_dual_cr_gaussian_export_stable_example",
+      "cms_public_sr_vr_dual_cr_gaussian_export_stable_example"
+    ],
+    "unexpected_public_case_names": []
+  },
+  "surface": "simplified_likelihood_export_public_validation"
+}

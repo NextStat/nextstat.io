@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/tools/nextstat_tool_contract_performance_budget_v1.schema.json",
+  "title": "NextStat Tool Contract Performance Budget v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "runner_modes",
+    "live_metrics"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.tool_contract_performance_budget.v1"
+    },
+    "runner_modes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fast",
+        "live",
+        "all"
+      ],
+      "properties": {
+        "fast": {
+          "$ref": "#/$defs/runner_mode_budget"
+        },
+        "live": {
+          "$ref": "#/$defs/runner_mode_budget"
+        },
+        "all": {
+          "$ref": "#/$defs/runner_mode_budget"
+        }
+      }
+    },
+    "live_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "server_build_duration_s",
+        "server_startup_duration_s",
+        "tools_schema_get_duration_s",
+        "workspace_audit_duration_s",
+        "fit_duration_s",
+        "e2e_discovery_duration_s"
+      ],
+      "properties": {
+        "server_build_duration_s": {
+          "$ref": "#/$defs/metric_budget"
+        },
+        "server_startup_duration_s": {
+          "$ref": "#/$defs/metric_budget"
+        },
+        "tools_schema_get_duration_s": {
+          "$ref": "#/$defs/metric_budget"
+        },
+        "workspace_audit_duration_s": {
+          "$ref": "#/$defs/metric_budget"
+        },
+        "fit_duration_s": {
+          "$ref": "#/$defs/metric_budget"
+        },
+        "e2e_discovery_duration_s": {
+          "$ref": "#/$defs/metric_budget"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "metric_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_duration_s",
+        "description"
+      ],
+      "properties": {
+        "max_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "runner_mode_budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_total_duration_s",
+        "steps"
+      ],
+      "properties": {
+        "max_total_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "steps": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/metric_budget"
+          }
+        }
+      }
+    }
+  }
+}

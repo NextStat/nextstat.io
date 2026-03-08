@@ -1,0 +1,240 @@
+{
+  "budget": {
+    "manifest_path": "scripts/bayesian_design_report_bundle_performance_budget_v1.json",
+    "manifest_repeat": 3,
+    "repeat": 2,
+    "runner_mode": "smoke",
+    "schema_version": "nextstat.bayesian_design_report_bundle_performance_budget.v1"
+  },
+  "cases": [
+    {
+      "budget_pass": {
+        "bundle_bytes": true,
+        "bundle_duration": true,
+        "manifest_bytes": true,
+        "manifest_regen_duration": true
+      },
+      "budget_thresholds": {
+        "max_bundle_bytes": 50000,
+        "max_bundle_duration_s": 1.0,
+        "max_manifest_bytes": 3000,
+        "max_manifest_regen_duration_s": 0.1
+      },
+      "design_family": "beta_binomial",
+      "id": "beta_small",
+      "input_mode": "path",
+      "manifest_regen_timing": {
+        "best_s": 0.001415,
+        "median_s": 0.001489,
+        "per_run_s": [
+          0.001415,
+          0.001489,
+          0.001663
+        ],
+        "policy": "min",
+        "repeat": 3
+      },
+      "report_scale": "small",
+      "sizes": {
+        "input_report_bytes": 6712,
+        "manifest_bytes": 1576,
+        "markdown_bytes": 1893,
+        "total_bundle_bytes": 15071
+      },
+      "status": "ok",
+      "timing": {
+        "best_s": 0.003862,
+        "median_s": 0.004018,
+        "per_run_s": [
+          0.003862,
+          0.004173
+        ],
+        "policy": "min",
+        "repeat": 2
+      },
+      "validation": {
+        "created_unix_ms_zero": true,
+        "manifest_file_count": 10,
+        "required_artifacts_present": true,
+        "summary_deterministic": true,
+        "summary_schema_version": "nextstat_bayesian_design_report_bundle_v0"
+      }
+    },
+    {
+      "budget_pass": {
+        "bundle_bytes": true,
+        "bundle_duration": true,
+        "manifest_bytes": true,
+        "manifest_regen_duration": true
+      },
+      "budget_thresholds": {
+        "max_bundle_bytes": 250000,
+        "max_bundle_duration_s": 1.5,
+        "max_manifest_bytes": 4000,
+        "max_manifest_regen_duration_s": 0.15
+      },
+      "design_family": "beta_binomial",
+      "id": "beta_large",
+      "input_mode": "path",
+      "manifest_regen_timing": {
+        "best_s": 0.001982,
+        "median_s": 0.002011,
+        "per_run_s": [
+          0.001982,
+          0.002011,
+          0.002144
+        ],
+        "policy": "min",
+        "repeat": 3
+      },
+      "report_scale": "large",
+      "sizes": {
+        "input_report_bytes": 18416,
+        "manifest_bytes": 1579,
+        "markdown_bytes": 4292,
+        "total_bundle_bytes": 40473
+      },
+      "status": "ok",
+      "timing": {
+        "best_s": 0.005911,
+        "median_s": 0.006083,
+        "per_run_s": [
+          0.005911,
+          0.006255
+        ],
+        "policy": "min",
+        "repeat": 2
+      },
+      "validation": {
+        "created_unix_ms_zero": true,
+        "manifest_file_count": 10,
+        "required_artifacts_present": true,
+        "summary_deterministic": true,
+        "summary_schema_version": "nextstat_bayesian_design_report_bundle_v0"
+      }
+    },
+    {
+      "budget_pass": {
+        "bundle_bytes": true,
+        "bundle_duration": true,
+        "manifest_bytes": true,
+        "manifest_regen_duration": true
+      },
+      "budget_thresholds": {
+        "max_bundle_bytes": 50000,
+        "max_bundle_duration_s": 1.0,
+        "max_manifest_bytes": 3000,
+        "max_manifest_regen_duration_s": 0.1
+      },
+      "design_family": "normal_normal",
+      "id": "normal_small",
+      "input_mode": "path",
+      "manifest_regen_timing": {
+        "best_s": 0.001428,
+        "median_s": 0.001483,
+        "per_run_s": [
+          0.001428,
+          0.001483,
+          0.001566
+        ],
+        "policy": "min",
+        "repeat": 3
+      },
+      "report_scale": "small",
+      "sizes": {
+        "input_report_bytes": 7059,
+        "manifest_bytes": 1577,
+        "markdown_bytes": 2012,
+        "total_bundle_bytes": 15838
+      },
+      "status": "ok",
+      "timing": {
+        "best_s": 0.003913,
+        "median_s": 0.004104,
+        "per_run_s": [
+          0.003913,
+          0.004296
+        ],
+        "policy": "min",
+        "repeat": 2
+      },
+      "validation": {
+        "created_unix_ms_zero": true,
+        "manifest_file_count": 10,
+        "required_artifacts_present": true,
+        "summary_deterministic": true,
+        "summary_schema_version": "nextstat_bayesian_design_report_bundle_v0"
+      }
+    },
+    {
+      "budget_pass": {
+        "bundle_bytes": true,
+        "bundle_duration": true,
+        "manifest_bytes": true,
+        "manifest_regen_duration": true
+      },
+      "budget_thresholds": {
+        "max_bundle_bytes": 250000,
+        "max_bundle_duration_s": 1.5,
+        "max_manifest_bytes": 4000,
+        "max_manifest_regen_duration_s": 0.15
+      },
+      "design_family": "normal_normal",
+      "id": "normal_large",
+      "input_mode": "path",
+      "manifest_regen_timing": {
+        "best_s": 0.001994,
+        "median_s": 0.002036,
+        "per_run_s": [
+          0.001994,
+          0.002036,
+          0.002114
+        ],
+        "policy": "min",
+        "repeat": 3
+      },
+      "report_scale": "large",
+      "sizes": {
+        "input_report_bytes": 18682,
+        "manifest_bytes": 1577,
+        "markdown_bytes": 4511,
+        "total_bundle_bytes": 41236
+      },
+      "status": "ok",
+      "timing": {
+        "best_s": 0.005987,
+        "median_s": 0.006154,
+        "per_run_s": [
+          0.005987,
+          0.00632
+        ],
+        "policy": "min",
+        "repeat": 2
+      },
+      "validation": {
+        "created_unix_ms_zero": true,
+        "manifest_file_count": 10,
+        "required_artifacts_present": true,
+        "summary_deterministic": true,
+        "summary_schema_version": "nextstat_bayesian_design_report_bundle_v0"
+      }
+    }
+  ],
+  "deterministic": true,
+  "environment": {
+    "machine": "bench-host-placeholder",
+    "python": "3.13.0"
+  },
+  "meta": {
+    "host_policy": "nextstat-bench",
+    "nextstat_command": [
+      "python3",
+      "scripts/benchmarks/bench_bayesian_design_report_bundle.py"
+    ],
+    "out": "bench_results/bayesian_design_report_bundle/summary.json",
+    "smoke": true,
+    "work_root": "bench_results/bayesian_design_report_bundle/work"
+  },
+  "schema_version": "nextstat.bayesian_design_report_bundle_benchmark_result.v1",
+  "suite": "bayesian_design_report_bundle_packaging"
+}

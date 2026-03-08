@@ -1,0 +1,38 @@
+{
+  "datasets": [
+    {
+      "doi": "https://doi.org/10.17182/hepdata.90607.v3/r3",
+      "id": "hepdata.90607.v3.r3",
+      "materialize": {
+        "bkgonly": true,
+        "patches": [
+          {
+            "id": "first_patch"
+          }
+        ]
+      },
+      "name": "ATLAS 1Lbb (HEPData 90607 v3 r3)"
+    },
+    {
+      "doi": "https://doi.org/10.17182/hepdata.116034.v1/r34",
+      "id": "hepdata.116034.v1.r34",
+      "materialize": {
+        "bkgonly": true,
+        "bkgonly_filename": "ewk_discovery_bkgonly.json",
+        "patches": [
+          {
+            "id": "DR_Int_EWK",
+            "patch_name": "DR_Int_EWK"
+          }
+        ],
+        "patchset_filename": "ewk_discovery_patchset.json"
+      },
+      "name": "ATLAS 2L2J (HEPData 116034 v1 r34)"
+    }
+  ],
+  "manifest": "embedded",
+  "mode": "catalog",
+  "schema_version": "nextstat.hepdata_import.v1",
+  "source": "hepdata",
+  "source_mode": "curated"
+}

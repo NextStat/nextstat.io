@@ -13,8 +13,9 @@
  *
  * Node types:
  *   0 = Component (data = component_index)
- *   1 = AND gate
+ *   1 = AND gate (also used for Inhibit)
  *   2 = OR gate
+ *   3 = Voting gate (data = k threshold)
  *
  * Tree stored in CSR format for children.
  */
@@ -174,12 +175,23 @@ extern "C" __global__ void fault_tree_mc_kernel(
                     int start = children_offsets[ni];
                     int end = children_offsets[ni + 1];
                     if (ntype == 1) {
-                        // AND: all children must be set.
+                        // AND (+ Inhibit): all children must be set.
                         state = 1;
                         for (int j = start; j < end; j++) {
                             if (!((node_mask >> children_flat[j]) & 1)) {
                                 state = 0;
                                 break;
+                            }
+                        }
+                    } else if (ntype == 3) {
+                        // VOTING: at least k children must be set.
+                        int k = node_data[ni];
+                        int count = 0;
+                        state = 0;
+                        for (int j = start; j < end; j++) {
+                            if ((node_mask >> children_flat[j]) & 1) {
+                                count++;
+                                if (count >= k) { state = 1; break; }
                             }
                         }
                     } else {

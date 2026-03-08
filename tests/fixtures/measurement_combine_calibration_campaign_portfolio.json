@@ -1,0 +1,86 @@
+{
+  "aggregate": {
+    "n_portfolios": 2,
+    "portfolio_labels": [
+      "cross_portfolio",
+      "topmass_only_portfolio"
+    ],
+    "portfolio_with_highest_calibration_inflation": "cross_portfolio",
+    "portfolio_with_highest_fit_inflation": "cross_portfolio",
+    "portfolio_with_highest_joint_severity": "cross_portfolio",
+    "portfolios_with_mixed_pois": [
+      "cross_portfolio"
+    ]
+  },
+  "entries": [
+    {
+      "calibration_order": [
+        "cross_fixture",
+        "topmass_only"
+      ],
+      "family_leader": "cross_fixture",
+      "fit_order": [
+        "cross_fixture",
+        "topmass_only"
+      ],
+      "has_mixed_pois": true,
+      "joint_order": [
+        "cross_fixture",
+        "topmass_only"
+      ],
+      "label": "cross_portfolio",
+      "max_calibration_inflation": 1.1413389897265351,
+      "max_fit_inflation": 457.6276341964417,
+      "max_joint_severity": 522.3082616847112,
+      "n_families": 2,
+      "pois": [
+        "m_top",
+        "mu"
+      ],
+      "shared_poi": null
+    },
+    {
+      "calibration_order": [
+        "topmass_only"
+      ],
+      "family_leader": "topmass_only",
+      "fit_order": [
+        "topmass_only"
+      ],
+      "has_mixed_pois": false,
+      "joint_order": [
+        "topmass_only"
+      ],
+      "label": "topmass_only_portfolio",
+      "max_calibration_inflation": 1.1413389897265351,
+      "max_fit_inflation": 457.6276341964417,
+      "max_joint_severity": 522.3082616847112,
+      "n_families": 1,
+      "pois": [
+        "m_top"
+      ],
+      "shared_poi": "m_top"
+    }
+  ],
+  "pairwise": [
+    {
+      "calibration_dominance": "tie",
+      "fit_dominance": "tie",
+      "joint_dominance": "tie",
+      "lhs": "cross_portfolio",
+      "lhs_calibration_minus_rhs": 0.0,
+      "lhs_fit_minus_rhs": 0.0,
+      "lhs_joint_minus_rhs": 0.0,
+      "rhs": "topmass_only_portfolio",
+      "same_poi_coverage": false
+    }
+  ],
+  "pois": [
+    "m_top",
+    "mu"
+  ],
+  "schema_version": "nextstat_measurement_combination_calibration_campaign_portfolio_v0",
+  "shared_poi": null,
+  "source_schema_version": "nextstat_measurement_combination_calibration_campaign_family_matrix_v0",
+  "stability": "research-grade"
+}

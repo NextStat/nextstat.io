@@ -12,10 +12,10 @@ set -euo pipefail
 #   PF31_LOCAL_DIR, PF31_REMOTE_DIR
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-PF31_HOST="${PF31_HOST:-88.198.23.172}"
+PF31_HOST="${PF31_HOST:?PF31_HOST must be set}"
 PF31_PORT="${PF31_PORT:-22}"
 PF31_USER="${PF31_USER:-root}"
-PF31_KEY="${PF31_KEY:-$HOME/.ssh/rundesk_hetzner}"
+PF31_KEY="${PF31_KEY:?PF31_KEY must be set}"
 PF31_REMOTE_REPO="${PF31_REMOTE_REPO:-/workspace/nextstat.io}"
 PF31_BIN="${PF31_BIN:-$PF31_REMOTE_REPO/target/release/nextstat}"
 PF31_SPEC="${PF31_SPEC:-$PF31_REMOTE_REPO/benchmarks/unbinned/specs/pf31_gauss_exp_10k.json}"

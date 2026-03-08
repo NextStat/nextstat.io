@@ -1,0 +1,126 @@
+{
+  "channels": [
+    {
+      "name": "SR",
+      "samples": [
+        {
+          "name": "signal",
+          "data": [7.0, 5.0],
+          "modifiers": [
+            { "name": "mu", "type": "normfactor", "data": null },
+            { "name": "lumi", "type": "lumi", "data": null }
+          ]
+        },
+        {
+          "name": "ttbar",
+          "data": [78.0, 52.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "ttbar_norm", "type": "normsys", "data": { "hi": 1.07, "lo": 0.93 } },
+            {
+              "name": "jes_shape",
+              "type": "histosys",
+              "data": { "hi_data": [85.0, 48.0], "lo_data": [71.0, 56.0] }
+            }
+          ]
+        },
+        {
+          "name": "zjets",
+          "data": [28.0, 22.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "z_norm", "type": "normsys", "data": { "hi": 1.06, "lo": 0.94 } },
+            {
+              "name": "boson_shape",
+              "type": "histosys",
+              "data": { "hi_data": [30.5, 23.5], "lo_data": [25.5, 20.5] }
+            }
+          ]
+        },
+        {
+          "name": "rare",
+          "data": [5.0, 4.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "rare_norm", "type": "normsys", "data": { "hi": 1.1, "lo": 0.9 } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CRTop",
+      "samples": [
+        {
+          "name": "ttbar",
+          "data": [210.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "ttbar_norm", "type": "normsys", "data": { "hi": 1.07, "lo": 0.93 } },
+            {
+              "name": "jes_shape",
+              "type": "histosys",
+              "data": { "hi_data": [222.0], "lo_data": [198.0] }
+            }
+          ]
+        },
+        {
+          "name": "rare",
+          "data": [9.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "rare_norm", "type": "normsys", "data": { "hi": 1.1, "lo": 0.9 } }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CRZ",
+      "samples": [
+        {
+          "name": "zjets",
+          "data": [188.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "z_norm", "type": "normsys", "data": { "hi": 1.06, "lo": 0.94 } },
+            {
+              "name": "boson_shape",
+              "type": "histosys",
+              "data": { "hi_data": [199.0], "lo_data": [177.0] }
+            }
+          ]
+        },
+        {
+          "name": "rare",
+          "data": [6.0],
+          "modifiers": [
+            { "name": "lumi", "type": "lumi", "data": null },
+            { "name": "rare_norm", "type": "normsys", "data": { "hi": 1.1, "lo": 0.9 } }
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [
+    { "name": "SR", "data": [116.0, 83.0] },
+    { "name": "CRTop", "data": [219.0] },
+    { "name": "CRZ", "data": [195.0] }
+  ],
+  "measurements": [
+    {
+      "name": "measurement",
+      "config": {
+        "poi": "mu",
+        "parameters": [
+          {
+            "name": "lumi",
+            "inits": [1.0],
+            "bounds": [[0.9, 1.1]],
+            "auxdata": [1.0],
+            "sigmas": [0.02]
+          }
+        ]
+      }
+    }
+  ],
+  "version": "1.0.0"
+}

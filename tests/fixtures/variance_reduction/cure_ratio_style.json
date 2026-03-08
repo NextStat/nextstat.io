@@ -1,0 +1,56 @@
+{
+  "schema_version": "nextstat.variance_reduction_fixture.v1",
+  "scenario": "ratio-style business metric with pre-CTR and pre-CPC covariates",
+  "metric_type": "ratio_style",
+  "method": "cure",
+  "control_outcomes": [0.82, 0.9, 0.88, 0.97, 1.05, 1.01, 1.08, 1.12],
+  "variant_outcomes": [0.87, 0.96, 0.93, 1.03, 1.11, 1.08, 1.16, 1.21],
+  "control_covariates": [
+    [0.021, 1.18],
+    [0.024, 1.15],
+    [0.023, 1.16],
+    [0.027, 1.13],
+    [0.03, 1.1],
+    [0.029, 1.11],
+    [0.031, 1.09],
+    [0.033, 1.08]
+  ],
+  "variant_covariates": [
+    [0.022, 1.17],
+    [0.025, 1.14],
+    [0.024, 1.15],
+    [0.028, 1.12],
+    [0.031, 1.09],
+    [0.03, 1.1],
+    [0.032, 1.08],
+    [0.034, 1.07]
+  ],
+  "selected_covariates": ["pre_ctr", "pre_cpc"],
+  "covariate_provenance": [
+    {
+      "name": "pre_ctr",
+      "timing": "pre_treatment",
+      "source_dataset": "ratio_metric_history"
+    },
+    {
+      "name": "pre_cpc",
+      "timing": "pre_treatment",
+      "source_dataset": "ratio_metric_history"
+    }
+  ],
+  "pre_treatment_only": true,
+  "expected": {
+    "method": "cure",
+    "adjusted_mean_control": 0.9946590909090905,
+    "adjusted_mean_variant": 1.0278409090909089,
+    "effect": 0.03318181818181831,
+    "theta": [-0.4545454545455894, -3.2272727272727497],
+    "r_squared": 0.9675417887606328,
+    "variance_reduction_factor": 0.03245821123936721,
+    "effective_sample_multiplier": 30.80884502923999,
+    "solver": "svd",
+    "regression_rank": 2,
+    "condition_number": 114.80487777967902,
+    "ridge_lambda": null
+  }
+}

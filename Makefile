@@ -2,6 +2,18 @@
 	apex2-baseline-record \
 	apex2-baseline-compare \
 	apex2-pre-release-gate \
+	release-full-fidelity-simulation \
+	release-surface-matrix-check \
+	release-manifest-check \
+	ads-variance-reduction-bench \
+	ads-variance-reduction-stable-surface-gate \
+	ads-timeseries-runtime-gate \
+	ads-timeseries-stable-surface-gate \
+	gvm-stable-first-example \
+	gvm-stable-first-gate \
+	m15-reporting-stable-surface-gate \
+	simplified-likelihood-exporter-surface-gate \
+	simplified-likelihood-stable-surface-gate \
 	adoption-playbook-smoke \
 	validation-pack \
 	rust-slow-tests \
@@ -64,6 +76,7 @@ PYHF_AUDIT_FIT_ARGS ?=
 PLAYGROUND_PORT ?= 8000
 VALIDATION_PACK_OUT_DIR ?= tmp/validation_pack
 VALIDATION_PACK_WORKSPACE ?= tests/fixtures/complex_workspace.json
+VALIDATION_PACK_M15_CONFIG ?=
 VALIDATION_PACK_ARGS ?=
 ADOPTION_PLAYBOOK_REPORT ?= tmp/reports/adoption_playbook_smoke_report.json
 ADOPTION_PLAYBOOK_ARGS ?=
@@ -87,6 +100,50 @@ apex2-baseline-compare:
 apex2-pre-release-gate:
 	bash scripts/apex2/pre_release_gate.sh
 
+release-surface-matrix-check:
+	PYTHONPATH="$(CURDIR):$(PYTHONPATH)" "$(PY)" -m scripts.release_surface_matrix --check
+
+release-manifest-check:
+	PYTHONPATH="$(CURDIR):$(PYTHONPATH)" "$(PY)" -m scripts.release_manifest --release-tag "v$$(grep '^version' Cargo.toml | head -1 | sed 's/.*\"\\(.*\\)\"/\\1/')" --mode prepare --check
+
+release-full-fidelity-simulation:
+	PYTHONPATH="$(CURDIR):$(PYTHONPATH)" "$(PY)" -m scripts.release_full_fidelity_simulation \
+		--release-tag "v$$(grep '^version' Cargo.toml | head -1 | sed 's/.*\"\\(.*\\)\"/\\1/')" \
+		--mode prepare \
+		--out-dir tmp/release_full_fidelity_simulation \
+		--out-json tmp/release_full_fidelity_simulation_report.json \
+		--out-md tmp/release_full_fidelity_simulation_report.md
+
+ads-variance-reduction-bench:
+	bash scripts/benchmarks/bench_ads_variance_reduction_matrix_remote.sh
+
+ads-variance-reduction-bench-gate:
+	PYTHONPATH="$(PYTHONPATH)" "$(PY)" scripts/benchmarks/run_ads_variance_reduction_benchmark_gate.py --promotion-mode dry_run
+
+ads-variance-reduction-stable-surface-gate:
+	bash scripts/benchmarks/ads_variance_reduction_stable_surface_gate.sh
+
+ads-timeseries-runtime-gate:
+	PYTHONPATH="$(PYTHONPATH)" "$(PY)" scripts/benchmarks/run_ads_timeseries_benchmark_gate.py --promotion-mode dry_run
+
+ads-timeseries-stable-surface-gate:
+	bash scripts/benchmarks/ads_timeseries_stable_surface_gate.sh
+
+gvm-stable-first-gate:
+	bash scripts/gvm/stable_first_gate.sh
+
+gvm-stable-first-example:
+	bash scripts/gvm/run_stable_first_example.sh
+
+m15-reporting-stable-surface-gate:
+	bash scripts/benchmarks/m15_reporting_stable_surface_gate.sh
+
+simplified-likelihood-exporter-surface-gate:
+	bash scripts/benchmarks/simplified_likelihood_exporter_surface_gate.sh
+
+simplified-likelihood-stable-surface-gate:
+	bash scripts/benchmarks/simplified_likelihood_stable_surface_gate.sh
+
 adoption-playbook-smoke:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" scripts/guides/verify_adoption_playbook.py \
 		--report "$(ADOPTION_PLAYBOOK_REPORT)" \
@@ -96,6 +153,7 @@ validation-pack:
 	bash validation-pack/render_validation_pack.sh \
 		--out-dir "$(VALIDATION_PACK_OUT_DIR)" \
 		--workspace "$(VALIDATION_PACK_WORKSPACE)" \
+		$(if $(VALIDATION_PACK_M15_CONFIG),--m15-config "$(VALIDATION_PACK_M15_CONFIG)") \
 		$(VALIDATION_PACK_ARGS)
 
 rust-slow-tests:
@@ -125,7 +183,10 @@ trex-spec-baseline-compare:
 		$(TREX_COMPARE_ARGS)
 
 hepdata-fetch:
-	PYTHONPATH="$(PYTHONPATH)" "$(PY)" tests/hepdata/fetch_workspaces.py
+	cargo run -p ns-cli -- import hepdata \
+		--out-dir tests/hepdata/workspaces \
+		--cache-dir tests/hepdata/_cache \
+		--lock tests/hepdata/workspaces.lock.json
 
 hepdata-pytest:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" -m pytest -k hepdata_workspaces

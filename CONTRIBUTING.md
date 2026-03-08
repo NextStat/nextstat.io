@@ -114,6 +114,116 @@ Required for code changes:
 - [ ] Docs updated if behavior changed
 - [ ] Tests added for new behavior
 
+### 1a. Additional Gate for M15 / Regulated Reporting Changes
+
+If your PR changes the public M15 surface, at minimum:
+
+- `crates/ns-cli/src/m15.rs`
+- `docs/schemas/validation/m15_*`
+- `docs/specs/m15_*`
+- `validation-pack/render_validation_pack.sh`
+- `.github/workflows/python-tests.yml`
+- `.github/workflows/release.yml`
+- `docs/references/m15-reporting.md`
+
+Then before opening the PR, run:
+
+```bash
+pytest -q \
+  tests/python/test_m15_artifact_schema_smoke.py \
+  tests/python/test_python_tests_workflow_m15_smoke.py \
+  tests/python/test_release_workflow_m15_smoke.py \
+  tests/python/test_validation_pack_script_smoke.py
+
+cargo test -p ns-cli \
+  --test cli_m15_assessment_table \
+  --test cli_m15_map \
+  --test cli_m15_mar \
+  --test cli_m15_bundle
+```
+
+And confirm all of the following:
+
+- Schemas, examples, and `docs/references/m15-reporting.md` stay in sync.
+- Deterministic rerender remains intact for the M15 artifact chain.
+- No hidden model execution was introduced into the M15 render/bundle path.
+- CI/release workflow parity for M15 validation-pack assets remains intact.
+
+### 1b. Additional Gate for Bayesian Design Stable Surface Changes
+
+If your PR changes the public Bayesian design stable surface, at minimum:
+
+- `crates/ns-inference/src/bayes_design.rs`
+- `bindings/ns-py/src/lib.rs`
+- `bindings/ns-py/python/nextstat/bayes_design.py`
+- `validation-pack/render_validation_pack.sh`
+- `docs/schemas/pharma/*design*`
+- `docs/schemas/pharma/bayesian_*`
+- `docs/specs/pharma/*design*`
+- `docs/specs/pharma/bayesian_*`
+- `docs/benchmarks/bayesian-design-*`
+- `docs/references/bayesian-trial-design-artifacts.md`
+- `docs/references/validation-report.md`
+- `docs/specs/pharma/bayesian_design_report_acceptance_v0.md`
+- `docs/specs/pharma/bayesian_prior_conflict_diagnostic_acceptance_v0.md`
+- `docs/specs/pharma/bayesian_historical_control_borrowing_review_acceptance_v0.md`
+- `docs/specs/pharma/bayesian_historical_control_borrowing_operating_characteristics_acceptance_v0.md`
+- `docs/specs/pharma/bayesian_robust_mixture_prior_review_acceptance_v0.md`
+- `docs/specs/pharma/bayesian_robust_mixture_prior_operating_characteristics_acceptance_v0.md`
+- `docs/specs/pharma/bayesian_design_regulatory_appendix_acceptance_v0.md`
+- `docs/specs/pharma/bayesian_design_appendix_render_acceptance_v0.md`
+- `docs/specs/pharma/bayesian_design_report_bundle_acceptance_v0.md`
+- `docs/specs/pharma/bayesian_design_validation_pack_acceptance_v0.md`
+
+Then before opening the PR, run:
+
+```bash
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python -m pytest -q \
+  tests/python/test_bayes_design_module_api.py \
+  tests/python/test_bayes_design_contract.py \
+  tests/python/test_bayes_design_schema_smoke.py \
+  tests/python/test_bayes_design_stable_surface_regression.py \
+  tests/python/test_validation_pack_script_smoke.py \
+  tests/python/test_validation_pack_execution_regression.py \
+  tests/python/test_bayesian_design_report_bundle_performance_budget.py \
+  tests/python/test_bayesian_design_report_bundle_benchmark_smoke.py \
+  tests/python/test_bayes_design_checklists_smoke.py
+
+python3 scripts/docs/terminology_lint.py --check
+```
+
+If the change also affects CLI schema publication, run:
+
+```bash
+cargo test -p ns-cli config_schema_can_emit_beta_binomial_design_schemas --test cli_config_schema
+```
+
+If the change affects the published design-report bundle runtime behavior or public performance wording, run the canonical packaging benchmark gate on `nextstat-bench`:
+
+```bash
+ssh nextstat-bench
+cd /path/to/nextstat.io
+PYTHONPATH=bindings/ns-py/python ./.venv/bin/python \
+  scripts/benchmarks/bench_bayesian_design_report_bundle.py \
+  --deterministic \
+  --out bench_results/bayesian_design_report_bundle/summary.json
+```
+
+And confirm all of the following:
+
+- Schemas, examples, acceptance docs, and `docs/references/bayesian-trial-design-artifacts.md` stay in sync.
+- Backward-compatible ingress remains intact for the published report, appendix, and bundle wrappers.
+- Backward-compatible ingress remains intact for the published borrowing and robust-mixture extension operating-characteristics wrappers.
+- Seeded determinism remains intact for the published borrowing and robust-mixture extension operating-characteristics wrappers.
+- No hidden execution was introduced into frozen Bayesian report render/bundle paths.
+- No hidden execution was introduced into frozen Bayesian prior conflict diagnostic paths.
+- No hidden execution was introduced into frozen Bayesian historical-control borrowing review paths.
+- No hidden execution was introduced into frozen Bayesian robust-mixture prior review paths.
+- No hidden execution was introduced into frozen Bayesian regulatory appendix paths.
+- No hidden execution was introduced into frozen Bayesian regulatory appendix render paths.
+- No hidden execution was introduced into the frozen Bayesian validation-pack appendix path.
+- `nextstat-bench` promotion evidence is linked when runtime-affecting packaging behavior changes.
+
 ### 2. Open the Pull Request
 
 1. Push to your fork:
@@ -139,8 +249,15 @@ After approval, a maintainer will merge your PR into `main`.
 - [ ] Run the Apex2 pre-release gate: `make apex2-pre-release-gate`
 - [ ] If the baseline is stale (expected perf change), re-record: `make apex2-baseline-record`
 - [ ] Review `tmp/baseline_compare_report.json` for any slowdowns/flags
-- [ ] Follow the canonical release-gates runbook
+- [ ] Follow the canonical release runbook: `docs/releases/release-runbook.md`
+- [ ] Review `tmp/release_surface_matrix_report.json` and `tmp/release_surface_matrix_report.md`
+- [ ] Review `tmp/release_manifest.json` and `tmp/release_manifest.md`
+- [ ] Review `tmp/release_full_fidelity_simulation_report.json` and `tmp/release_full_fidelity_simulation_report.md`
+- [ ] Review `tmp/release_candidate_bundle/`
 - [ ] Optional (cluster): run ROOT/TRExFitter parity and archive artifacts (see `docs/tutorials/root-trexfitter-parity.md`)
+- [ ] If the release includes M15 surface changes, run the M15 PR/release gates from `docs/references/m15-reporting.md` and verify M15 validation-pack assets are published (`m15_bundle_manifest.json`, schema, `.sha256`, `.sha256.bin`, `m15_snapshot_index.json`)
+- [ ] If the release includes Bayesian design stable-surface changes, run the Bayesian PR/release gates from `docs/references/bayesian-trial-design-artifacts.md` and verify the current `nextstat-bench` packaging artifact is linked when runtime-affecting packaging behavior changed
+- [ ] Follow the benchmark artifact policy: `docs/releases/benchmark-artifact-policy.md`
 
 ## DCO Sign-off
 

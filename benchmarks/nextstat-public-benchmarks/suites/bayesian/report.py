@@ -21,7 +21,11 @@ def _fmt(x, *, digits: int = 3) -> str:
         return f"{v:.0f}"
     if abs(v) >= 10:
         return f"{v:.1f}"
-    return f"{v:.{digits}f}".rstrip("0").rstrip(".")
+    if abs(v) >= 1:
+        return f"{v:.{digits}f}".rstrip("0").rstrip(".")
+    if v == 0:
+        return "0"
+    return f"{v:.{digits}g}"
 
 
 def _safe_float(x) -> float | None:
@@ -37,14 +41,17 @@ def _safe_float(x) -> float | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--suite", required=True, help="Path to bayesian_suite.json")
+    ap.add_argument("--assessment", default="", help="Optional path to bayesian_assessment.json")
     ap.add_argument("--out", required=True, help="Output Markdown path")
     args = ap.parse_args()
 
     suite_path = Path(args.suite).resolve()
+    assessment_path = Path(args.assessment).resolve() if str(args.assessment).strip() else None
     out_path = Path(args.out).resolve()
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     obj = json.loads(suite_path.read_text())
+    assessment = json.loads(assessment_path.read_text()) if assessment_path and assessment_path.exists() else None
     cases = obj.get("cases") if isinstance(obj.get("cases"), list) else []
 
     lines: list[str] = []
@@ -52,6 +59,59 @@ def main() -> int:
     lines.append("")
     lines.append("This snapshot reports sampler health metrics (rank-normalized R-hat, Geyer ESS, E-BFMI) and a simple ESS/sec proxy computed as `min(ESS_bulk)/wall_time` (includes warmup).")
     lines.append("")
+
+    if isinstance(assessment, dict):
+        core_quality = assessment.get("core_quality") if isinstance(assessment.get("core_quality"), dict) else {}
+        promotion_gate = assessment.get("promotion_gate") if isinstance(assessment.get("promotion_gate"), dict) else {}
+        review_summary = promotion_gate.get("review_summary") if isinstance(promotion_gate.get("review_summary"), dict) else {}
+        policy = promotion_gate.get("policy") if isinstance(promotion_gate.get("policy"), dict) else {}
+        lines.append("## Health verdict")
+        lines.append("")
+        lines.append(f"- core quality: `{core_quality.get('status', 'unknown')}`")
+        lines.append(
+            f"- promotion gate ({promotion_gate.get('target_backend', 'unknown')}): `{promotion_gate.get('status', 'unknown')}`"
+        )
+        failing_cases = review_summary.get("failing_cases") if isinstance(review_summary.get("failing_cases"), list) else []
+        lines.append(
+            f"- failing cases: `{', '.join(str(x) for x in failing_cases) if failing_cases else '—'}`"
+        )
+        lines.append("")
+        lines.append("| Metric | Worst case | Observed | Policy |")
+        lines.append("|---|---|---:|---:|")
+        for label, summary_key, policy_key in [
+            ("divergence_rate", "worst_divergence_rate", "max_divergence_rate"),
+            ("max_treedepth_rate", "worst_max_treedepth_rate", "max_treedepth_rate"),
+            ("max_r_hat", "worst_max_r_hat", "max_r_hat"),
+            ("min_ebfmi", "worst_min_ebfmi", "min_ebfmi"),
+            ("min_ess_bulk", "worst_min_ess_bulk", "min_ess_bulk"),
+            ("min_ess_tail", "worst_min_ess_tail", "min_ess_tail"),
+            ("min_ess_bulk_per_sec", "worst_min_ess_bulk_per_sec", "min_ess_bulk_per_sec"),
+        ]:
+            metric_summary = review_summary.get(summary_key) if isinstance(review_summary.get(summary_key), dict) else {}
+            lines.append(
+                "| {label} | {case} | {observed} | {policy} |".format(
+                    label=label,
+                    case=str(metric_summary.get("case") or "—"),
+                    observed=_fmt(metric_summary.get("value"), digits=4),
+                    policy=_fmt(policy.get(policy_key), digits=4),
+                )
+            )
+        failures = promotion_gate.get("failures") if isinstance(promotion_gate.get("failures"), list) else []
+        if failures:
+            lines.append("")
+            lines.append("### Promotion failures")
+            lines.append("")
+            for row in failures:
+                if not isinstance(row, dict):
+                    continue
+                case_label = row.get("case") or "global"
+                if "observed" in row and "threshold" in row:
+                    lines.append(
+                        f"- `{case_label}`: `{row.get('reason', 'unknown')}` (observed `{_fmt(row.get('observed'), digits=4)}`, threshold `{_fmt(row.get('threshold'), digits=4)}`)"
+                    )
+                else:
+                    lines.append(f"- `{case_label}`: `{row.get('reason', 'unknown')}`")
+            lines.append("")
 
     # -- Detailed results table --
     lines.append("## Detailed results")

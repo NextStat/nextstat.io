@@ -49,13 +49,16 @@ def test_adoption_playbook_smoke_report_shape() -> None:
     route_a = report.get("route_a")
     route_b = report.get("route_b")
     route_c = report.get("route_c")
+    route_d = report.get("route_d")
     assert isinstance(route_a, dict), "route_a must be object"
     assert isinstance(route_b, dict), "route_b must be object"
     assert isinstance(route_c, dict), "route_c must be object"
+    assert isinstance(route_d, dict), "route_d must be object"
 
     _assert_route(route_a, route_name="route_a")
     _assert_route(route_b, route_name="route_b")
     _assert_route(route_c, route_name="route_c")
+    _assert_route(route_d, route_name="route_d")
 
     parity = route_c.get("from_arrow_large_offsets_parity")
     assert isinstance(parity, dict), "route_c.from_arrow_large_offsets_parity must be object"
@@ -68,4 +71,3 @@ def test_adoption_playbook_smoke_report_shape() -> None:
     ):
         assert isinstance(parity.get(key), (float, int)), f"parity.{key} must be numeric"
     assert isinstance(parity.get("ok"), bool), "parity.ok must be bool"
-

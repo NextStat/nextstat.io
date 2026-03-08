@@ -1,0 +1,32 @@
+{
+  "borrowing_model": "power_prior",
+  "borrowing_strength": {
+    "full_borrowing_fraction": 0.35,
+    "suspended_borrowing_fraction": 0.0,
+    "tapered_borrowing_fraction": 0.15
+  },
+  "conflict_response": {
+    "full_borrowing_max_conflict_severity": "low",
+    "max_eventual_success_probability_range_for_full_borrowing": 0.15,
+    "max_expected_total_sample_size_range_fraction_for_full_borrowing": 0.1,
+    "tapered_borrowing_max_conflict_severity": "moderate"
+  },
+  "design_family": "beta_binomial",
+  "eligibility": {
+    "disallow_recommended_action_flip": true,
+    "minimum_control_information_fraction": 0.5,
+    "minimum_current_control_sample_size": 20
+  },
+  "historical_sources": [
+    {
+      "data_cut_label": "csr-final",
+      "exchangeability_assessment": "moderate",
+      "planned_control_sample_size": 120,
+      "source_id": "study_2019_control",
+      "source_role": "external_control_arm"
+    }
+  ],
+  "policy_id": "binary_superiority_demo_historical_control_policy_v0",
+  "schema_version": "nextstat_bayesian_historical_control_borrowing_policy_v0",
+  "stability": "research-grade"
+}

@@ -1,0 +1,225 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/simplified_likelihood_promotion_evidence_bundle_v0.schema.json",
+  "title": "Simplified Likelihood Promotion Evidence Bundle v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "surface",
+    "bundle_kind",
+    "support_class",
+    "generated_at_utc",
+    "benchmark_evidence",
+    "stable_subset",
+    "promotion_claims",
+    "artifacts",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat_simplified_likelihood_promotion_evidence_bundle_v0"
+    },
+    "surface": {
+      "type": "string",
+      "const": "simplified_likelihood"
+    },
+    "bundle_kind": {
+      "type": "string",
+      "const": "promotion_evidence"
+    },
+    "support_class": {
+      "type": "string",
+      "const": "stable"
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "minLength": 1
+    },
+    "benchmark_evidence": {
+      "$ref": "#/$defs/benchmark_evidence"
+    },
+    "stable_subset": {
+      "$ref": "#/$defs/stable_subset"
+    },
+    "promotion_claims": {
+      "$ref": "#/$defs/promotion_claims"
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/artifact"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "kind",
+        "required",
+        "source_path",
+        "bundle_path",
+        "sha256",
+        "bytes"
+      ],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "minLength": 1 },
+        "required": { "type": "boolean" },
+        "source_path": { "type": "string", "minLength": 1 },
+        "bundle_path": { "type": "string", "minLength": 1 },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bytes": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "benchmark_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "case_count",
+        "all_schema_valid",
+        "all_fidelity_gates_pass",
+        "all_performance_gates_pass",
+        "min_speedup_fit",
+        "min_speedup_upper_limit",
+        "min_speedup_end_to_end_upper_limit",
+        "public_fixture_matrix_included",
+        "public_fixture_matrix_status",
+        "public_fixture_matrix_fixture_count"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "fail"] },
+        "case_count": { "type": "integer", "minimum": 1 },
+        "all_schema_valid": { "type": "boolean" },
+        "all_fidelity_gates_pass": { "type": "boolean" },
+        "all_performance_gates_pass": { "type": "boolean" },
+        "min_speedup_fit": { "type": "number", "minimum": 0.0 },
+        "min_speedup_upper_limit": { "type": "number", "minimum": 0.0 },
+        "min_speedup_end_to_end_upper_limit": { "type": "number", "minimum": 0.0 },
+        "public_fixture_matrix_included": { "type": "boolean" },
+        "public_fixture_matrix_status": { "type": "string", "enum": ["ok", "fail"] },
+        "public_fixture_matrix_fixture_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "public_fixture_matrix_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "fixture_count",
+        "all_schema_valid",
+        "all_runtime_gates_pass",
+        "all_derived_fidelity_gates_pass",
+        "jsonschema_available",
+        "source_formats"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "fail"] },
+        "fixture_count": { "type": "integer", "minimum": 1 },
+        "all_schema_valid": { "type": "boolean" },
+        "all_runtime_gates_pass": { "type": "boolean" },
+        "all_derived_fidelity_gates_pass": { "type": "boolean" },
+        "jsonschema_available": { "type": "boolean" },
+        "source_formats": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": ["basis", "covariance", "derived_from_workspace"]
+          }
+        }
+      }
+    },
+    "benchmark_evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_path",
+        "bundle_path",
+        "schema_version",
+        "sha256",
+        "bytes",
+        "summary",
+        "public_fixture_matrix"
+      ],
+      "properties": {
+        "source_path": { "type": "string", "minLength": 1 },
+        "bundle_path": { "type": "string", "minLength": 1 },
+        "schema_version": {
+          "type": "string",
+          "const": "nextstat_apex2_simplified_likelihood_report_v0"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "bytes": { "type": "integer", "minimum": 1 },
+        "summary": { "$ref": "#/$defs/benchmark_summary" },
+        "public_fixture_matrix": { "$ref": "#/$defs/public_fixture_matrix_summary" }
+      }
+    },
+    "stable_subset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["promoted_commands", "research_grade_surfaces"],
+      "properties": {
+        "promoted_commands": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "research_grade_surfaces": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "promotion_claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stable_surface_supported",
+        "speedup_target_supported",
+        "public_fixture_matrix_supported"
+      ],
+      "properties": {
+        "stable_surface_supported": { "type": "boolean" },
+        "speedup_target_supported": { "type": "boolean" },
+        "public_fixture_matrix_supported": { "type": "boolean" }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "artifact_count",
+        "required_artifact_count",
+        "benchmark_host",
+        "supports_speedup_claim",
+        "supports_public_fixture_matrix"
+      ],
+      "properties": {
+        "status": { "type": "string", "enum": ["ok", "fail"] },
+        "artifact_count": { "type": "integer", "minimum": 1 },
+        "required_artifact_count": { "type": "integer", "minimum": 1 },
+        "benchmark_host": { "type": "string", "minLength": 1 },
+        "supports_speedup_claim": { "type": "boolean" },
+        "supports_public_fixture_matrix": { "type": "boolean" }
+      }
+    }
+  }
+}

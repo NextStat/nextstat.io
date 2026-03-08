@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/validation/m15_bundle_manifest_v1.schema.json",
+  "title": "NextStat ICH M15 Bundle Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "deterministic",
+    "jurisdiction_profile",
+    "source_config_sha256",
+    "bundle_status",
+    "artifacts",
+    "files",
+    "integrity"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "m15_bundle_manifest_v1"
+    },
+    "generated_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    },
+    "deterministic": {
+      "type": "boolean"
+    },
+    "jurisdiction_profile": {
+      "type": "string",
+      "enum": ["ich_core", "ema_step5_2026", "fda_draft_2024"]
+    },
+    "source_config_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "bundle_status": {
+      "type": "string",
+      "enum": ["draft", "complete"]
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assessment_table", "map", "mar", "validation_report"],
+      "properties": {
+        "assessment_table": {
+          "$ref": "#/$defs/artifact_ref"
+        },
+        "map": {
+          "$ref": "#/$defs/artifact_ref"
+        },
+        "mar": {
+          "$ref": "#/$defs/artifact_ref"
+        },
+        "validation_report": {
+          "$ref": "#/$defs/artifact_ref"
+        },
+        "pharma_validation": {
+          "$ref": "#/$defs/artifact_ref"
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "$ref": "#/$defs/manifest_file"
+      }
+    },
+    "integrity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "all_hashes_present",
+        "deterministic_re_render_verified",
+        "missing_required_roles",
+        "signoff_roles_complete",
+        "signoff_roles_distinct",
+        "missing_signoff_roles"
+      ],
+      "properties": {
+        "all_hashes_present": {
+          "type": "boolean"
+        },
+        "deterministic_re_render_verified": {
+          "type": "boolean"
+        },
+        "missing_required_roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["assessment_table", "map", "mar", "validation_report"]
+          }
+        },
+        "signoff_roles_complete": {
+          "type": "boolean"
+        },
+        "signoff_roles_distinct": {
+          "type": "boolean"
+        },
+        "missing_signoff_roles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["primary_author", "qa_reviewer", "approver"]
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "artifact_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifact_type", "path", "sha256"],
+      "properties": {
+        "artifact_type": {
+          "type": "string",
+          "enum": [
+            "validation_report",
+            "pharma_validation",
+            "workspace",
+            "assessment_table",
+            "map",
+            "mar",
+            "other"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "role": {
+          "type": "string"
+        }
+      }
+    },
+    "manifest_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "bytes", "sha256", "artifact_role"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "artifact_role": {
+          "type": "string",
+          "enum": [
+            "config",
+            "assessment_table",
+            "map",
+            "mar",
+            "validation_report",
+            "pharma_validation",
+            "workspace",
+            "other"
+          ]
+        }
+      }
+    }
+  }
+}

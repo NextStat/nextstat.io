@@ -1,10 +1,11 @@
 # Adoption Playbook Fixtures
 
-Reference outputs used by the 3 adoption routes:
+Reference outputs used by the 4 adoption routes:
 
 - `route_a/` — pyhf/HS3 workspace quickstart outputs
 - `route_b/` — TREx config quickstart outputs
 - `route_c/` — Parquet/Arrow quickstart outputs
+- `route_d/` — stable-first scalar GVM measurement-combination outputs
 
 Each route directory includes:
 
@@ -19,6 +20,17 @@ Route C additionally includes a table fixture:
 
 - `histograms_table.example.csv`
 - `build_histograms_parquet_example.py`
+
+Route D uses the committed stable-first GVM example bundle in:
+
+- `docs/examples/gvm-stable-first/`
+
+and fixes the expected outputs for:
+
+- `spec.json`
+- `result.json`
+- `calibration.json`
+- `calibration_study.json`
 
 These fixtures are deterministic references for documentation workflows and manual regression checks.
 

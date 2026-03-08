@@ -15,8 +15,9 @@
  *
  * Node types:
  *   0 = Component (data = component_index)
- *   1 = AND gate
+ *   1 = AND gate (also used for Inhibit)
  *   2 = OR gate
+ *   3 = Voting gate (data = k threshold)
  */
 
 #include <metal_stdlib>
@@ -148,6 +149,7 @@ kernel void fault_tree_mc_kernel(
                 int start = children_offsets[ni];
                 int end = children_offsets[ni + 1];
                 if (ntype == 1) {
+                    // AND (+ Inhibit): all children must be set.
                     state = true;
                     for (int j = start; j < end; j++) {
                         if (!((node_mask >> children_flat[j]) & 1)) {
@@ -155,7 +157,19 @@ kernel void fault_tree_mc_kernel(
                             break;
                         }
                     }
+                } else if (ntype == 3) {
+                    // VOTING: at least k children must be set.
+                    int k = node_data[ni];
+                    int count = 0;
+                    state = false;
+                    for (int j = start; j < end; j++) {
+                        if ((node_mask >> children_flat[j]) & 1) {
+                            count++;
+                            if (count >= k) { state = true; break; }
+                        }
+                    }
                 } else {
+                    // OR: any child set.
                     state = false;
                     for (int j = start; j < end; j++) {
                         if ((node_mask >> children_flat[j]) & 1) {
@@ -189,6 +203,16 @@ kernel void fault_tree_mc_kernel(
                         if (!node_states[children_flat[j]]) {
                             state = false;
                             break;
+                        }
+                    }
+                } else if (ntype == 3) {
+                    int k = node_data[ni];
+                    int count = 0;
+                    state = false;
+                    for (int j = start; j < end; j++) {
+                        if (node_states[children_flat[j]]) {
+                            count++;
+                            if (count >= k) { state = true; break; }
                         }
                     }
                 } else {

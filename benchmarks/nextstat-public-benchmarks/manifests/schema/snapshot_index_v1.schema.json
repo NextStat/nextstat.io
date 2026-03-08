@@ -35,6 +35,66 @@
         },
         "additionalProperties": false
       }
+    },
+    "suite_health": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "suite",
+          "assessment_path",
+          "assessment_sha256",
+          "assessment_schema_version",
+          "core_quality",
+          "promotion_gate"
+        ],
+        "properties": {
+          "suite": { "type": "string", "minLength": 1 },
+          "assessment_path": { "type": "string", "minLength": 1 },
+          "assessment_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "assessment_schema_version": { "type": "string", "minLength": 1 },
+          "core_quality": {
+            "type": "object",
+            "required": ["passed", "status", "failure_count", "warning_count"],
+            "properties": {
+              "passed": { "type": "boolean" },
+              "status": { "type": "string", "enum": ["passed", "failed"] },
+              "failure_count": { "type": "integer", "minimum": 0 },
+              "warning_count": { "type": "integer", "minimum": 0 }
+            },
+            "additionalProperties": false
+          },
+          "promotion_gate": {
+            "type": "object",
+            "required": [
+              "passed",
+              "status",
+              "target_backend",
+              "failure_count",
+              "reviewed_case_count",
+              "failing_cases",
+              "review_summary"
+            ],
+            "properties": {
+              "passed": { "type": "boolean" },
+              "status": { "type": "string", "enum": ["passed", "failed"] },
+              "target_backend": { "type": ["string", "null"] },
+              "failure_count": { "type": "integer", "minimum": 0 },
+              "reviewed_case_count": { "type": "integer", "minimum": 0 },
+              "failing_cases": {
+                "type": "array",
+                "items": { "type": "string", "minLength": 1 }
+              },
+              "review_summary": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
     }
   },
   "additionalProperties": false

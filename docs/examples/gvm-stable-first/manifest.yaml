@@ -1,0 +1,6 @@
+schema_version: nextstat_measurement_combination_manifest_v0
+poi: mu
+measurements_table: measurements.csv
+stat_covariance_table: stat_covariance.csv
+systematics_table: systematics.csv
+correlations_table: correlations.csv

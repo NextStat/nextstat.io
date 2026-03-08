@@ -1,0 +1,45 @@
+{
+  "schema_version": "nextstat_measurement_combination_v0",
+  "poi": "m_top",
+  "measurements": [
+    {
+      "name": "atlas_cms_baseline_combo",
+      "value": 172.51
+    },
+    {
+      "name": "fictitious_outlier",
+      "value": 174.5
+    }
+  ],
+  "stat_covariance": [
+    [
+      0.1089,
+      0.0
+    ],
+    [
+      0.0,
+      0.16000000000000003
+    ]
+  ],
+  "systematics": [
+    {
+      "name": "NEW",
+      "magnitudes": [
+        0.0,
+        0.5
+      ],
+      "corr": [
+        [
+          1.0,
+          0.0
+        ],
+        [
+          0.0,
+          1.0
+        ]
+      ],
+      "error_on_error": 0.0,
+      "aux_mean": 0.0
+    }
+  ]
+}

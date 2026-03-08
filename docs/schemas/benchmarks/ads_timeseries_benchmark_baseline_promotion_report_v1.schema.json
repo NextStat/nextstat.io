@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/ads_timeseries_benchmark_baseline_promotion_report_v1.schema.json",
+  "title": "Ads + Time Series Benchmark Baseline Promotion Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "status",
+    "promoted",
+    "allow_review",
+    "dry_run",
+    "timestamp_utc",
+    "accepted_baseline_path",
+    "candidate_path",
+    "compare_report_path",
+    "compare_status",
+    "artifacts",
+    "actions",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.ads_timeseries_benchmark_baseline_promotion_report.v1"
+    },
+    "suite": {
+      "const": "ads_timeseries_surface"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["dry_run", "promoted", "failed"]
+    },
+    "promoted": {
+      "type": "boolean"
+    },
+    "allow_review": {
+      "type": "boolean"
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "timestamp_utc": {
+      "type": "string"
+    },
+    "accepted_baseline_path": {
+      "type": "string"
+    },
+    "candidate_path": {
+      "type": "string"
+    },
+    "compare_report_path": {
+      "type": "string"
+    },
+    "compare_status": {
+      "type": ["string", "null"]
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted_before", "candidate", "accepted_after"],
+      "properties": {
+        "accepted_before": {
+          "$ref": "#/$defs/artifactSummary"
+        },
+        "candidate": {
+          "$ref": "#/$defs/artifactSummary"
+        },
+        "accepted_after": {
+          "$ref": "#/$defs/artifactSummary"
+        }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "archived_previous_baseline",
+        "archived_previous_baseline_path",
+        "archived_promoted_snapshot",
+        "archived_promoted_snapshot_path",
+        "accepted_updated",
+        "history_dir"
+      ],
+      "properties": {
+        "archived_previous_baseline": {
+          "type": "boolean"
+        },
+        "archived_previous_baseline_path": {
+          "type": ["string", "null"]
+        },
+        "archived_promoted_snapshot": {
+          "type": "boolean"
+        },
+        "archived_promoted_snapshot_path": {
+          "type": ["string", "null"]
+        },
+        "accepted_updated": {
+          "type": "boolean"
+        },
+        "history_dir": {
+          "type": "string"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["top_level_errors"],
+      "properties": {
+        "top_level_errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "artifactSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "schema_version",
+        "suite",
+        "host_policy",
+        "hostname",
+        "build_profile",
+        "smoke",
+        "deterministic",
+        "runs",
+        "warmups",
+        "case_ids"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "schema_version": {
+          "type": ["string", "null"]
+        },
+        "suite": {
+          "type": ["string", "null"]
+        },
+        "host_policy": {
+          "type": ["string", "null"]
+        },
+        "hostname": {
+          "type": ["string", "null"]
+        },
+        "build_profile": {
+          "type": ["string", "null"]
+        },
+        "smoke": {
+          "type": "boolean"
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "runs": {
+          "type": ["integer", "null"]
+        },
+        "warmups": {
+          "type": ["integer", "null"]
+        },
+        "case_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

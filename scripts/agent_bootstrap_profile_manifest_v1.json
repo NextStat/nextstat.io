@@ -1,0 +1,389 @@
+{
+  "schema_version": "nextstat.agent_bootstrap_profile_manifest.v1",
+  "registries": {
+    "workspace_output_template_families": {
+      "copilot_instructions_md": {
+        "renderer": "copilot_instructions"
+      },
+      "cursor_rule_mdc": {
+        "renderer": "cursor_rule"
+      }
+    },
+    "runnable_template_families": {
+      "provider_request": {
+        "renderer": "provider_example",
+        "allowed_kinds": [
+          "openai_tool_calling",
+          "gemini_function_calling",
+          "manual_tool_loop"
+        ],
+        "required_fields": [
+          "kind",
+          "template_family",
+          "local_purpose",
+          "server_purpose",
+          "payload_key",
+          "prompt_key",
+          "instruction_key",
+          "default_model"
+        ]
+      },
+      "anthropic_messages_request": {
+        "renderer": "anthropic_example",
+        "allowed_kinds": [
+          "anthropic_tool_use"
+        ],
+        "required_fields": [
+          "kind",
+          "template_family",
+          "local_purpose",
+          "server_purpose",
+          "payload_key",
+          "prompt_key",
+          "instruction_key",
+          "default_model"
+        ]
+      },
+      "mcp_tool_server": {
+        "renderer": "mcp_example",
+        "allowed_kinds": [
+          "mcp_tool_server"
+        ],
+        "required_fields": [
+          "kind",
+          "template_family",
+          "local_purpose",
+          "server_purpose",
+          "payload_key"
+        ]
+      }
+    }
+  },
+  "coverage_policy": {
+    "required_profile_ids": [
+      "codex",
+      "gemini",
+      "claude",
+      "ollama",
+      "mcp",
+      "ide"
+    ],
+    "required_runnable_profile_ids": [
+      "codex",
+      "gemini",
+      "claude",
+      "ollama",
+      "mcp"
+    ],
+    "workspace_output_owner_profile_ids": [
+      "ide"
+    ],
+    "required_workspace_output_profile_ids": [
+      "ide"
+    ]
+  },
+  "profiles": [
+    {
+      "id": "codex",
+      "title": "Codex / OpenAI tool-calling",
+      "summary": "Bootstrap pack for OpenAI-compatible tool calling, including Codex-style agent loops.",
+      "references": [
+        "docs/references/tool-api.md",
+        "docs/references/python-api.md"
+      ],
+      "instructions": [
+        "Use descriptor.tools as the callable contract and do not invent tools outside the NextStat descriptor.",
+        "Keep deterministic execution on by default for reproducible scientific workflows unless the user explicitly asks for stochastic runs."
+      ],
+      "runnable_example": {
+        "kind": "openai_tool_calling",
+        "template_family": "provider_request",
+        "local_purpose": "Runnable Codex/OpenAI local bootstrap that prints an OpenAI-compatible tool-calling request payload from the canonical local descriptor.",
+        "server_purpose": "Runnable Codex/OpenAI server bootstrap that prints an OpenAI-compatible tool-calling request payload from the authenticated server descriptor.",
+        "payload_key": "tools",
+        "prompt_key": "input",
+        "instruction_key": "instructions",
+        "default_model": "gpt-5"
+      },
+      "transports": {
+        "local": {
+          "instructions": [
+            "Prefer local transport when the analysis needs the full Python registry, including ROOT ingest and non-HEP verticals."
+          ],
+          "snippets": {
+            "bootstrap": "from nextstat.tools import get_toolkit_descriptor\\ndescriptor = get_toolkit_descriptor(transport=\"local\")\\ntools = descriptor[\"tools\"]\\nguidance = descriptor[\"guidance\"]",
+            "execution_loop": "Use the OpenAI-compatible descriptor.tools list directly. When the model emits a tool call, validate the arguments against the chosen function schema and execute with nextstat.tools.execute_tool(..., transport=\"local\")."
+          },
+          "references": [
+            "docs/references/tool-api.md"
+          ]
+        },
+        "server": {
+          "instructions": [
+            "Prefer server transport when the workflow should stay auth-enabled and remote through nextstat-server."
+          ],
+          "snippets": {
+            "bootstrap": "from nextstat.tools import get_toolkit_descriptor\\ndescriptor = get_toolkit_descriptor(transport=\"server\", server_url=server_url, api_key=api_key)\\ntools = descriptor[\"tools\"]\\nguidance = descriptor[\"guidance\"]",
+            "execution_loop": "Use descriptor.tools as the only callable server-safe subset. Execute tool calls with nextstat.tools.execute_tool(..., transport=\"server\", server_url=..., api_key=..., fallback_to_local=False) when you need strict remote behavior."
+          },
+          "references": [
+            "docs/references/server-api.md"
+          ]
+        }
+      }
+    },
+    {
+      "id": "gemini",
+      "title": "Gemini function-calling",
+      "summary": "Bootstrap pack for Gemini-style function calling using the same canonical NextStat descriptor.",
+      "references": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md"
+      ],
+      "instructions": [
+        "Map descriptor.tools into Gemini function declarations without changing tool names or argument schemas.",
+        "Use descriptor.guidance.recipes as prompt seeds so the model stays aligned with the intended transport surface."
+      ],
+      "runnable_example": {
+        "kind": "gemini_function_calling",
+        "template_family": "provider_request",
+        "local_purpose": "Runnable Gemini local bootstrap that prints a function-calling request payload from the canonical local descriptor.",
+        "server_purpose": "Runnable Gemini server bootstrap that prints a function-calling request payload from the authenticated server descriptor.",
+        "payload_key": "function_declarations",
+        "prompt_key": "prompt",
+        "instruction_key": "system_instruction",
+        "default_model": "gemini-2.5-pro"
+      },
+      "transports": {
+        "local": {
+          "instructions": [
+            "Local transport is the broadest surface and should be the default when the Gemini workflow runs inside a trusted Python environment."
+          ],
+          "snippets": {
+            "bootstrap": "descriptor = get_toolkit_descriptor(transport=\"local\")\\nfunction_declarations = descriptor[\"tools\"]\\nrecipe_seeds = descriptor[\"guidance\"][\"recipes\"]",
+            "execution_loop": "Present function_declarations to Gemini, then execute approved calls with nextstat.tools.execute_tool(..., transport=\"local\"). Use descriptor.guidance.hints to explain local-only capabilities when the workflow needs broader coverage."
+          },
+          "references": [
+            "docs/references/tool-api.md"
+          ]
+        },
+        "server": {
+          "instructions": [
+            "Server transport keeps Gemini on the server-safe subset and is the right default for remote/shared deployments."
+          ],
+          "snippets": {
+            "bootstrap": "descriptor = get_toolkit_descriptor(transport=\"server\", server_url=server_url, api_key=api_key)\\nfunction_declarations = descriptor[\"tools\"]\\nrecipe_seeds = descriptor[\"guidance\"][\"recipes\"]",
+            "execution_loop": "Only expose descriptor.tools to Gemini. When a call is selected, execute it remotely with nextstat.tools.execute_tool(..., transport=\"server\", server_url=..., api_key=..., fallback_to_local=False)."
+          },
+          "references": [
+            "docs/references/server-api.md"
+          ]
+        }
+      }
+    },
+    {
+      "id": "claude",
+      "title": "Anthropic / Claude tool use",
+      "summary": "Bootstrap pack for Anthropic Claude tool use using a provider-native messages plus tools request shape.",
+      "references": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/references/python-api.md"
+      ],
+      "instructions": [
+        "Map descriptor.tools into Anthropic tool definitions without renaming tools or mutating argument schemas.",
+        "Keep the system prompt concise and use descriptor.guidance.recipes as the workflow layer instead of embedding long procedural prompts."
+      ],
+      "runnable_example": {
+        "kind": "anthropic_tool_use",
+        "template_family": "anthropic_messages_request",
+        "local_purpose": "Runnable Claude local bootstrap that prints an Anthropic-native messages plus tools request payload from the canonical local descriptor.",
+        "server_purpose": "Runnable Claude server bootstrap that prints an Anthropic-native messages plus tools request payload from the authenticated server descriptor.",
+        "payload_key": "tools",
+        "prompt_key": "messages",
+        "instruction_key": "system",
+        "default_model": "claude-sonnet-4-5"
+      },
+      "transports": {
+        "local": {
+          "instructions": [
+            "Use local transport when the Claude workflow runs inside a trusted Python environment and needs the full local NextStat descriptor."
+          ],
+          "snippets": {
+            "bootstrap": "descriptor = get_toolkit_descriptor(transport=\"local\")\\ntools = descriptor[\"tools\"]\\nrecipe_seeds = descriptor[\"guidance\"][\"recipes\"]",
+            "execution_loop": "Expose descriptor.tools as Anthropic tool definitions, keep descriptor.guidance.recipes as the workflow layer, and execute approved calls with nextstat.tools.execute_tool(..., transport=\"local\")."
+          },
+          "references": [
+            "docs/references/tool-api.md",
+            "docs/references/python-api.md"
+          ]
+        },
+        "server": {
+          "instructions": [
+            "Use server transport for remote or shared Claude workflows so the callable surface stays aligned with the authenticated server-safe subset."
+          ],
+          "snippets": {
+            "bootstrap": "descriptor = get_toolkit_descriptor(transport=\"server\", server_url=server_url, api_key=api_key)\\ntools = descriptor[\"tools\"]\\nrecipe_seeds = descriptor[\"guidance\"][\"recipes\"]",
+            "execution_loop": "Only expose descriptor.tools to Claude, then execute approved calls with nextstat.tools.execute_tool(..., transport=\"server\", server_url=..., api_key=..., fallback_to_local=False)."
+          },
+          "references": [
+            "docs/references/server-api.md",
+            "docs/references/python-api.md"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ollama",
+      "title": "Ollama / local open-weight models",
+      "summary": "Bootstrap pack for local models that may use MCP or a manual validated tool loop instead of first-class function calling.",
+      "references": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md"
+      ],
+      "instructions": [
+        "Do not assume the model can emit perfect function calls; keep a validated manual loop available.",
+        "Use descriptor.capabilities to explain unavailable tools instead of silently substituting local-only functionality."
+      ],
+      "runnable_example": {
+        "kind": "manual_tool_loop",
+        "template_family": "provider_request",
+        "local_purpose": "Runnable Ollama local bootstrap that prints a manual-tool-loop request payload from the canonical local descriptor.",
+        "server_purpose": "Runnable Ollama server bootstrap that prints a manual-tool-loop request payload from the authenticated server descriptor.",
+        "payload_key": "manual_loop_contract",
+        "prompt_key": "prompt",
+        "instruction_key": "system_instruction",
+        "default_model": "qwen2.5:14b"
+      },
+      "transports": {
+        "local": {
+          "instructions": [
+            "For trusted local automation, use the full local descriptor and, if needed, get_mcp_tools() as the MCP-facing mirror."
+          ],
+          "snippets": {
+            "bootstrap": "descriptor = get_toolkit_descriptor(transport=\"local\")\\nmcp_tools = get_mcp_tools()\\nmanual_loop_contract = descriptor[\"tools\"]",
+            "execution_loop": "If the local model lacks reliable function calling, ask it to choose a tool name plus JSON arguments, validate that pair against descriptor.tools, then execute with nextstat.tools.execute_tool(..., transport=\"local\")."
+          },
+          "references": [
+            "docs/references/tool-api.md",
+            "docs/references/python-api.md"
+          ]
+        },
+        "server": {
+          "instructions": [
+            "For remote/shared use, keep Ollama on the server-safe subset and disable local fallback when strict server execution matters."
+          ],
+          "snippets": {
+            "bootstrap": "descriptor = get_toolkit_descriptor(transport=\"server\", server_url=server_url, api_key=api_key)\\nmanual_loop_contract = descriptor[\"tools\"]",
+            "execution_loop": "Run a validated manual tool loop over descriptor.tools and execute with nextstat.tools.execute_tool(..., transport=\"server\", server_url=..., api_key=..., fallback_to_local=False). Treat descriptor.guidance.recipes as the workflow prompt layer."
+          },
+          "references": [
+            "docs/references/server-api.md"
+          ]
+        }
+      }
+    },
+    {
+      "id": "mcp",
+      "title": "MCP tool server",
+      "summary": "Bootstrap pack for Model Context Protocol tool servers using the canonical NextStat tool and guidance surfaces.",
+      "references": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/references/python-api.md"
+      ],
+      "instructions": [
+        "Use MCP tool definitions as the protocol surface, but keep descriptor.guidance.recipes as workflow and prompt seeds.",
+        "Keep MCP tool names and input schemas aligned with the canonical NextStat tool manifest; do not invent aliases."
+      ],
+      "runnable_example": {
+        "kind": "mcp_tool_server",
+        "template_family": "mcp_tool_server",
+        "local_purpose": "Runnable MCP local bootstrap that prints an MCP tool-server config from the canonical local MCP mirror plus descriptor guidance.",
+        "server_purpose": "Runnable MCP server bootstrap that prints an MCP tool-server config derived from the authenticated server descriptor.",
+        "payload_key": "mcp_tools"
+      },
+      "transports": {
+        "local": {
+          "instructions": [
+            "For trusted local automation, build the MCP tool list from nextstat.tools.get_mcp_tools() and dispatch through nextstat.tools.handle_mcp_call()."
+          ],
+          "snippets": {
+            "bootstrap": "from nextstat.tools import get_mcp_tools, get_toolkit_descriptor\\nmcp_tools = get_mcp_tools()\\ndescriptor = get_toolkit_descriptor(transport=\"local\")",
+            "execution_loop": "Expose mcp_tools through your MCP server or bridge, then dispatch validated calls with nextstat.tools.handle_mcp_call(name, arguments). Use descriptor.guidance.recipes as the workflow layer."
+          },
+          "references": [
+            "docs/references/tool-api.md",
+            "docs/references/python-api.md"
+          ]
+        },
+        "server": {
+          "instructions": [
+            "For remote/shared use, derive MCP tool definitions from get_toolkit_descriptor(transport=\"server\", ...) so the protocol surface stays restricted to the authenticated server-safe subset."
+          ],
+          "snippets": {
+            "bootstrap": "descriptor = get_toolkit_descriptor(transport=\"server\", server_url=server_url, api_key=api_key)\\nmcp_tools = [{\"name\": tool[\"function\"][\"name\"], \"description\": tool[\"function\"][\"description\"], \"inputSchema\": tool[\"function\"][\"parameters\"]} for tool in descriptor[\"tools\"]]",
+            "execution_loop": "Expose the derived mcp_tools through your MCP bridge, then dispatch approved calls with nextstat.tools.execute_tool(..., transport=\"server\", server_url=..., api_key=..., fallback_to_local=False)."
+          },
+          "references": [
+            "docs/references/server-api.md",
+            "docs/references/python-api.md"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ide",
+      "title": "IDE assistant / copilot rules",
+      "summary": "Bootstrap pack for editor-integrated assistants that need short workspace-safe rules and transport-aware recipes.",
+      "references": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md"
+      ],
+      "instructions": [
+        "Treat the descriptor as the canonical source when authoring IDE rules, snippets, or assistant instructions.",
+        "Prefer short, transport-aware workspace rules instead of long narrative prompts."
+      ],
+      "workspace_outputs": [
+        {
+          "id": "copilot_instructions",
+          "path": ".github/copilot-instructions.md",
+          "template_family": "copilot_instructions_md",
+          "purpose": "Repo-native Copilot instructions generated from the canonical workspace-output bootstrap profile."
+        },
+        {
+          "id": "cursor_rule",
+          "path": ".cursor/rules/nextstat-tools.mdc",
+          "template_family": "cursor_rule_mdc",
+          "purpose": "Cursor rule file generated from the same workspace-output bootstrap profile and transport-aware guidance."
+        }
+      ],
+      "transports": {
+        "local": {
+          "instructions": [
+            "Local IDE rules may mention the full Python registry, including ROOT ingest and non-HEP verticals."
+          ],
+          "snippets": {
+            "bootstrap": "Workspace rule seed: 'Load the local NextStat descriptor first, use descriptor.tools as the callable surface, and use descriptor.guidance.recipes as task templates.'",
+            "execution_loop": "If the IDE assistant proposes a tool call, validate it against descriptor.tools and prefer deterministic execution for code review, notebooks, and reproducible analyses."
+          },
+          "references": [
+            "docs/references/tool-api.md"
+          ]
+        },
+        "server": {
+          "instructions": [
+            "Server IDE rules must describe the restricted subset explicitly so the assistant does not hallucinate local-only tools."
+          ],
+          "snippets": {
+            "bootstrap": "Workspace rule seed: 'For remote NextStat usage, only use descriptor.tools from get_toolkit_descriptor(transport=\"server\", ...); use descriptor.capabilities to explain why local-only tools are unavailable.'",
+            "execution_loop": "Keep IDE instructions short: audit with descriptor.guidance.recipes, execute through nextstat.tools.execute_tool(..., transport=\"server\", server_url=..., api_key=..., fallback_to_local=False), and avoid local fallback when strict remote behavior is required."
+          },
+          "references": [
+            "docs/references/server-api.md"
+          ]
+        }
+      }
+    }
+  ]
+}

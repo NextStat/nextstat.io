@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/pharma/normal_normal_design_v0.schema.json",
+  "title": "Normal-Normal Bayesian Trial Design v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "design_id",
+    "control_prior",
+    "treatment_prior",
+    "likelihood",
+    "looks",
+    "decision_rules",
+    "analysis"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "nextstat_normal_normal_design_v0"
+    },
+    "design_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "control_prior": { "$ref": "#/$defs/prior" },
+    "treatment_prior": { "$ref": "#/$defs/prior" },
+    "likelihood": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["known_sd_control", "known_sd_treatment"],
+      "properties": {
+        "known_sd_control": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        },
+        "known_sd_treatment": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        }
+      }
+    },
+    "looks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/look" }
+    },
+    "decision_rules": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["success", "futility"],
+      "properties": {
+        "success": { "$ref": "#/$defs/decision_rule" },
+        "futility": { "$ref": "#/$defs/decision_rule" }
+      }
+    },
+    "analysis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["credible_interval_level"],
+      "properties": {
+        "credible_interval_level": {
+          "type": "number",
+          "exclusiveMinimum": 0.0,
+          "exclusiveMaximum": 1.0
+        }
+      }
+    },
+    "simulation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n_replicates", "seed", "scenarios"],
+      "properties": {
+        "n_replicates": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "scenarios": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/scenario" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "prior": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mean", "sd"],
+      "properties": {
+        "mean": { "type": "number" },
+        "sd": {
+          "type": "number",
+          "exclusiveMinimum": 0.0
+        }
+      }
+    },
+    "look": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "n_control", "n_treatment"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "n_control": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "n_treatment": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "decision_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["posterior_probability_threshold", "treatment_effect_margin"],
+      "properties": {
+        "posterior_probability_threshold": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "treatment_effect_margin": {
+          "type": "number"
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "mean_control", "mean_treatment"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "mean_control": { "type": "number" },
+        "mean_treatment": { "type": "number" }
+      }
+    }
+  }
+}

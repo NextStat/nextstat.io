@@ -1,0 +1,54 @@
+{
+  "schema_version": "nextstat_simplified_likelihood_public_fixture_catalog_v0",
+  "stability": "apex2",
+  "fixtures": [
+    {
+      "fixture_id": "atlas_basis_two_bin_public_example",
+      "title": "ATLAS-style basis-form public simplified likelihood example",
+      "fixture_role": "public_style_consume_smoke",
+      "experiment": "ATLAS",
+      "analysis_id": "sl_two_bin_public_example",
+      "source_format": "basis",
+      "uncertainty_model_kind": "basis",
+      "workspace_json_path": "docs/specs/hep/simplified_likelihood_v0.example.json",
+      "reference": "https://nextstat.io/examples/sl_two_bin_public_example",
+      "provenance_kind": "public_style_example",
+      "stable_commands": ["audit", "fit", "hypotest", "upper-limit", "scan"],
+      "research_grade_commands": ["significance", "hypotest-toys", "viz-ranking"],
+      "ranking_semantics": "reduced_basis_only",
+      "notes": "Synthetic public-style basis example for the promoted consume surface."
+    },
+    {
+      "fixture_id": "cms_covariance_three_bin_public_example",
+      "title": "CMS-style covariance-form public simplified likelihood example",
+      "fixture_role": "public_style_consume_smoke",
+      "experiment": "CMS",
+      "analysis_id": "sl_covariance_three_bin_public_example",
+      "source_format": "covariance",
+      "uncertainty_model_kind": "covariance",
+      "workspace_json_path": "docs/specs/hep/simplified_likelihood_covariance_public_v0.example.json",
+      "reference": "https://nextstat.io/examples/sl_covariance_three_bin_public_example",
+      "provenance_kind": "public_style_example",
+      "stable_commands": ["audit", "fit", "hypotest", "upper-limit", "scan"],
+      "research_grade_commands": ["significance", "hypotest-toys", "viz-ranking"],
+      "ranking_semantics": "reduced_basis_only",
+      "notes": "Covariance-form example. Ranking is reduced-basis only, not source-level."
+    },
+    {
+      "fixture_id": "atlas_derived_workspace_public_example",
+      "title": "ATLAS-style derived-from-workspace simplified likelihood example",
+      "fixture_role": "public_style_consume_smoke",
+      "experiment": "ATLAS",
+      "analysis_id": "sl_derived_workspace_public_example",
+      "source_format": "derived_from_workspace",
+      "uncertainty_model_kind": "basis",
+      "workspace_json_path": "docs/specs/hep/simplified_likelihood_derived_from_workspace_v0.example.json",
+      "reference": "https://nextstat.io/examples/sl_derived_workspace_public_example",
+      "provenance_kind": "derived_public_style_example",
+      "stable_commands": ["audit", "fit", "hypotest", "upper-limit", "scan"],
+      "research_grade_commands": ["significance", "hypotest-toys", "viz-ranking"],
+      "ranking_semantics": "reduced_basis_only",
+      "notes": "Consume path is smoke-tested; derive/export provenance remains research-grade."
+    }
+  ]
+}

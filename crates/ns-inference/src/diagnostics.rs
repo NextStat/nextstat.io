@@ -689,6 +689,7 @@ mod tests {
                 accept_probs: vec![],
                 energies: vec![],
                 n_leapfrog: vec![0; n],
+                n_leapfrog_warmup_total: 0,
                 max_treedepth: max_td,
                 step_size: 0.0,
                 mass_diag: vec![],

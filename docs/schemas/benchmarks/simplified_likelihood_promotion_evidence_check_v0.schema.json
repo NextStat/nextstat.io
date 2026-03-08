@@ -1,0 +1,343 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/simplified_likelihood_promotion_evidence_check_v0.schema.json",
+  "title": "Simplified Likelihood Promotion Evidence Check v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "surface",
+    "checked_at_utc",
+    "status",
+    "ok",
+    "require_promotion_ready",
+    "bundle_dir",
+    "bundle_json_path",
+    "bundle_summary",
+    "checks",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_simplified_likelihood_promotion_evidence_check_v0"
+    },
+    "surface": {
+      "const": "simplified_likelihood"
+    },
+    "checked_at_utc": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["passed", "failed"]
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "require_promotion_ready": {
+      "type": "boolean"
+    },
+    "bundle_dir": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bundle_json_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "bundle_summary": {
+      "$ref": "#/$defs/bundleSummary"
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_validation",
+        "inventory",
+        "consistency",
+        "promotion_readiness"
+      ],
+      "properties": {
+        "schema_validation": {
+          "$ref": "#/$defs/schemaValidationCheck"
+        },
+        "inventory": {
+          "$ref": "#/$defs/inventoryCheck"
+        },
+        "consistency": {
+          "$ref": "#/$defs/consistencyCheck"
+        },
+        "promotion_readiness": {
+          "$ref": "#/$defs/promotionReadinessCheck"
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["top_level_errors"],
+      "properties": {
+        "top_level_errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "baseCheck": {
+      "type": "object",
+      "required": ["status", "ok", "errors"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "bundleSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "status",
+        "benchmark_host",
+        "supports_speedup_claim",
+        "supports_public_fixture_matrix",
+        "artifact_count",
+        "required_artifact_count"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "nextstat_simplified_likelihood_promotion_evidence_bundle_v0"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["ok", "fail"]
+        },
+        "benchmark_host": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supports_speedup_claim": {
+          "type": "boolean"
+        },
+        "supports_public_fixture_matrix": {
+          "type": "boolean"
+        },
+        "artifact_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "required_artifact_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "schemaValidationCheck": {
+      "allOf": [
+        { "$ref": "#/$defs/baseCheck" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "ok", "errors", "schema_path"],
+          "properties": {
+            "status": {
+              "enum": ["passed", "failed"]
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "errors": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "schema_path": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      ]
+    },
+    "inventoryCheck": {
+      "allOf": [
+        { "$ref": "#/$defs/baseCheck" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "ok",
+            "errors",
+            "artifact_count",
+            "hash_verified_count",
+            "byte_size_verified_count",
+            "missing_roles",
+            "duplicate_roles",
+            "missing_files",
+            "sha256_mismatches",
+            "byte_mismatches"
+          ],
+          "properties": {
+            "status": {
+              "enum": ["passed", "failed"]
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "errors": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "artifact_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "hash_verified_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "byte_size_verified_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "missing_roles": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "duplicate_roles": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "missing_files": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "sha256_mismatches": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "byte_mismatches": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          }
+        }
+      ]
+    },
+    "consistencyCheck": {
+      "allOf": [
+        { "$ref": "#/$defs/baseCheck" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "ok",
+            "errors",
+            "artifact_count",
+            "required_artifact_count",
+            "expected_summary_status"
+          ],
+          "properties": {
+            "status": {
+              "enum": ["passed", "failed"]
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "errors": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "artifact_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "required_artifact_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "expected_summary_status": {
+              "type": "string",
+              "enum": ["ok", "fail"]
+            }
+          }
+        }
+      ]
+    },
+    "promotionReadinessCheck": {
+      "allOf": [
+        { "$ref": "#/$defs/baseCheck" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status",
+            "ok",
+            "errors",
+            "required_benchmark_host",
+            "actual_benchmark_host",
+            "required_min_end_to_end_upper_limit_speedup",
+            "actual_min_end_to_end_upper_limit_speedup",
+            "actual_public_fixture_matrix_status",
+            "actual_stable_surface_supported",
+            "actual_speedup_target_supported"
+          ],
+          "properties": {
+            "status": {
+              "enum": ["not_requested", "passed", "failed"]
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "errors": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "required_benchmark_host": {
+              "type": "string",
+              "minLength": 1
+            },
+            "actual_benchmark_host": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required_min_end_to_end_upper_limit_speedup": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "actual_min_end_to_end_upper_limit_speedup": {
+              "type": "number",
+              "minimum": 0.0
+            },
+            "actual_public_fixture_matrix_status": {
+              "type": "string",
+              "enum": ["ok", "fail"]
+            },
+            "actual_stable_surface_supported": {
+              "type": "boolean"
+            },
+            "actual_speedup_target_supported": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

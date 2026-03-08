@@ -1,0 +1,141 @@
+name: M15 Reporting Stable Surface
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - "crates/ns-cli/src/m15.rs"
+      - "crates/ns-cli/src/main.rs"
+      - "crates/ns-cli/tests/cli_m15_*.rs"
+      - "validation-pack/render_validation_pack.sh"
+      - "scripts/benchmarks/bench_m15_reporting.py"
+      - "scripts/benchmarks/bench_m15_reporting_remote.sh"
+      - "scripts/benchmarks/compare_m15_reporting_benchmark.py"
+      - "scripts/benchmarks/m15_reporting_stable_surface_gate.sh"
+      - "benchmarks/artifacts/m15_reporting_baselines/nextstat-bench/accepted.json"
+      - "docs/benchmarks/m15-reporting-runtime-gate.md"
+      - "docs/references/m15-reporting.md"
+      - "docs/schemas/benchmarks/m15_reporting_benchmark_result_v1.schema.json"
+      - "docs/schemas/benchmarks/m15_reporting_benchmark_compare_report_v1.schema.json"
+      - "docs/schemas/validation/m15_*.json"
+      - "docs/specs/pharma/m15_reporting_benchmark_result_v1.example.json"
+      - "docs/specs/pharma/m15_reporting_benchmark_compare_report_v1.example.json"
+      - "docs/specs/m15_*.json"
+      - "tests/python/test_m15_artifact_schema_smoke.py"
+      - "tests/python/test_m15_reporting_benchmark_smoke.py"
+      - "tests/python/test_validation_pack_execution_regression.py"
+      - "tests/python/test_python_tests_workflow_m15_smoke.py"
+      - "tests/python/test_release_workflow_m15_smoke.py"
+      - ".github/workflows/m15-reporting-stable-surface.yml"
+      - ".github/workflows/python-tests.yml"
+      - ".github/workflows/release.yml"
+      - "Makefile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - "crates/ns-cli/src/m15.rs"
+      - "crates/ns-cli/src/main.rs"
+      - "crates/ns-cli/tests/cli_m15_*.rs"
+      - "validation-pack/render_validation_pack.sh"
+      - "scripts/benchmarks/bench_m15_reporting.py"
+      - "scripts/benchmarks/bench_m15_reporting_remote.sh"
+      - "scripts/benchmarks/compare_m15_reporting_benchmark.py"
+      - "scripts/benchmarks/m15_reporting_stable_surface_gate.sh"
+      - "benchmarks/artifacts/m15_reporting_baselines/nextstat-bench/accepted.json"
+      - "docs/benchmarks/m15-reporting-runtime-gate.md"
+      - "docs/references/m15-reporting.md"
+      - "docs/schemas/benchmarks/m15_reporting_benchmark_result_v1.schema.json"
+      - "docs/schemas/benchmarks/m15_reporting_benchmark_compare_report_v1.schema.json"
+      - "docs/schemas/validation/m15_*.json"
+      - "docs/specs/pharma/m15_reporting_benchmark_result_v1.example.json"
+      - "docs/specs/pharma/m15_reporting_benchmark_compare_report_v1.example.json"
+      - "docs/specs/m15_*.json"
+      - "tests/python/test_m15_artifact_schema_smoke.py"
+      - "tests/python/test_m15_reporting_benchmark_smoke.py"
+      - "tests/python/test_validation_pack_execution_regression.py"
+      - "tests/python/test_python_tests_workflow_m15_smoke.py"
+      - "tests/python/test_release_workflow_m15_smoke.py"
+      - ".github/workflows/m15-reporting-stable-surface.yml"
+      - ".github/workflows/python-tests.yml"
+      - ".github/workflows/release.yml"
+      - "Makefile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+concurrency:
+  group: m15-reporting-stable-surface-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  contract:
+    name: Contract Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install "pytest>=9.0" "jsonschema>=4.0"
+
+      - name: Shellcheck (bash -n) stable-surface gate
+        run: bash -n scripts/benchmarks/m15_reporting_stable_surface_gate.sh
+
+      - name: Run M15 reporting contract tests
+        run: |
+          pytest -q \
+            tests/python/test_m15_artifact_schema_smoke.py \
+            tests/python/test_m15_reporting_benchmark_smoke.py \
+            tests/python/test_validation_pack_execution_regression.py \
+            tests/python/test_python_tests_workflow_m15_smoke.py \
+            tests/python/test_release_workflow_m15_smoke.py
+
+  benchmark-compare:
+    name: Benchmark Compare Gate
+    if: github.event_name == 'push'
+    runs-on: ${{ fromJSON('["self-hosted","linux","x64","bench"]') }}
+    needs: [contract]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Shellcheck (bash -n) stable-surface gate
+        run: bash -n scripts/benchmarks/m15_reporting_stable_surface_gate.sh
+
+      - name: Run M15 reporting stable-surface gate
+        run: make m15-reporting-stable-surface-gate
+
+      - name: Upload M15 benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m15-reporting-stable-surface-report
+          path: |
+            tmp/m15_reporting_stable_surface/m15_reporting_benchmark.json
+            tmp/m15_reporting_stable_surface/m15_reporting_benchmark.md
+            tmp/m15_reporting_stable_surface/m15_reporting_compare.json
+          if-no-files-found: error

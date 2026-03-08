@@ -1,0 +1,33 @@
+{
+  "case_name": "iv_2sls_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_iv_2sls": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_iv_2sls"
+      },
+      "ok": true,
+      "result": {
+        "coef": [
+          1.1807692307692306,
+          0.09836538461538247
+        ],
+        "diagnostics": {
+          "first_stage_f": [
+            4055.999999999986
+          ]
+        },
+        "n_obs": 8,
+        "standard_errors": [
+          0.017693319487251166,
+          0.10073140700641497
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

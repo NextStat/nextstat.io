@@ -1,0 +1,67 @@
+{
+  "current_analysis": {
+    "decision": {
+      "futility": false,
+      "futility_threshold": 0.1,
+      "margin": 0.0,
+      "posterior_probability_gt_margin": 0.6725589163359341,
+      "recommended_action": "continue",
+      "success": false,
+      "success_threshold": 0.975
+    },
+    "design_id": "continuous_superiority_demo",
+    "look": {
+      "id": "interim",
+      "n_control": 10,
+      "n_treatment": 10
+    },
+    "observed": {
+      "control_sample_mean": 0.1,
+      "look_id": "interim",
+      "treatment_sample_mean": 0.3
+    },
+    "posterior": {
+      "control": {
+        "ci_lower": -0.5195852671179297,
+        "ci_upper": 0.7193854669181297,
+        "posterior_mean": 0.0999000999000999,
+        "posterior_sd": 0.316069770620507
+      },
+      "effect_difference": {
+        "ci_lower": -0.6762844079283722,
+        "ci_upper": 1.0758848075287717,
+        "margin": 0.0,
+        "posterior_mean": 0.1998001998001998,
+        "posterior_probability_gt_margin": 0.6725589163359341,
+        "posterior_sd": 0.4469901562676742
+      },
+      "treatment": {
+        "ci_lower": -0.31978506731773,
+        "ci_upper": 0.9191856667183294,
+        "posterior_mean": 0.2997002997002997,
+        "posterior_sd": 0.316069770620507
+      }
+    },
+    "schema_version": "nextstat_normal_normal_design_analysis_v0",
+    "stability": "research-grade"
+  },
+  "current_total_sample_size": 20.0,
+  "design_id": "continuous_superiority_demo",
+  "eventual_futility_probability": 0.0,
+  "eventual_no_decision_probability": 0.875,
+  "eventual_success_probability": 0.125,
+  "expected_remaining_sample_size": 20.0,
+  "expected_total_sample_size": 40.0,
+  "future_look_summaries": [
+    {
+      "conditional_futility_probability": 0.0,
+      "conditional_stop_probability": 0.125,
+      "conditional_success_probability": 0.125,
+      "look_id": "final"
+    }
+  ],
+  "n_replicates": 32,
+  "schema_version": "nextstat_normal_normal_posterior_predictive_v0",
+  "seed": 456,
+  "stability": "research-grade"
+}

@@ -6,12 +6,62 @@ The compiled extension is exposed as `nextstat._core` (built via PyO3/maturin).
 from __future__ import annotations
 
 import importlib
+import importlib.util
+import sys
 from pathlib import Path
+
+
+def _candidate_installed_core_paths() -> list[Path]:
+    current_pkg_dir = Path(__file__).resolve().parent
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+    patterns = ("_core*.so", "_core*.pyd", "_core*.dylib", "_core*.dll")
+
+    for entry in sys.path:
+        if not entry:
+            continue
+        try:
+            pkg_dir = (Path(entry).resolve() / __name__)
+        except OSError:
+            continue
+        if pkg_dir == current_pkg_dir or not pkg_dir.is_dir():
+            continue
+        for pattern in patterns:
+            for candidate in sorted(pkg_dir.glob(pattern)):
+                resolved = candidate.resolve()
+                if resolved in seen:
+                    continue
+                seen.add(resolved)
+                candidates.append(candidate)
+    return candidates
+
+
+def _load_installed_core_fallback():
+    module_name = f"{__name__}._core"
+    last_error: ImportError | None = None
+    for candidate in _candidate_installed_core_paths():
+        spec = importlib.util.spec_from_file_location(module_name, candidate)
+        if spec is None or spec.loader is None:
+            continue
+        module = importlib.util.module_from_spec(spec)
+        try:
+            sys.modules[module_name] = module
+            spec.loader.exec_module(module)
+            return module
+        except ImportError as exc:  # pragma: no cover - only on broken fallback candidates
+            last_error = exc
+            sys.modules.pop(module_name, None)
+    if last_error is not None:
+        raise last_error
+    return None
 
 try:
     import nextstat._core as _core  # type: ignore  # noqa: E402
 except ImportError:  # pragma: no cover
-    _core = None  # type: ignore
+    try:
+        _core = _load_installed_core_fallback()  # type: ignore
+    except ImportError:
+        _core = None  # type: ignore
 
 
 def _get(name: str, default=None):
@@ -28,6 +78,7 @@ fit_batch = _get("fit_batch")
 hypotest = _get("hypotest")
 hypotest_toys = _get("hypotest_toys")
 _sample_nuts = _get("sample")
+_sample_walnuts = _get("sample_walnuts")
 _sample_mams = _get("sample_mams")
 _sample_laps = _get("sample_laps")  # None if not built with cuda
 RawCudaModel = _get("RawCudaModel")  # None if not built with cuda
@@ -57,6 +108,8 @@ NegativeBinomialRegressionModel = _get("NegativeBinomialRegressionModel")
 ComposedGlmModel = _get("ComposedGlmModel")
 LmmMarginalModel = _get("LmmMarginalModel")
 KalmanModel = _get("KalmanModel")
+BetaBinomialModel = _get("BetaBinomialModel")
+DelayCorrectionModel = _get("DelayCorrectionModel")
 ExponentialSurvivalModel = _get("ExponentialSurvivalModel")
 WeibullSurvivalModel = _get("WeibullSurvivalModel")
 LogNormalAftModel = _get("LogNormalAftModel")
@@ -112,6 +165,7 @@ forward_sensitivity_solve_callback = _get("forward_sensitivity_solve_callback")
 rk4_linear = _get("rk4_linear")
 rk4_linear_dde = _get("rk4_linear_dde")
 read_root_histogram = _get("read_root_histogram")
+_read_root_histogram_bytes = _get("_read_root_histogram_bytes")
 workspace_audit = _get("workspace_audit")
 cls_curve = _get("cls_curve")
 kalman_filter = _get("kalman_filter")
@@ -140,6 +194,7 @@ from_arrow_ipc = _get("from_arrow_ipc")
 from_parquet = _get("from_parquet")
 from_parquet_with_modifiers = _get("from_parquet_with_modifiers")
 fault_tree_mc = _get("fault_tree_mc")
+fault_tree_mc_ce_is = _get("fault_tree_mc_ce_is")
 to_arrow_yields_ipc = _get("to_arrow_yields_ipc")
 to_arrow_params_ipc = _get("to_arrow_params_ipc")
 
@@ -152,8 +207,10 @@ _LAZY_SUBMODULES = {
     "unbinned",
     "arrow_io",
     "bayes",
+    "bayes_design",
     "viz",
     "viz_render",
+    "ads",
     "data",
     "glm",
     "timeseries",
@@ -178,7 +235,9 @@ _LAZY_SUBMODULES = {
     "audit",
     "report",
     "validation_report",
+    "m15_report",
     "analysis",
+    "hep",
     "trex_config",
     "torch",
     "gym",
@@ -206,7 +265,7 @@ def sample(
     Args:
         model: A NextStat model instance, or a string model name for LAPS
             (``"std_normal"``, ``"eight_schools"``, ``"neal_funnel"``, ``"glm_logistic"``).
-        method: Sampling algorithm — ``"nuts"`` (default), ``"mams"``, or ``"laps"`` (GPU).
+        method: Sampling algorithm — ``"nuts"`` (default), ``"walnuts"``, ``"mams"``, or ``"laps"`` (GPU).
         return_idata: If ``True``, return an ArviZ ``InferenceData`` object instead
             of a raw dict. Requires ``arviz`` and ``numpy``.
         out: Optional path to save results (JSON or NetCDF).
@@ -214,11 +273,11 @@ def sample(
         **kwargs: Method-specific parameters forwarded to the underlying sampler.
 
     Common kwargs (all methods):
-        n_chains (int): Number of parallel chains. Default: 4 (NUTS/MAMS), 4096 (LAPS).
-        n_warmup (int): Warmup iterations. Default: 500.
-        n_samples (int): Sampling iterations. Default: 1000 (NUTS/MAMS), 2000 (LAPS).
+        n_chains (int): Number of parallel chains. Default: 4 (NUTS/WALNUTS/MAMS), 4096 (LAPS).
+        n_warmup (int): Warmup iterations. Default: 500 for NUTS/WALNUTS, 2000 for MAMS.
+        n_samples (int): Sampling iterations. Default: 1000 (NUTS/WALNUTS/MAMS), 2000 (LAPS).
         seed (int): Random seed. Default: 42.
-        target_accept (float): Target acceptance rate. Default: 0.8 (NUTS), 0.9 (MAMS/LAPS).
+        target_accept (float): Target acceptance rate. Default: 0.8 (NUTS/WALNUTS), 0.985 (MAMS), 0.9 (LAPS).
 
     NUTS-specific kwargs:
         max_treedepth (int): Max tree depth. Default: 10.
@@ -226,11 +285,21 @@ def sample(
         metric (str): ``"diagonal"``, ``"dense"``, or ``"auto"``. Default: ``"diagonal"``.
         stepsize_jitter (float): Step size jitter. Default: 0.0.
 
+    WALNUTS-specific kwargs:
+        max_treedepth (int): Max macro-tree depth. Default: 10.
+        max_step_halvings (int): Max dyadic halvings for reversible macro steps. Default: 4.
+        min_micro_steps (int): Minimum micro leapfrog steps per macro step. Default: 1.
+        max_energy_error (float): Max allowed energy error at accepted macro steps. Default: 2.0.
+        target_tree_depth (float): Target average macro-tree depth during warmup. Default: 4.0.
+        init_strategy (str): ``"random"``, ``"mle"``, or ``"pathfinder"``. Default: ``"random"``.
+        metric (str): ``"diagonal"``, ``"dense"``, or ``"auto"``. Default: ``"diagonal"``.
+        stepsize_jitter (float): Step size jitter. Default: 0.0.
+
     MAMS-specific kwargs:
         init_strategy (str): ``"random"``, ``"mle"``, or ``"pathfinder"``. Default: ``"random"``.
-        metric (str): ``"diagonal"`` or ``"dense"``. Default: ``"diagonal"``.
+        metric (str): ``"diagonal"`` only on the stable public surface. Default: ``"diagonal"``.
         init_step_size (float): Initial step size. Default: 0.0 (auto).
-        init_l (float): Initial trajectory length. Default: 0.0 (auto).
+        init_l (float): Initial trajectory length. Default: 0.0 (stable ``sqrt(d)`` default in preconditioned space).
         max_leapfrog (int): Max leapfrog steps. Default: 1024.
         diagonal_precond (bool): Use diagonal preconditioning. Default: True.
 
@@ -245,13 +314,15 @@ def sample(
         dict or InferenceData: Sampling results. When ``return_idata=False`` (default),
         returns a dict with keys ``"posterior"``, ``"sample_stats"``,
         ``"diagnostics"``, ``"param_names"``, ``"n_chains"``, ``"n_warmup"``,
-        ``"n_samples"``. When ``return_idata=True``, returns an ArviZ ``InferenceData``.
+        ``"n_samples"``. ``sample_stats`` includes per-draw ``n_leapfrog`` and
+        per-chain ``n_leapfrog_warmup_total`` telemetry. When ``return_idata=True``,
+        returns an ArviZ ``InferenceData``.
 
     Examples:
         >>> import nextstat as ns
         >>> model = ns.EightSchoolsModel([28,8,-3,7,-1,1,18,12], [15,10,16,11,9,11,10,18])
         >>> result = ns.sample(model, method="nuts", n_samples=2000)
-        >>> idata = ns.sample(model, method="mams", n_samples=2000, return_idata=True)
+        >>> idata = ns.sample(model, method="walnuts", n_samples=2000, return_idata=True)
     """
     if _core is None:
         raise ImportError("nextstat._core is not available (native extension not built/installed).")
@@ -260,6 +331,10 @@ def sample(
         if _sample_nuts is None:
             raise RuntimeError("NUTS sampler not available in this build.")
         raw = _sample_nuts(model, **kwargs)
+    elif method == "walnuts":
+        if _sample_walnuts is None:
+            raise RuntimeError("WALNUTS sampler not available in this build.")
+        raw = _sample_walnuts(model, **kwargs)
     elif method == "mams":
         if _sample_mams is None:
             raise RuntimeError("MAMS sampler not available in this build.")
@@ -276,7 +351,7 @@ def sample(
         raw = _sample_laps(model, **kwargs)
     else:
         raise ValueError(
-            f"Unknown method: {method!r}. Use 'nuts', 'mams', or 'laps'."
+            f"Unknown method: {method!r}. Use 'nuts', 'walnuts', 'mams', or 'laps'."
         )
 
     if not return_idata:
@@ -295,6 +370,7 @@ def sample(
 
 # Explicit per-method aliases for direct access.
 sample_nuts = _sample_nuts
+sample_walnuts = _sample_walnuts
 sample_mams = _sample_mams
 sample_laps = _sample_laps
 
@@ -408,6 +484,8 @@ __all__ = [
     "ComposedGlmModel",
     "LmmMarginalModel",
     "KalmanModel",
+    "BetaBinomialModel",
+    "DelayCorrectionModel",
     "ExponentialSurvivalModel",
     "WeibullSurvivalModel",
     "LogNormalAftModel",
@@ -504,6 +582,7 @@ __all__ = [
     "bayes",
     "viz",
     "viz_render",
+    "ads",
     "data",
     "unbinned",
     "glm",
@@ -529,6 +608,7 @@ __all__ = [
     "tools",
     "distill",
     "remote",
+    "hep",
     "arrow_io",
     # Back-compat aliases
     "PyModel",

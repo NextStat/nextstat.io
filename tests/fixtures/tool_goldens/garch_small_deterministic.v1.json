@@ -1,0 +1,55 @@
+{
+  "case_name": "garch_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_garch_fit": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_garch_fit"
+      },
+      "ok": true,
+      "result": {
+        "conditional_sigma": [
+          0.013217051448430295,
+          0.013217051448430295,
+          0.013217051448430295,
+          0.013217051448430295,
+          0.013217051448430295,
+          0.013217051448430295,
+          0.013217051448430295,
+          0.013217051448430295,
+          0.013217051448430295,
+          0.013217051448430295
+        ],
+        "conditional_variance": [
+          0.00017469044899045337,
+          0.00017469044899045337,
+          0.00017469044899045337,
+          0.00017469044899045337,
+          0.00017469044899045337,
+          0.00017469044899045337,
+          0.00017469044899045337,
+          0.00017469044899045337,
+          0.00017469044899045337,
+          0.00017469044899045337
+        ],
+        "converged": true,
+        "fval": -29.073102585155993,
+        "log_likelihood": 29.073102585155993,
+        "message": "Solver converged",
+        "n_fev": 113,
+        "n_gev": 134,
+        "params": {
+          "alpha": 0.0,
+          "beta": 0.0,
+          "mu": 0.001899976032152121,
+          "omega": 0.00017469044899045337
+        }
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

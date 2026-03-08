@@ -39,7 +39,7 @@ scripts/fit_summary.sh --input fit.json --out-dir report_tmp --prefix bb4l --top
 # 3) Produce plotting artifacts
 nextstat viz pulls --input workspace.json --fit fit.json --output report_tmp/pulls.json
 nextstat viz corr  --input workspace.json --fit fit.json --output report_tmp/corr.json
-nextstat viz ranking --input workspace.json --output report_tmp/ranking.json
+nextstat viz ranking --input workspace.json --fit fit.json --output report_tmp/ranking.json
 
 # 4) Render selected artifacts
 nextstat viz render --kind pulls --input report_tmp/pulls.json --output report_tmp/pulls.png

@@ -72,10 +72,13 @@ class TestSampleAPIShape:
         assert "accept_prob" in stats
         assert "energy" in stats
         assert "step_size" in stats
+        assert "n_leapfrog_warmup_total" in stats
         assert len(stats["diverging"]) == n_chains
         assert len(stats["diverging"][0]) == n_samples
         assert len(stats["energy"][0]) == n_samples
         assert len(stats["step_size"]) == n_chains
+        assert len(stats["n_leapfrog_warmup_total"]) == n_chains
+        assert stats["n_leapfrog_warmup_total"][0] > 0
 
     def test_diagnostics_keys(self):
         model = _make_fast_model()
@@ -115,6 +118,112 @@ class TestSampleReproducibility:
             assert r1["posterior"][name] == r2["posterior"][name], (
                 f"Draws for {name} should be identical with same seed"
             )
+
+
+class TestWalnutsSurface:
+    """Fast product-surface checks for the WALNUTS method."""
+
+    def test_walnuts_returns_dict_with_expected_keys(self):
+        model = _make_fast_model()
+        result = nextstat.sample(
+            model, method="walnuts", n_chains=1, n_warmup=20, n_samples=10, seed=11
+        )
+        assert isinstance(result, dict)
+        expected_keys = {
+            "posterior", "sample_stats", "diagnostics",
+            "param_names", "n_chains", "n_warmup", "n_samples",
+        }
+        assert expected_keys <= set(result.keys())
+
+    def test_walnuts_same_seed_same_draws(self):
+        model = _make_fast_model()
+        kwargs = dict(
+            method="walnuts",
+            n_chains=1,
+            n_warmup=20,
+            n_samples=10,
+            seed=42,
+            max_step_halvings=2,
+            min_micro_steps=2,
+        )
+        r1 = nextstat.sample(model, **kwargs)
+        r2 = nextstat.sample(model, **kwargs)
+        for name in r1["param_names"]:
+            assert r1["posterior"][name] == r2["posterior"][name]
+
+    def test_walnuts_custom_max_treedepth(self):
+        model = _make_fast_model()
+        result = nextstat.sample(
+            model,
+            method="walnuts",
+            n_chains=1,
+            n_warmup=20,
+            n_samples=10,
+            seed=7,
+            max_treedepth=5,
+        )
+        for depth in result["sample_stats"]["tree_depth"][0]:
+            assert depth <= 5
+
+    def test_walnuts_dense_metric_reports_dense_surface(self):
+        model = _make_fast_model()
+        result = nextstat.sample(
+            model,
+            method="walnuts",
+            n_chains=1,
+            n_warmup=20,
+            n_samples=10,
+            seed=1,
+            metric="dense",
+        )
+        stats = result["sample_stats"]
+        assert stats["metric_type"] == "dense"
+        assert "inv_mass_matrix" in stats
+        assert len(stats["inv_mass_matrix"]) == model.n_params() ** 2
+
+    def test_walnuts_auto_metric_reports_dense_for_small_dim(self):
+        model = _make_fast_model()
+        result = nextstat.sample(
+            model,
+            method="walnuts",
+            n_chains=1,
+            n_warmup=20,
+            n_samples=10,
+            seed=2,
+            metric="auto",
+        )
+        assert result["sample_stats"]["metric_type"] == "dense"
+
+    def test_walnuts_min_micro_steps_zero_raises(self):
+        model = _make_fast_model()
+        with pytest.raises(ValueError, match="min_micro_steps must be >= 1"):
+            nextstat.sample(
+                model,
+                method="walnuts",
+                n_chains=1,
+                n_warmup=10,
+                n_samples=10,
+                seed=1,
+                min_micro_steps=0,
+            )
+
+    def test_walnuts_specific_config_smoke(self):
+        model = _make_fast_model()
+        result = nextstat.sample(
+            model,
+            method="walnuts",
+            n_chains=1,
+            n_warmup=20,
+            n_samples=10,
+            seed=9,
+            target_tree_depth=3.0,
+            max_step_halvings=2,
+            min_micro_steps=2,
+            max_energy_error=1.0,
+            init_jitter_rel=0.1,
+        )
+        assert isinstance(result, dict)
+        assert result["n_samples"] == 10
 
 
 # ---------------------------------------------------------------------------

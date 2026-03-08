@@ -723,6 +723,7 @@ pub struct TrexRegion {
 enum SampleKind {
     Data,
     Mc,
+    Ghost,
 }
 
 /// One TREx sample block.
@@ -763,6 +764,12 @@ pub struct TrexSample {
     pub separate_gammas: Option<bool>,
     /// Use only these named systematics.
     pub use_systematic: Option<Vec<String>>,
+    /// Template morphing anchor: `(param_name, param_value)` from `Template: Ytsq:0`.
+    pub template: Option<(String, f64)>,
+    /// Histogram name within ROOT file (HIST mode ghost samples).
+    pub histo_name: Option<String>,
+    /// ROOT file names for this sample (HIST mode, e.g. `mc20a,mc20d,mc20e`).
+    pub histo_files: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1062,7 +1069,7 @@ impl TrexConfig {
         if !hist_filter_only && !norm_factors_structured.is_empty() {
             for nf in &norm_factors_structured {
                 for s in &mut samples {
-                    if s.kind == SampleKind::Data {
+                    if s.kind == SampleKind::Data || s.kind == SampleKind::Ghost {
                         continue;
                     }
                     if nf.samples.iter().any(|t| t == &s.name || t.eq_ignore_ascii_case("all")) {
@@ -1848,7 +1855,11 @@ fn trex_expr_coverage_from_raw(globals: &[Attr], blocks: &[RawBlock]) -> TrexExp
 fn parse_sample_kind(value: Option<String>) -> SampleKind {
     let Some(v) = value else { return SampleKind::Mc };
     let v = v.trim().to_ascii_lowercase();
-    if v == "data" { SampleKind::Data } else { SampleKind::Mc }
+    match v.as_str() {
+        "data" => SampleKind::Data,
+        "ghost" => SampleKind::Ghost,
+        _ => SampleKind::Mc,
+    }
 }
 
 fn parse_sample_block(b: &RawBlock, hist_filter_only: bool) -> Result<TrexSample> {
@@ -1866,7 +1877,7 @@ fn parse_sample_block(b: &RawBlock, hist_filter_only: bool) -> Result<TrexSample
     let file = match file {
         Some(v) => Some(PathBuf::from(v)),
         None => {
-            if hist_filter_only {
+            if hist_filter_only || kind == SampleKind::Ghost {
                 None
             } else {
                 return Err(Error::Validation(format!(
@@ -1947,6 +1958,22 @@ fn parse_sample_block(b: &RawBlock, hist_filter_only: bool) -> Result<TrexSample
         .map(|v| parse_list(&v))
         .filter(|xs| !xs.is_empty());
 
+    // Template morphing: `Template: Ytsq:0` → (param_name, param_value)
+    let template = last_attr_value(&b.attrs, "Template").and_then(|v| {
+        let v = v.trim();
+        let (param_name, val_str) = v.split_once(':')?;
+        let val: f64 = val_str.trim().parse().ok()?;
+        Some((param_name.trim().to_string(), val))
+    });
+
+    let histo_name = last_attr_value(&b.attrs, "HistoName")
+        .or_else(|| last_attr_value(&b.attrs, "HistogramName"));
+
+    let histo_files = last_attr_value(&b.attrs, "HistoFiles")
+        .or_else(|| last_attr_value(&b.attrs, "HistoFile"))
+        .map(|v| parse_list(&v))
+        .filter(|xs| !xs.is_empty());
+
     Ok(TrexSample {
         name,
         kind,
@@ -1966,6 +1993,9 @@ fn parse_sample_block(b: &RawBlock, hist_filter_only: bool) -> Result<TrexSample
         line_color,
         separate_gammas,
         use_systematic,
+        template,
+        histo_name,
+        histo_files,
     })
 }
 
@@ -2608,7 +2638,7 @@ pub fn workspace_from_config(cfg: &TrexConfig, base_dir: &Path) -> Result<Worksp
 
         // Add samples in the input order.
         for s in &cfg.samples {
-            if s.kind == SampleKind::Data {
+            if s.kind == SampleKind::Data || s.kind == SampleKind::Ghost {
                 continue;
             }
             if !sample_applies(s, &region.name) {
@@ -2738,7 +2768,7 @@ pub fn workspace_from_str(text: &str, base_dir: &Path) -> Result<Workspace> {
 
         // Add samples in the input order.
         for s in &cfg.samples {
-            if s.kind == SampleKind::Data {
+            if s.kind == SampleKind::Data || s.kind == SampleKind::Ghost {
                 continue;
             }
             if !sample_applies(s, &region.name) {
@@ -2905,6 +2935,10 @@ fn workspace_from_hist_mode(cfg: &TrexConfig, base_dir: &Path) -> Result<Workspa
     // existing HistFactory export, we treat these as *filters* over the imported workspace.
     ws = apply_hist_mode_filters(ws, cfg)?;
 
+    // Template morphing: detect ghost samples with `Template:` key, read their histograms,
+    // compute Lagrange polynomial coefficients, and attach TemplateMorphing modifier.
+    ws = apply_template_morphing(ws, cfg, basedir.as_deref().unwrap_or(base_dir))?;
+
     Ok(ws)
 }
 
@@ -2962,8 +2996,11 @@ fn apply_hist_mode_filters(mut ws: Workspace, cfg: &TrexConfig) -> Result<Worksp
     // Sample selection: if the config defines Sample blocks, treat them as an include-list
     // per channel, respecting per-sample `Regions:` filters.
     if !cfg.samples.is_empty() {
-        let non_data: Vec<&TrexSample> =
-            cfg.samples.iter().filter(|s| s.kind != SampleKind::Data).collect();
+        let non_data: Vec<&TrexSample> = cfg
+            .samples
+            .iter()
+            .filter(|s| s.kind != SampleKind::Data && s.kind != SampleKind::Ghost)
+            .collect();
         if non_data.is_empty() {
             return Ok(ws);
         }
@@ -3072,12 +3109,311 @@ fn apply_hist_mode_filters(mut ws: Workspace, cfg: &TrexConfig) -> Result<Worksp
     Ok(ws)
 }
 
+// ---------------------------------------------------------------------------
+// Template morphing: Lagrange polynomial coefficients
+// ---------------------------------------------------------------------------
+
+/// Compute monomial-basis polynomial coefficients from Lagrange anchor points.
+///
+/// Given `N` anchor points `(x_i, y_i)`, returns `[c_0, c_1, ..., c_{N-1}]`
+/// such that `y = c_0 + c_1*x + c_2*x^2 + ... + c_{N-1}*x^{N-1}`.
+///
+/// Uses Lagrange → monomial conversion via accumulation of `(x - x_j)` products.
+fn lagrange_coefficients(anchors: &[(f64, f64)]) -> Vec<f64> {
+    let n = anchors.len();
+    if n == 0 {
+        return vec![];
+    }
+    let mut coeffs = vec![0.0; n];
+    for i in 0..n {
+        let (xi, yi) = anchors[i];
+        // Compute Lagrange basis polynomial L_i(x) = product_{j!=i} (x - x_j) / (x_i - x_j)
+        // represented in monomial form, then accumulate yi * L_i.
+        let mut basis = vec![0.0; n];
+        basis[0] = 1.0;
+        let mut degree = 0;
+        let mut denom = 1.0;
+        for j in 0..n {
+            if j == i {
+                continue;
+            }
+            let xj = anchors[j].0;
+            denom *= xi - xj;
+            // Multiply current basis by (x - xj): shift up + subtract xj * current
+            for k in (1..=degree + 1).rev() {
+                basis[k] = basis[k - 1] - xj * basis[k];
+            }
+            basis[0] *= -xj;
+            degree += 1;
+        }
+        let scale = yi / denom;
+        for k in 0..n {
+            coeffs[k] += scale * basis[k];
+        }
+    }
+    coeffs
+}
+
+/// Detect ghost samples with `Template:` morphing, read ROOT histograms for anchor
+/// points, compute Lagrange polynomial coefficients per bin, and attach a
+/// `TemplateMorphing` modifier to the target signal sample.
+fn apply_template_morphing(
+    mut ws: Workspace,
+    cfg: &TrexConfig,
+    base_dir: &Path,
+) -> Result<Workspace> {
+    use crate::pyhf::schema::{Modifier, TemplateMorphingData};
+
+    // Collect ghost samples grouped by Template param_name.
+    // Each entry: (param_name, param_value, sample).
+    let mut morphing_groups: HashMap<String, Vec<(&TrexSample, f64)>> = HashMap::new();
+    // Also collect non-ghost samples that have a Template: key (the "signal" sample).
+    let mut signal_templates: HashMap<String, (&TrexSample, f64)> = HashMap::new();
+
+    for s in &cfg.samples {
+        if let Some((ref param_name, param_val)) = s.template {
+            if s.kind == SampleKind::Ghost {
+                morphing_groups.entry(param_name.clone()).or_default().push((s, param_val));
+            } else {
+                signal_templates.insert(param_name.clone(), (s, param_val));
+            }
+        }
+    }
+
+    if morphing_groups.is_empty() {
+        return Ok(ws);
+    }
+
+    // Get the global HistoPath from the config for resolving ROOT file paths.
+    let histo_path_dir = cfg.histo_path.as_ref().map(|hp| resolve_rel(base_dir, hp));
+    let histo_path_dir = histo_path_dir.as_deref().unwrap_or(base_dir);
+
+    let mut root_cache: HashMap<PathBuf, ns_root::RootFile> = HashMap::new();
+
+    for (param_name, ghosts) in &morphing_groups {
+        // Find the target signal sample (non-ghost with same Template param).
+        let Some((signal_sample, signal_val)) = signal_templates.get(param_name) else {
+            log::warn!(
+                "Ghost samples reference Template parameter '{}' but no non-ghost signal sample with Template:{} found — skipping morphing",
+                param_name,
+                param_name
+            );
+            continue;
+        };
+
+        // Combine ghosts + signal into anchor list, sorted by param_value.
+        let mut all_anchors: Vec<(&TrexSample, f64)> = ghosts.clone();
+        all_anchors.push((signal_sample, *signal_val));
+        all_anchors.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
+
+        log::info!(
+            "Template morphing for '{}': {} anchor points at {:?}",
+            param_name,
+            all_anchors.len(),
+            all_anchors.iter().map(|(_, v)| *v).collect::<Vec<_>>()
+        );
+
+        // For each channel/region in the workspace, read histograms and build coefficients.
+        for channel in &mut ws.channels {
+            // Find the signal sample in this channel.
+            let signal_idx = channel.samples.iter().position(|s| s.name == signal_sample.name);
+            let Some(signal_idx) = signal_idx else {
+                continue; // Signal sample not in this channel — skip.
+            };
+            let n_bins = channel.samples[signal_idx].data.len();
+
+            // Read histogram for each anchor point.
+            let mut anchor_bins: Vec<(f64, Vec<f64>)> = Vec::new();
+            for (anchor_sample, param_val) in &all_anchors {
+                let bins = read_ghost_histogram(
+                    anchor_sample,
+                    &channel.name,
+                    histo_path_dir,
+                    &mut root_cache,
+                );
+                match bins {
+                    Ok(b) => {
+                        if b.len() != n_bins {
+                            log::warn!(
+                                "Template morphing: histogram for sample '{}' region '{}' has {} bins (expected {}) — skipping",
+                                anchor_sample.name,
+                                channel.name,
+                                b.len(),
+                                n_bins
+                            );
+                            continue;
+                        }
+                        anchor_bins.push((*param_val, b));
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "Template morphing: could not read histogram for sample '{}' region '{}': {} — skipping",
+                            anchor_sample.name,
+                            channel.name,
+                            e
+                        );
+                        continue;
+                    }
+                }
+            }
+
+            if anchor_bins.len() < 2 {
+                log::warn!(
+                    "Template morphing: need >= 2 anchor points for '{}' in '{}', got {} — skipping",
+                    param_name,
+                    channel.name,
+                    anchor_bins.len()
+                );
+                continue;
+            }
+
+            // Compute Lagrange polynomial coefficients per bin.
+            let mut coefficients: Vec<Vec<f64>> = Vec::with_capacity(n_bins);
+            for bin_idx in 0..n_bins {
+                let anchors: Vec<(f64, f64)> =
+                    anchor_bins.iter().map(|(pv, bins)| (*pv, bins[bin_idx])).collect();
+                coefficients.push(lagrange_coefficients(&anchors));
+            }
+
+            // Attach TemplateMorphing modifier to the signal sample.
+            channel.samples[signal_idx].modifiers.push(Modifier::TemplateMorphing {
+                name: param_name.clone(),
+                data: TemplateMorphingData { coefficients },
+            });
+
+            log::info!(
+                "Attached TemplateMorphing modifier to sample '{}' in channel '{}' ({} bins, {} anchors)",
+                signal_sample.name,
+                channel.name,
+                n_bins,
+                anchor_bins.len()
+            );
+        }
+    }
+
+    Ok(ws)
+}
+
+/// Read histogram bin contents for a ghost/signal sample in a given region.
+///
+/// Handles the TRExFitter pattern where histogram data lives in ROOT files specified by
+/// `HistoFiles` (comma-separated campaign names) and `HistoName` (TDirectory path).
+/// If multiple files are specified, their bin contents are summed.
+fn read_ghost_histogram(
+    sample: &TrexSample,
+    region_name: &str,
+    base_dir: &Path,
+    root_cache: &mut HashMap<PathBuf, ns_root::RootFile>,
+) -> Result<Vec<f64>> {
+    let histo_name = sample.histo_name.as_deref().ok_or_else(|| {
+        Error::Validation(format!(
+            "Ghost sample '{}' missing HistoName (required for template morphing)",
+            sample.name
+        ))
+    })?;
+
+    // Build the full histogram path: HistoName/region_name (TRExFitter convention).
+    let full_histo_path = format!("{}/{}", histo_name, region_name);
+
+    // Determine ROOT file(s) to read from.
+    let file_names = sample.histo_files.as_deref().ok_or_else(|| {
+        Error::Validation(format!(
+            "Ghost sample '{}' missing HistoFiles (required for template morphing)",
+            sample.name
+        ))
+    })?;
+
+    let mut sum: Option<Vec<f64>> = None;
+    for file_stem in file_names {
+        // TRExFitter pattern: ROOT file path = base_dir / file_stem.root
+        // Try with .root extension if not already present.
+        let fname = if file_stem.ends_with(".root") {
+            file_stem.clone()
+        } else {
+            format!("{}.root", file_stem)
+        };
+
+        let root_path = base_dir.join(&fname);
+
+        if !root_cache.contains_key(&root_path) {
+            let rf = ns_root::RootFile::open(&root_path).map_err(|e| {
+                Error::RootFile(format!(
+                    "opening ROOT file for ghost sample '{}': {}: {}",
+                    sample.name,
+                    root_path.display(),
+                    e
+                ))
+            })?;
+            root_cache.insert(root_path.clone(), rf);
+        }
+
+        let rf = root_cache.get(&root_path).unwrap();
+        let hist = rf.get_histogram(&full_histo_path).map_err(|e| {
+            Error::RootFile(format!(
+                "reading histogram '{}' from {} for sample '{}': {}",
+                full_histo_path,
+                root_path.display(),
+                sample.name,
+                e
+            ))
+        })?;
+
+        match &mut sum {
+            None => sum = Some(hist.bin_content),
+            Some(acc) => {
+                for (a, b) in acc.iter_mut().zip(&hist.bin_content) {
+                    *a += b;
+                }
+            }
+        }
+    }
+
+    sum.ok_or_else(|| {
+        Error::Validation(format!("Ghost sample '{}' has empty HistoFiles list", sample.name))
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn repo_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    #[test]
+    fn lagrange_coefficients_linear() {
+        // Two points: (0, 1) and (1, 3) → y = 1 + 2x
+        let coeffs = super::lagrange_coefficients(&[(0.0, 1.0), (1.0, 3.0)]);
+        assert_eq!(coeffs.len(), 2);
+        assert!((coeffs[0] - 1.0).abs() < 1e-12);
+        assert!((coeffs[1] - 2.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn lagrange_coefficients_quadratic() {
+        // Three points: (0, 0), (1, 1), (4, 16) → y = x^2
+        let coeffs = super::lagrange_coefficients(&[(0.0, 0.0), (1.0, 1.0), (4.0, 16.0)]);
+        assert_eq!(coeffs.len(), 3);
+        assert!((coeffs[0]).abs() < 1e-12); // c0 = 0
+        assert!((coeffs[1]).abs() < 1e-12); // c1 = 0
+        assert!((coeffs[2] - 1.0).abs() < 1e-12); // c2 = 1
+    }
+
+    #[test]
+    fn lagrange_coefficients_cubic_ghost() {
+        // Ytsq morphing: 4 anchors at Ytsq=0,1,4,9 with some sample values.
+        // Just verify roundtrip: poly(x_i) == y_i.
+        let anchors = [(0.0, 10.0), (1.0, 25.0), (4.0, 100.0), (9.0, 250.0)];
+        let coeffs = super::lagrange_coefficients(&anchors);
+        assert_eq!(coeffs.len(), 4);
+        for &(x, y) in &anchors {
+            let mut val = 0.0;
+            for (k, &c) in coeffs.iter().enumerate() {
+                val += c * x.powi(k as i32);
+            }
+            assert!((val - y).abs() < 1e-8, "poly({x}) = {val}, expected {y}");
+        }
     }
 
     #[test]
@@ -3136,6 +3472,7 @@ WeightDown: weight_jes_down
                 crate::pyhf::Modifier::ShapeSys { .. } => "shapesys",
                 crate::pyhf::Modifier::ShapeFactor { .. } => "shapefactor",
                 crate::pyhf::Modifier::Lumi { .. } => "lumi",
+                crate::pyhf::Modifier::TemplateMorphing { .. } => "template_morphing",
                 crate::pyhf::Modifier::Unknown(_) => "unknown",
             })
             .map(|s| s.to_string())

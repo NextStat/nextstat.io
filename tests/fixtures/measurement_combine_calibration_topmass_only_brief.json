@@ -1,0 +1,34 @@
+{
+  "aggregate": {
+    "highest_calibration_inflation_label": "topmass_full",
+    "highest_fit_inflation_label": "topmass_full",
+    "labels": [
+      "topmass_full"
+    ],
+    "labels_with_near_neutral_calibration": [
+      "topmass_full"
+    ],
+    "n_artifacts": 1
+  },
+  "entries": [
+    {
+      "dominant_calibration_scenario": "jes_family_0p5",
+      "dominant_fit_scenario": "theory_core_0p5",
+      "label": "topmass_full",
+      "max_calibration_mean_sigma_star_to_sigma_ratio": 1.1413389897265351,
+      "max_fit_sigma_ratio_to_baseline": 457.6276341964417,
+      "n_near_neutral_calibration_scenarios": 1,
+      "near_neutral_calibration_scenarios": [
+        "theory_core_0p5"
+      ],
+      "poi": "m_top"
+    }
+  ],
+  "pois": [
+    "m_top"
+  ],
+  "schema_version": "nextstat_measurement_combination_calibration_campaign_brief_v0",
+  "shared_poi": "m_top",
+  "source_schema_version": "nextstat_measurement_combination_calibration_campaign_summary_v0",
+  "stability": "research-grade"
+}

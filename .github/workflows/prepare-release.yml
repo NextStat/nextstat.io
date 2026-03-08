@@ -1,0 +1,20 @@
+name: Prepare Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag in vX.Y.Z form for prepare-only validation"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release-candidate:
+    name: Release Candidate
+    uses: ./.github/workflows/release-candidate.yml
+    with:
+      release_tag: ${{ inputs.release_tag }}
+      release_mode: prepare

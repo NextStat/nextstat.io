@@ -1,0 +1,84 @@
+{
+  "case_name": "pk_npde_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_pk_npde": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_pk_npde"
+      },
+      "ok": true,
+      "result": {
+        "mean": -1.8895099603334307,
+        "model": "1cpt_oral",
+        "n_records": 8,
+        "n_sim": 16,
+        "n_subjects": 2,
+        "records": [
+          {
+            "dv": 1.2,
+            "npde": -1.8895099603334304,
+            "percentile": 0.029411764705882353,
+            "subject": 0,
+            "time": 0.5
+          },
+          {
+            "dv": 2.3,
+            "npde": -1.8895099603334304,
+            "percentile": 0.029411764705882353,
+            "subject": 0,
+            "time": 1.0
+          },
+          {
+            "dv": 1.9,
+            "npde": -1.8895099603334304,
+            "percentile": 0.029411764705882353,
+            "subject": 0,
+            "time": 2.0
+          },
+          {
+            "dv": 0.8,
+            "npde": -1.8895099603334304,
+            "percentile": 0.029411764705882353,
+            "subject": 0,
+            "time": 4.0
+          },
+          {
+            "dv": 1.0,
+            "npde": -1.8895099603334304,
+            "percentile": 0.029411764705882353,
+            "subject": 1,
+            "time": 0.5
+          },
+          {
+            "dv": 2.1,
+            "npde": -1.8895099603334304,
+            "percentile": 0.029411764705882353,
+            "subject": 1,
+            "time": 1.0
+          },
+          {
+            "dv": 1.7,
+            "npde": -1.8895099603334304,
+            "percentile": 0.029411764705882353,
+            "subject": 1,
+            "time": 2.0
+          },
+          {
+            "dv": 0.7,
+            "npde": -1.8895099603334304,
+            "percentile": 0.029411764705882353,
+            "subject": 1,
+            "time": 4.0
+          }
+        ],
+        "seed": 42,
+        "variance": 5.634720751578655e-32
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

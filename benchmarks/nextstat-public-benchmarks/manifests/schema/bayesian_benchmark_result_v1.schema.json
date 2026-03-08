@@ -82,6 +82,9 @@
       "required": ["wall_time_s"],
       "properties": {
         "wall_time_s": { "type": "number", "minimum": 0 },
+        "n_grad_evals": { "type": "integer", "minimum": 0 },
+        "ess_per_grad": { "type": "number", "minimum": 0 },
+        "grad_per_sec": { "type": "number", "minimum": 0 },
         "ess_bulk_per_sec": {
           "type": "object",
           "additionalProperties": false,

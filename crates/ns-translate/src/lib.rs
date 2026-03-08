@@ -16,13 +16,16 @@
 
 #[cfg(feature = "arrow-io")]
 pub mod arrow;
+pub mod audit;
 pub mod cabinetry;
+pub mod detect;
 #[cfg(feature = "root-io")]
 pub mod histfactory;
 pub mod hs3;
 #[cfg(feature = "root-io")]
 pub mod ntuple;
 pub mod pyhf;
+pub mod simplified;
 #[cfg(feature = "root-io")]
 pub mod trex;
 

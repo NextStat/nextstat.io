@@ -1,0 +1,66 @@
+{
+  "current_analysis": {
+    "decision": {
+      "futility": false,
+      "futility_threshold": 0.2,
+      "margin": 0.0,
+      "posterior_probability_gt_margin": 0.6221311262168687,
+      "recommended_action": "continue",
+      "success": false,
+      "success_threshold": 0.95
+    },
+    "design_id": "binary_superiority_demo",
+    "look": {
+      "id": "interim",
+      "n_control": 20,
+      "n_treatment": 20
+    },
+    "observed": {
+      "control_successes": 8,
+      "look_id": "interim",
+      "treatment_successes": 9
+    },
+    "posterior": {
+      "control": {
+        "alpha": 9.0,
+        "beta": 13.0,
+        "ci_lower": 0.21819685688513102,
+        "ci_upper": 0.6156456096213528,
+        "mean": 0.4090909090909091
+      },
+      "effect_difference": {
+        "margin": 0.0,
+        "posterior_mean": 0.045454545454545414,
+        "posterior_probability_gt_margin": 0.6221311262168687
+      },
+      "treatment": {
+        "alpha": 10.0,
+        "beta": 12.0,
+        "ci_lower": 0.25713062640640694,
+        "ci_upper": 0.6597936907197256,
+        "mean": 0.45454545454545453
+      }
+    },
+    "schema_version": "nextstat_beta_binomial_design_analysis_v0",
+    "stability": "research-grade"
+  },
+  "current_total_sample_size": 40.0,
+  "design_id": "binary_superiority_demo",
+  "eventual_futility_probability": 0.0625,
+  "eventual_no_decision_probability": 0.8125,
+  "eventual_success_probability": 0.125,
+  "expected_remaining_sample_size": 40.0,
+  "expected_total_sample_size": 80.0,
+  "future_look_summaries": [
+    {
+      "conditional_futility_probability": 0.0625,
+      "conditional_stop_probability": 0.1875,
+      "conditional_success_probability": 0.125,
+      "look_id": "final"
+    }
+  ],
+  "n_replicates": 32,
+  "schema_version": "nextstat_beta_binomial_posterior_predictive_v0",
+  "seed": 123,
+  "stability": "research-grade"
+}

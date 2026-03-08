@@ -107,7 +107,7 @@ def sample(
 
     Args:
         model: A NextStat model instance, or a string name for LAPS.
-        method: ``"nuts"`` (default), ``"mams"``, or ``"laps"`` (GPU).
+        method: ``"nuts"`` (default), ``"walnuts"``, ``"mams"``, or ``"laps"`` (GPU).
         return_idata: If ``True`` (default), return ArviZ ``InferenceData``.
         out: Optional path to save results.
         out_format: ``"json"`` (default) or ``"netcdf"``.
@@ -119,7 +119,7 @@ def sample(
     Examples:
         >>> import nextstat.bayes as bayes
         >>> model = nextstat.EightSchoolsModel(...)
-        >>> idata = bayes.sample(model, method="mams", n_samples=2000)
+        >>> idata = bayes.sample(model, method="walnuts", n_samples=2000)
         >>> az.plot_trace(idata)
     """
     from . import sample as _unified_sample

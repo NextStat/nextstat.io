@@ -1,0 +1,30 @@
+{
+  "case_name": "panel_fe_small_deterministic",
+  "schema_version": "nextstat.tool_goldens.v1",
+  "tools": {
+    "nextstat_panel_fe": {
+      "error": null,
+      "meta": {
+        "deterministic": true,
+        "eval_mode": "parity",
+        "threads_requested": 1,
+        "tool_name": "nextstat_panel_fe"
+      },
+      "ok": true,
+      "result": {
+        "cluster": "two_way",
+        "cluster_kind": "two_way",
+        "coef": [
+          0.7857142857142857
+        ],
+        "n_clusters": 6,
+        "n_entities": 3,
+        "n_obs": 6,
+        "standard_errors": [
+          0.0941046498914657
+        ]
+      },
+      "schema_version": "nextstat.tool_result.v1"
+    }
+  }
+}

@@ -1,0 +1,309 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/m15_reporting_benchmark_result_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "M15 Reporting Benchmark Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "deterministic",
+    "ok",
+    "meta",
+    "host",
+    "binary",
+    "protocol",
+    "results",
+    "derived"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.m15_reporting_benchmark_result.v1"
+    },
+    "suite": {
+      "const": "m15_reporting"
+    },
+    "deterministic": {
+      "type": "boolean"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "git_commit",
+        "host_policy",
+        "markdown_out",
+        "nextstat_bin",
+        "nextstat_command",
+        "out",
+        "smoke",
+        "work_root"
+      ],
+      "properties": {
+        "git_commit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "host_policy": {
+          "const": "nextstat-bench"
+        },
+        "markdown_out": {
+          "type": "string"
+        },
+        "nextstat_bin": {
+          "type": "string"
+        },
+        "nextstat_command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "out": {
+          "type": "string"
+        },
+        "smoke": {
+          "type": "boolean"
+        },
+        "work_root": {
+          "type": "string"
+        }
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cpu_model",
+        "hostname",
+        "platform",
+        "python"
+      ],
+      "properties": {
+        "cpu_model": {
+          "type": "string"
+        },
+        "hostname": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "python": {
+          "type": "string"
+        }
+      }
+    },
+    "binary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "build_profile",
+        "path",
+        "sha256",
+        "version"
+      ],
+      "properties": {
+        "build_profile": {
+          "enum": [
+            "debug",
+            "release",
+            "unknown"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "version": {
+          "type": "string"
+        }
+      }
+    },
+    "protocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "cases",
+        "metric",
+        "runs",
+        "summary_policy",
+        "warmups",
+        "workspace_root"
+      ],
+      "properties": {
+        "cases": {
+          "type": "array",
+          "minItems": 6,
+          "items": {
+            "type": "string"
+          }
+        },
+        "metric": {
+          "const": "wall_time_seconds"
+        },
+        "runs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "summary_policy": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "string"
+          }
+        },
+        "warmups": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "workspace_root": {
+          "type": "string"
+        }
+      }
+    },
+    "results": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "$ref": "#/$defs/result"
+      }
+    },
+    "derived": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "validation_pack_m15_over_base_median_ratio"
+      ],
+      "properties": {
+        "validation_pack_m15_over_base_median_ratio": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
+    }
+  },
+  "$defs": {
+    "validation_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "expected_schema_version",
+        "observed_schema_version",
+        "path",
+        "status"
+      ],
+      "properties": {
+        "expected_schema_version": {
+          "type": "string"
+        },
+        "observed_schema_version": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "fail"
+          ]
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "artifact_root",
+        "case_id",
+        "command",
+        "description",
+        "max_s",
+        "median_s",
+        "min_s",
+        "runs",
+        "samples_s",
+        "status",
+        "validation",
+        "warmups"
+      ],
+      "properties": {
+        "artifact_root": {
+          "type": "string"
+        },
+        "case_id": {
+          "type": "string"
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "description": {
+          "type": "string"
+        },
+        "max_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "median_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "min_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "runs": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "samples_s": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "fail"
+          ]
+        },
+        "validation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "validated_artifacts"
+          ],
+          "properties": {
+            "validated_artifacts": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/validation_artifact"
+              }
+            }
+          }
+        },
+        "warmups": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

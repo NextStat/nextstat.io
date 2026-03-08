@@ -19,6 +19,7 @@ path = "src/main.rs"
 ns-core.workspace = true
 ns-compute.workspace = true
 ns-inference = { workspace = true }
+ns-root.workspace = true
 ns-translate.workspace = true
 ns-unbinned.workspace = true
 axum.workspace = true
@@ -32,7 +33,9 @@ tracing-subscriber.workspace = true
 rayon.workspace = true
 anyhow.workspace = true
 statrs.workspace = true
+nalgebra.workspace = true
 sha2 = "0.10"
+base64 = "0.22"
 
 [features]
 default = []

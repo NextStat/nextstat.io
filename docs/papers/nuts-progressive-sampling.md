@@ -278,7 +278,7 @@ The v10 results described below are checked into:
 
 ---
 
-## 7. Results (February 2026)
+## 7. Results (March 2026 refresh)
 
 Hardware: AMD EPYC 7502P (32C/64T), 128 GB RAM.  CmdStan baseline version:
 2.38.0 (released 2026-01-13 [5]).  All runs meet health gates: 0 divergences
@@ -297,9 +297,9 @@ This section is generated from checked-in benchmark artifacts:
 
 | Model | NextStat ESS/sec | CmdStan ESS/sec | Ratio |
 |---|---:|---:|---:|
-| GLM logistic (6p) | 29,895 ± 667.7 | 29,600 ± 1,971 | 1.01x |
-| Hierarchical logistic RI (non-centered, 22p) | 3,255 ± 360.2 | 1,015 ± 188.5 | 3.21x |
-| Eight Schools (non-centered, 10p) | 54,083 ± 4,902 | 26,644 ± 2,221 | 2.03x |
+| GLM logistic (6p) | 14,640 ± 327.7 | 15,280 ± 713.5 | 0.96x |
+| Hierarchical logistic RI (non-centered, 22p) | 1,680 ± 39.96 | 503.7 ± 89.77 | 3.33x |
+| Eight Schools (non-centered, 10p) | 28,510 ± 1,591 | 16,783 ± 2,254 | 1.7x |
 
 Figures (generated):
 
@@ -311,11 +311,11 @@ Figures (generated):
 
 | Model | Backend | Divergences | Max treedepth hits | Max R-hat | Min E-BFMI |
 |---|---|---:|---:|---:|---:|
-| GLM logistic (6p) | nextstat | 0 | 0 | 1.001 | 1.011 |
+| GLM logistic (6p) | nextstat | 0 | 0 | 1.002 | 1.018 |
 | GLM logistic (6p) | cmdstanpy | 0 | 0 | 1.002 | — |
-| Hierarchical logistic RI (non-centered, 22p) | nextstat | 0 | 0 | 1.004 | 0.691 |
+| Hierarchical logistic RI (non-centered, 22p) | nextstat | 0 | 0 | 1.003 | 0.7 |
 | Hierarchical logistic RI (non-centered, 22p) | cmdstanpy | 0 | 0 | 1.002 | — |
-| Eight Schools (non-centered, 10p) | nextstat | 0 | 0 | 1.003 | 0.883 |
+| Eight Schools (non-centered, 10p) | nextstat | 0 | 0 | 1.002 | 0.903 |
 | Eight Schools (non-centered, 10p) | cmdstanpy | 0 | 0 | 1.002 | — |
 
 ### 7.3 ESS/leapfrog (algorithmic efficiency)
@@ -324,11 +324,11 @@ This diagnostic isolates sampler efficiency per unit of Hamiltonian integration.
 
 | Case | NextStat | CmdStan | Ratio |
 |---|---:|---:|---:|
-| GLM logistic (6p) | 0.187 ± 0.006 | 0.164 ± 0.002 | 1.14x |
-| Hierarchical logistic RI (non-centered, 22p) | 0.044 ± 0.009 | 0.024 ± 0.005 | 1.82x |
-| Eight Schools (non-centered, 10p) | 0.052 ± 0.003 | 0.046 ± 0.004 | 1.14x |
+| GLM logistic (6p) | 0.162 ± 0.006 | 0.164 ± 0.002 | 0.99x |
+| Hierarchical logistic RI (non-centered, 22p) | 0.044 ± 0.002 | 0.024 ± 0.005 | 1.83x |
+| Eight Schools (non-centered, 10p) | 0.054 ± 0.003 | 0.046 ± 0.004 | 1.18x |
 
-Note: ESS is computed via `arviz_ess_bulk_min` (supplementary; not part of v1 public schemas).
+Note: ESS is computed via `artifact_min_ess_bulk` (supplementary; not part of v1 public schemas).
 Note: Leapfrog totals are summed over post-warmup draws (`n_leapfrog__` / `sample_stats.n_leapfrog`).
 
 ### 7.4 ESS/sec decomposition (implied)
@@ -337,11 +337,12 @@ Using the identity: (ESS/sec ratio) ≈ (ESS/LF ratio) × (LF/sec ratio).
 
 | Case | ESS/sec ratio | ESS/LF ratio | Implied LF/sec ratio |
 |---|---:|---:|---:|
-| GLM logistic (6p) | 1.01x | 1.14x | 0.88x |
-| Hierarchical logistic RI (non-centered, 22p) | 3.21x | 1.82x | 1.76x |
-| Eight Schools (non-centered, 10p) | 2.03x | 1.14x | 1.78x |
+| GLM logistic (6p) | 0.96x | 0.99x | 0.97x |
+| Hierarchical logistic RI (non-centered, 22p) | 3.33x | 1.83x | 1.82x |
+| Eight Schools (non-centered, 10p) | 1.7x | 1.18x | 1.44x |
 
 <!-- AUTOGEN:V10_RESULTS_END -->
+
 
 
 

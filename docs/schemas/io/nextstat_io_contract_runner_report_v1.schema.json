@@ -1,0 +1,150 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/io/nextstat_io_contract_runner_report_v1.schema.json",
+  "title": "NextStat IO Contract Runner Report v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "family",
+    "dry_run",
+    "status",
+    "overall_pass",
+    "repo_root",
+    "python_executable",
+    "started_at",
+    "finished_at",
+    "duration_s",
+    "step_count",
+    "failed_step_index",
+    "failed_step_label",
+    "steps"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.io_contract_runner_report.v1"
+    },
+    "family": {
+      "type": "string",
+      "enum": ["hepdata", "histograms_parquet", "all"]
+    },
+    "dry_run": {
+      "type": "boolean"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["planned", "passed", "failed"]
+    },
+    "overall_pass": {
+      "type": "boolean"
+    },
+    "repo_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "python_executable": {
+      "type": "string",
+      "minLength": 1
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "duration_s": {
+      "type": "number",
+      "minimum": 0
+    },
+    "step_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "failed_step_index": {
+      "type": ["integer", "null"],
+      "minimum": 1
+    },
+    "failed_step_label": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/step_result"
+      }
+    }
+  },
+  "$defs": {
+    "step_result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "index",
+        "label",
+        "argv",
+        "command",
+        "env_overrides",
+        "status",
+        "returncode",
+        "started_at",
+        "finished_at",
+        "duration_s"
+      ],
+      "properties": {
+        "index": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "argv": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "env_overrides": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": ["planned", "passed", "failed"]
+        },
+        "returncode": {
+          "type": ["integer", "null"]
+        },
+        "started_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "finished_at": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        },
+        "duration_s": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "stdout_tail": {
+          "type": ["string", "null"]
+        },
+        "stderr_tail": {
+          "type": ["string", "null"]
+        }
+      }
+    }
+  }
+}

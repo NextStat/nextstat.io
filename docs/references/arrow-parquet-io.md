@@ -46,6 +46,9 @@ You only need PyArrow/Polars/etc. on the machine that *writes* the Parquet file.
 For reproducible pipelines, we recommend writing a small **manifest JSON** next to the Parquet file.
 
 - Manifest schema: `docs/schemas/io/histograms_parquet_manifest_v1.schema.json`
+- Canonical example: `docs/specs/histograms_parquet_manifest_v1.example.json`
+- Regen/check: `python scripts/generate_histograms_parquet_schema_examples.py [--check]`
+- Standalone reproducibility gate: `python scripts/check_io_contracts.py --family histograms_parquet [--dry-run] [--report-json ...]`
 - Python helper module: `nextstat.arrow_io` (requires `pyarrow`)
 
 Install:
@@ -80,6 +83,22 @@ The manifest stores:
 - Arrow schema fingerprint (string + SHA-256)
 - Per-channel `n_bins` summary
 - Optional `observations_path` if you provide observed counts (otherwise Asimov is used).
+
+## Published Contract
+
+For external consumers, the supported contract surface is:
+
+- Manifest schema: `docs/schemas/io/histograms_parquet_manifest_v1.schema.json`
+- Canonical example artifact: `docs/specs/histograms_parquet_manifest_v1.example.json`
+- Deterministic example regen/check: `python scripts/generate_histograms_parquet_schema_examples.py [--check]`
+- Family-level reproducibility gate: `python scripts/check_io_contracts.py --family histograms_parquet [--dry-run] [--report-json ...]`
+- Aggregate runner report schema: `docs/schemas/io/nextstat_io_contract_runner_report_v1.schema.json`
+
+This means consumers can validate:
+
+- the manifest payload itself against the published JSON Schema
+- the example artifact against the same schema
+- the supported verification workflow through `check_io_contracts.py`
 
 ## Polars / DuckDB / Spark Interop
 
@@ -136,4 +155,3 @@ See `docs/gpu-contract.md` § Direct-to-GPU Parquet Pipeline for tolerance and p
 - Strings: `Utf8` and `LargeUtf8` are both accepted.
 - Lists: `List<Float64>` and `LargeList<Float64>` are both accepted.
 - Float64 is required for yields/stat_error to keep numeric behavior stable across languages.
-

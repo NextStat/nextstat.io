@@ -1,0 +1,143 @@
+{
+  "backend": "nextstat_nuts",
+  "case": "std_normal_10d",
+  "config": {
+    "dataset_seed": 12345,
+    "n_chains": 4,
+    "n_samples": 2000,
+    "n_warmup": 3500,
+    "seed": 0,
+    "target_accept": 0.985
+  },
+  "dataset": {
+    "id": "std_normal_10d",
+    "sha256": "f40b9e2c376ebbebd4a817348245d7f8ac7cf8b8ea5d19d57dec92799b2e5f52"
+  },
+  "deterministic": true,
+  "environment": {
+    "cpu": "AMD EPYC 7502P 32-Core Processor",
+    "machine": "x86_64",
+    "nextstat_version": "0.9.9",
+    "node": "nextstat-bench",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python_full": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "python_version": "3.12.3",
+    "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
+    "system": "Linux"
+  },
+  "meta": {
+    "nextstat_version": "0.9.9",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3"
+  },
+  "metrics": {
+    "accept_rate": 0.9813961892687122,
+    "cold_start_s": 0.22190738515928388,
+    "ess_per_grad": 0.07091947094074678,
+    "ess_per_sec": 36051.07596692938,
+    "ess_per_sec_warm": 44077.8158971117,
+    "jit_overhead_s": 0.04041018895804882,
+    "max_r_hat": 1.0014296682252979,
+    "min_ess_bulk": 8000.0,
+    "min_ess_tail": 4951.003166904493,
+    "n_grad_evals": 112804,
+    "n_integration_steps": null,
+    "posterior_summary": {
+      "n_draws": 8000,
+      "params": [
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 5202.871103804317,
+          "mean": -0.0067387528872710645,
+          "name": "x0",
+          "r_hat": 1.0014296682252979,
+          "sd": 0.9981550085582171
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 5948.131124205684,
+          "mean": 0.007077502808621938,
+          "name": "x1",
+          "r_hat": 1.0001913382556442,
+          "sd": 1.0000734231671724
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 5888.1789619321125,
+          "mean": -0.0024425633473684543,
+          "name": "x2",
+          "r_hat": 1.0006744919557964,
+          "sd": 0.988188433438519
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 6039.3425617426265,
+          "mean": -0.0007405857279899592,
+          "name": "x3",
+          "r_hat": 1.0001408690701705,
+          "sd": 1.0078650971552026
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 5586.08739872367,
+          "mean": -0.003931448331451261,
+          "name": "x4",
+          "r_hat": 1.000394881991551,
+          "sd": 1.0151964531305548
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 5343.642442042493,
+          "mean": 0.0071735475939262916,
+          "name": "x5",
+          "r_hat": 1.0006127954402904,
+          "sd": 1.020816122317182
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 5397.636065685886,
+          "mean": 0.004023238309674734,
+          "name": "x6",
+          "r_hat": 1.0001353007138278,
+          "sd": 1.0021885937872215
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 5196.772341500095,
+          "mean": -0.010837713338847841,
+          "name": "x7",
+          "r_hat": 1.0008641532074616,
+          "sd": 1.0178886204016744
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 5768.294684132509,
+          "mean": -0.0035146827585550958,
+          "name": "x8",
+          "r_hat": 1.000239726875191,
+          "sd": 1.0103095858031226
+        },
+        {
+          "ess_bulk": 8000.0,
+          "ess_tail": 4951.003166904493,
+          "mean": 0.004381765283486402,
+          "name": "x9",
+          "r_hat": 0.9999524145653846,
+          "sd": 0.9947749689363599
+        }
+      ],
+      "status": "ok"
+    },
+    "wall_time_s": 0.22190738515928388,
+    "warm_start_s": 0.18149719620123506
+  },
+  "schema_version": "nextstat.mams_benchmark_result.v1",
+  "status": "ok",
+  "suite": "mams",
+  "timing": {
+    "cold_start_s": 0.22190738515928388,
+    "jit_overhead_s": 0.04041018895804882,
+    "wall_time_s": 0.22190738515928388,
+    "warm_start_s": 0.18149719620123506
+  }
+}

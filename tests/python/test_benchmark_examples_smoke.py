@@ -19,6 +19,19 @@ def test_snapshot_index_example_validates() -> None:
     jsonschema.validate(example, schema)
 
 
+def test_snapshot_registry_example_validates() -> None:
+    jsonschema = pytest.importorskip("jsonschema")
+    schema = json.loads(
+        (_repo_root() / "docs" / "schemas" / "benchmarks" / "snapshot_registry_v1.schema.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    example = json.loads(
+        (_repo_root() / "docs" / "specs" / "snapshot_registry_v1.example.json").read_text(encoding="utf-8")
+    )
+    jsonschema.validate(example, schema)
+
+
 def test_replication_report_example_validates() -> None:
     jsonschema = pytest.importorskip("jsonschema")
     schema = json.loads(
@@ -30,4 +43,3 @@ def test_replication_report_example_validates() -> None:
         (_repo_root() / "docs" / "specs" / "replication_report_v1.example.json").read_text(encoding="utf-8")
     )
     jsonschema.validate(example, schema)
-

@@ -9,6 +9,16 @@ This guide maps pharmacometrics and biology concepts to NextStat APIs, helping y
 - NLME baseline: `docs/tutorials/phase-13-nlme.md`
 - PK diagnostics: `docs/pharmacometrics/phase2-tutorial.md`
 - Python API reference: `docs/references/python-api.md` (Pharmacometrics section)
+- Bayesian trial design whitepaper: `docs/whitepapers/fda-bayesian-trial-designs.md`
+- Bayesian trial design artifacts: `docs/references/bayesian-trial-design-artifacts.md`
+- Bayesian design report acceptance criteria: `docs/specs/pharma/bayesian_design_report_acceptance_v0.md`
+- Bayesian prior conflict diagnostic acceptance criteria: `docs/specs/pharma/bayesian_prior_conflict_diagnostic_acceptance_v0.md`
+- Bayesian historical-control borrowing review acceptance criteria: `docs/specs/pharma/bayesian_historical_control_borrowing_review_acceptance_v0.md`
+- Bayesian robust-mixture prior review acceptance criteria: `docs/specs/pharma/bayesian_robust_mixture_prior_review_acceptance_v0.md`
+- Bayesian design regulatory appendix acceptance criteria: `docs/specs/pharma/bayesian_design_regulatory_appendix_acceptance_v0.md`
+- Bayesian design appendix render acceptance criteria: `docs/specs/pharma/bayesian_design_appendix_render_acceptance_v0.md`
+- Bayesian design report bundle acceptance criteria: `docs/specs/pharma/bayesian_design_report_bundle_acceptance_v0.md`
+- Bayesian design validation-pack acceptance criteria: `docs/specs/pharma/bayesian_design_validation_pack_acceptance_v0.md`
 
 ## Biology → NextStat API Mapping
 

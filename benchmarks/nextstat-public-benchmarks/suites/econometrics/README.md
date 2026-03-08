@@ -16,7 +16,7 @@ This suite produces **publishable** JSON artifacts under pinned schemas:
 - `nextstat.econometrics_benchmark_suite_result.v1` (suite index)
 
 Related spec in the main repo:
-- `/Users/andresvlc/WebDev/nextstat.io/docs/benchmarks/suites/econometrics.md`
+- `docs/benchmarks/suites/econometrics.md`
 
 ## Run
 

@@ -1,0 +1,94 @@
+{
+  "aggregate": {
+    "n_runs": 2,
+    "reference_run": "seedgrid_a",
+    "run_labels": [
+      "seedgrid_a",
+      "seedgrid_b"
+    ],
+    "runs_with_mixed_pois": [
+      "seedgrid_a",
+      "seedgrid_b"
+    ],
+    "stable_calibration_leader": true,
+    "stable_calibration_order": true,
+    "stable_fit_leader": true,
+    "stable_fit_order": true,
+    "stable_joint_leader": true,
+    "stable_joint_order": true
+  },
+  "pairwise": [
+    {
+      "lhs": "seedgrid_a",
+      "rhs": "seedgrid_b",
+      "same_calibration_leader": true,
+      "same_calibration_order": true,
+      "same_fit_leader": true,
+      "same_fit_order": true,
+      "same_joint_leader": true,
+      "same_joint_order": true,
+      "same_poi_coverage": true,
+      "same_portfolio_labels": true
+    }
+  ],
+  "pois": [
+    "m_top",
+    "mu"
+  ],
+  "runs": [
+    {
+      "calibration_leader": "cross_portfolio",
+      "calibration_order": [
+        "cross_portfolio",
+        "topmass_only_portfolio"
+      ],
+      "fit_leader": "cross_portfolio",
+      "fit_order": [
+        "cross_portfolio",
+        "topmass_only_portfolio"
+      ],
+      "has_mixed_pois": true,
+      "joint_leader": "cross_portfolio",
+      "joint_order": [
+        "cross_portfolio",
+        "topmass_only_portfolio"
+      ],
+      "label": "seedgrid_a",
+      "n_portfolios": 2,
+      "pois": [
+        "m_top",
+        "mu"
+      ],
+      "shared_poi": null
+    },
+    {
+      "calibration_leader": "cross_portfolio",
+      "calibration_order": [
+        "cross_portfolio",
+        "topmass_only_portfolio"
+      ],
+      "fit_leader": "cross_portfolio",
+      "fit_order": [
+        "cross_portfolio",
+        "topmass_only_portfolio"
+      ],
+      "has_mixed_pois": true,
+      "joint_leader": "cross_portfolio",
+      "joint_order": [
+        "cross_portfolio",
+        "topmass_only_portfolio"
+      ],
+      "label": "seedgrid_b",
+      "n_portfolios": 2,
+      "pois": [
+        "m_top",
+        "mu"
+      ],
+      "shared_poi": null
+    }
+  ],
+  "schema_version": "nextstat_measurement_combination_calibration_campaign_portfolio_stability_v0",
+  "shared_poi": null,
+  "source_schema_version": "nextstat_measurement_combination_calibration_campaign_portfolio_v0",
+  "stability": "research-grade"
+}

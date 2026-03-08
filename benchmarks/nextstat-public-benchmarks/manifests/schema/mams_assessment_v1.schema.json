@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/mams_assessment_v1.schema.json",
+  "title": "NextStat MAMS Assessment v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "source_suite_path",
+    "source_suite_sha256",
+    "source_suite_summary",
+    "core_quality",
+    "promotion_gate"
+  ],
+  "properties": {
+    "schema_version": { "const": "nextstat.mams_assessment.v1" },
+    "suite": { "const": "mams" },
+    "source_suite_path": { "type": "string", "minLength": 1 },
+    "source_suite_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "source_suite_summary": { "type": "object", "additionalProperties": true },
+    "core_quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "status", "failures", "warnings"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["passed", "failed"] },
+        "failures": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "warnings": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "promotion_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "status", "target_backend", "policy", "reviewed_cases", "failures", "review_summary"],
+      "properties": {
+        "passed": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["passed", "failed"] },
+        "target_backend": { "type": "string", "minLength": 1 },
+        "policy": { "type": "object", "additionalProperties": true },
+        "reviewed_cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["case", "status", "max_r_hat", "min_ess_bulk", "ess_per_sec"],
+            "properties": {
+              "case": { "type": "string", "minLength": 1 },
+              "status": { "type": "string" },
+              "max_r_hat": { "type": ["number", "null"], "minimum": 0 },
+              "min_ess_bulk": { "type": ["number", "null"], "minimum": 0 },
+              "ess_per_sec": { "type": ["number", "null"], "minimum": 0 }
+            }
+          }
+        },
+        "failures": {
+          "type": "array",
+          "items": { "type": "object", "additionalProperties": true }
+        },
+        "review_summary": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      }
+    }
+  }
+}

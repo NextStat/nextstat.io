@@ -9,6 +9,17 @@ The `nextstat` CLI is implemented in `crates/ns-cli` and focuses on:
 - deterministic parity mode (`--threads 1`)
 - JSON in / JSON out contracts for reproducible workflows
 
+Boundary note:
+- ads variance-reduction helpers (`CUPED` / `CURE`) are currently shipped as
+  shared Rust/Python/tool-runtime capabilities, not as standalone `nextstat`
+  CLI commands. Use `ns_inference::{cuped_adjust,cure_adjust}`,
+  `nextstat.ads.{cuped_adjust,cure_adjust}`, or the tool-runtime names
+  `nextstat_ads_cuped_adjust` / `nextstat_ads_cure_adjust`.
+
+For the end-to-end stable-first GVM workflow, plus the wider advanced layers, start with:
+
+- `docs/tutorials/hep-gvm-measurement-combinations.md`
+
 ## Global flags
 
 - `--interp-defaults {root|pyhf}` (pyhf JSON only)
@@ -26,9 +37,13 @@ For event-level fits, use the `unbinned_spec_v0` schema (`nextstat config schema
 
 HEP / HistFactory (HS3 auto-detected for model-based commands; some utilities remain pyhf-only):
 - `nextstat validate --config analysis.yaml`
-- `nextstat config schema [--name analysis_spec_v0]`
+- `nextstat config schema [--name analysis_spec_v0|validation_report_v1|m15_config_v1|m15_assessment_table_v1|m15_map_v1|m15_mar_v1|m15_profile_diff_report_v1|m15_bundle_manifest_v1|hepdata_import_v1|hepdata_lock_v1|beta_binomial_design_v0|beta_binomial_design_analysis_v0|beta_binomial_operating_characteristics_v0|beta_binomial_posterior_predictive_v0|beta_binomial_prior_sensitivity_campaign_v0|beta_binomial_prior_sensitivity_report_v0|beta_binomial_design_report_v0|normal_normal_design_v0|normal_normal_design_analysis_v0|normal_normal_operating_characteristics_v0|normal_normal_posterior_predictive_v0|normal_normal_prior_sensitivity_campaign_v0|normal_normal_prior_sensitivity_report_v0|normal_normal_design_report_v0|bayesian_design_report_bundle_v0|bayesian_design_regulatory_appendix_v0|bayesian_prior_conflict_diagnostic_v0|bayesian_historical_control_borrowing_policy_v0|bayesian_historical_control_borrowing_review_v0|bayesian_robust_mixture_prior_policy_v0|bayesian_robust_mixture_prior_review_v0|simplified_likelihood_v0|simplified_likelihood_audit_v0|simplified_likelihood_derive_v0|simplified_likelihood_export_report_v0|simplified_likelihood_promotion_evidence_bundle_v0|simplified_likelihood_export_benchmark_snapshot_report_v0|simplified_likelihood_export_public_validation_report_v0|simplified_likelihood_exporter_stable_review_assessment_v0|simplified_likelihood_exporter_stable_source_semantics_boundary_v0|simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0|simplified_likelihood_exporter_stable_candidate_review_packet_v0|simplified_likelihood_exporter_stable_promotion_decision_v0]`
 - `nextstat import histfactory --xml combination.xml --output workspace.json`
 - `nextstat import trex-config --config trex.txt --output workspace.json [--analysis-yaml analysis.yaml] [--coverage-json coverage.json] [--expr-coverage-json expr_coverage.json]`
+- `nextstat import hepdata --list`
+- `nextstat import hepdata --list-patches --doi https://doi.org/... --dataset-id custom.hepdata.123.v1.r1 [--bkgonly-filename ...] [--patchset-filename ...] [--cache-dir ...] [--offline]`
+- `nextstat import hepdata --dataset hepdata.116034.v1.r34 --out-dir hepdata-workspaces/ [--cache-dir ...] [--lock ...] [--offline]`
+- `nextstat import hepdata --doi https://doi.org/... --dataset-id custom.hepdata.123.v1.r1 [--display-name ...] [--bkgonly-filename ...] [--patchset-filename ...] [--patch ...] --out-dir hepdata-workspaces/ [--cache-dir ...] [--lock ...] [--offline]`
 - `nextstat import patchset --workspace BkgOnly.json --patchset patchset.json [--patch-name ...]`
 - `nextstat export histfactory --input workspace.json --out-dir export/ [--prefix meas] [--overwrite] [--python]`
 - `nextstat build-hists --config trex.config --out-dir out/ [--base-dir ...] [--coverage-json coverage.json] [--expr-coverage-json expr_coverage.json]`
@@ -41,11 +56,31 @@ HEP / HistFactory (HS3 auto-detected for model-based commands; some utilities re
 - `nextstat goodness-of-fit --input workspace.json [--json-metrics metrics.json] [--threads 1]`
 - `nextstat upper-limit --input workspace.json [--expected] [--scan-start ... --scan-stop ... --scan-points ...] [--json-metrics metrics.json] [--threads 1]`
 - `nextstat scan --input workspace.json --start 0 --stop 5 --points 21 [--gpu cuda|metal] [--json-metrics metrics.json] [--threads 1]`
+- `nextstat simplify workspace --input workspace.json --fit fit.json --derive-config derive.json --experiment ATLAS --analysis-id analysis.sl.v0 --reference internal-note [--description "..."] [--output simplified.json] [--report export_report.json] [--threads 1]`
 - `nextstat combine <ws1.json> <ws2.json> [ws3.json ...] [--output combined.json] [--prefix-channels]`
+- `nextstat combine-measurements-build-spec --manifest manifest.yaml [--output spec.json]`
+- `nextstat combine-measurements-build-spec [--poi mu] --measurements measurements.csv --stat-covariance stat_cov.csv [--systematics systematics.csv] [--correlations correlations.csv] [--output spec.json]`
+- `nextstat combine-measurements --input spec.json --output result.json [--ci-level 0.68] [--solver numerical|numerical-paper|analytic-perturbative|auto] [--threads 1] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-calibrate --input spec.json --output calibration.json [--ci-level 0.68] [--solver numerical|numerical-paper|analytic-perturbative|auto] [--n-toys 128] [--seed 42] [--threads 1] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-calibrate-study --input spec.json --output study.json [--ci-level 0.68] [--solver numerical|numerical-paper|analytic-perturbative|auto] [--n-toys 128] [--seeds 42,43,44] [--threads 1] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-scenario-study --input spec.json --scenarios scenarios.json --output study.json [--ci-level 0.68] [--solver numerical|numerical-paper|analytic-perturbative|auto] [--threads 1] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-calibration-campaign --input spec.json --scenarios scenarios.json --output campaign.json [--ci-level 0.68] [--solver numerical|numerical-paper|analytic-perturbative|auto] [--n-toys 128] [--seeds 42,43,44] [--threads 1] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-solver-parity-scenario-study --input spec.json --scenarios scenarios.json --output parity.json [--ci-level 0.68] [--lhs-solver numerical-paper] [--rhs-solver analytic-perturbative] [--threads 1] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-solver-parity-calibration-campaign --input spec.json --scenarios scenarios.json --output parity.json [--ci-level 0.68] [--lhs-solver numerical-paper] [--rhs-solver analytic-perturbative] [--n-toys 128] [--seeds 42,43,44] [--threads 1] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-solver-parity-scenario-study-from-reports --lhs lhs-study.json --rhs rhs-study.json [--lhs-solver numerical-paper] [--rhs-solver analytic-perturbative] [--format json|markdown] [--output parity.json] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-solver-parity-calibration-campaign-from-reports --lhs lhs-campaign.json --rhs rhs-campaign.json [--lhs-solver numerical-paper] [--rhs-solver analytic-perturbative] [--format json|markdown] [--output parity.json] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-solver-parity-scenario-study-summarize --input parity.json --output digest.json [--format json|markdown] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-solver-parity-calibration-campaign-summarize --input parity.json --output digest.json [--format json|markdown] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-calibration-campaign-summarize --input campaign.json --output summary.json [--format json|markdown] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-calibration-campaign-brief --input summary_a.json --input summary_b.json [--label outlier --label topmass_full] [--format json|markdown] [--output brief.json] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-calibration-campaign-family-report --input brief_a.json --input brief_b.json [--label cross_fixture --label topmass_only] [--format json|markdown] [--output report.json] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-calibration-campaign-family-matrix --input family_report.json [--format json|markdown] [--output matrix.json] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-calibration-campaign-portfolio --input matrix_a.json --input matrix_b.json [--label cross_portfolio --label topmass_only_portfolio] [--format json|markdown] [--output portfolio.json] [--json-metrics metrics.json]`
+- `nextstat combine-measurements-calibration-campaign-portfolio-stability --input portfolio_a.json --input portfolio_b.json [--label seedgrid_a --label seedgrid_b] [--format json|markdown] [--output stability.json] [--json-metrics metrics.json]`
 - `nextstat viz profile --input workspace.json --start 0 --stop 5 --points 21 [--output profile.json] [--threads 1]`
 - `nextstat viz cls --input workspace.json [--alpha 0.05] [--scan-start 0 --scan-stop 5 --scan-points 201] [--output cls.json] [--threads 1]`
-- `nextstat viz ranking --input workspace.json [--output ranking.json] [--threads 1]`
-- `nextstat viz pulls --input workspace.json --fit fit.json [--output pulls.json] [--threads 1]`
+- `nextstat viz ranking --input workspace.json [--fit fit.json] [--output ranking.json] [--threads 1]`  *(for simplified-likelihood this ranks reduced nuisance coordinates, not source-level systematics)*
+- `nextstat viz pulls --input workspace.json --fit fit.json [--output pulls.json] [--threads 1]`  *(outputs JSON artifact, not an image — use `viz render` to produce PNG/PDF)*
 - `nextstat viz corr --input workspace.json --fit fit.json [--include-covariance] [--output corr.json] [--threads 1]`
 - `nextstat viz distributions --input workspace.json --histfactory-xml combination.xml [--fit fit.json] [--output distributions.json] [--threads 1]`
 - `nextstat viz gammas --input workspace.json --fit fit.json [--output gammas.json] [--threads 1]`
@@ -58,15 +93,76 @@ HEP / HistFactory (HS3 auto-detected for model-based commands; some utilities re
 - `nextstat preprocess prune --input workspace.json [--output pruned.json] [--threshold 0.005]`
 - `nextstat report --input workspace.json --histfactory-xml combination.xml --out-dir report/ [--fit fit.json] [--render] [--deterministic] [--blind-regions SR1,SR2] [--include-covariance] [--uncertainty-grouping prefix_1] [--skip-uncertainty] [--overwrite] [--pdf report.pdf] [--svg-dir svg/] [--python python3] [--label-status Internal] [--sqrt-s-tev 13] [--show-mc-band true] [--show-stat-band true] [--band-hatch ////] [--palette hep2026|tableau10]`
 - `nextstat validation-report --apex2 master_report.json --workspace workspace.json --out validation_report.json [--pdf validation_report.pdf] [--deterministic]`
+- `nextstat m15 assessment-table --config m15_config.json --validation-report validation_report.json --pharma-validation pharma_validation.json [--format json|markdown] [--output m15_assessment_table.json] [--deterministic]`
+- `nextstat m15 map --config m15_config.json --assessment-table m15_assessment_table.json [--format json|markdown] [--output m15_map.json] [--deterministic]`
+- `nextstat m15 mar --map m15_map.json --assessment-table m15_assessment_table.json --validation-report validation_report.json --pharma-validation pharma_validation.json [--format json|markdown] [--output m15_mar.json] [--deterministic]`
+- `nextstat m15 profile-diff --config m15_config.json [--format json|markdown] [--output m15_profile_diff_report.json] [--deterministic]`
+- `nextstat m15 bundle --config m15_config.json --assessment-table m15_assessment_table.json --map m15_map.json --mar m15_mar.json --validation-report validation_report.json --pharma-validation pharma_validation.json [--output m15_bundle_manifest.json] [--deterministic]`
 - `nextstat version`
 
 pyhf-only workspace commands:
-- `nextstat audit`
 - `nextstat export histfactory`
 - `nextstat preprocess smooth`
 - `nextstat preprocess prune`
 - `nextstat report`
 - `nextstat viz distributions`
+
+Notes on combination commands:
+- `nextstat combine` remains the workspace-merge command for pyhf/HS3 JSON workspaces.
+- `nextstat combine-measurements-build-spec` is the stable-first tabular ingress for scalar measurement combinations; it turns spreadsheet-friendly CSV/TSV bundles into the canonical JSON spec consumed by the fit/calibration commands.
+- `nextstat combine-measurements-build-spec --manifest manifest.yaml` is the stable-first manifest ingress helper; it resolves a YAML/JSON wrapper around the same CSV/TSV bundle and is the shortest supported path for first-run adoption.
+- The tabular helper accepts:
+  - `--measurements` with `name,value`
+  - `--stat-covariance` as a named square matrix
+  - optional `--systematics` rows with `systematic,measurement,magnitude,error_on_error,aux_mean`
+  - optional `--correlations` rows with `systematic,row_measurement,col_measurement,corr`
+- The manifest helper expects:
+  - `schema_version: nextstat_measurement_combination_manifest_v0`
+  - `poi`
+  - `measurements_table`
+  - `stat_covariance_table`
+  - optional `systematics_table`
+  - optional `correlations_table`
+- If `--correlations` is omitted, each systematic defaults to identity correlation.
+- `nextstat combine-measurements` is the stable-first CLI entry point for scalar HEP measurement combinations with optional `error_on_error` support.
+- `nextstat combine-measurements` is JSON in / JSON out and supports deterministic execution with `--threads 1`.
+- `nextstat combine-measurements --solver auto` is the default stable path; it tries the perturbative path first and falls back to the paper-faithful numerical path when the perturbative validity gate fails.
+- When that runtime dispatch differs from the requested solver, the result JSON records it through `diagnostics.requested_solver` and `diagnostics.effective_solver`.
+- `nextstat combine-measurements --solver numerical` keeps the existing reduced-basis numerical GVM path as the explicit compatibility mode.
+- `nextstat combine-measurements --solver numerical-paper` runs the paper-faithful numerical GVM path in the original correlated `theta_s^i` basis.
+- `nextstat combine-measurements --solver analytic-perturbative` runs the Eq. (21)-(28) / Appendix B perturbative profile approximation and rejects cases that fall outside the Eq. (29)/(60) validity radius.
+- `nextstat combine-measurements-calibrate`, `...-calibrate-study`, `...-scenario-study`, and `...-calibration-campaign` accept the same `--solver` contract.
+- For calibration-style commands, requested `solver` controls the fit path used for the reference/scenario results; toy generation uses `numerical-paper` as the deterministic paper-faithful reference for `numerical-paper`, `analytic-perturbative`, and `auto`.
+- `nextstat combine-measurements` surfaces Lawley/Bartlett diagnostics for both trivial and non-trivial correlated GVM cases through `diagnostics.bartlett`.
+- `nextstat combine-measurements` also surfaces perturbative-validity diagnostics through `diagnostics.perturbative_validity`, exposing the Eq. (29)/(60)-style convergence indicator for each uncertain systematic.
+- `nextstat combine-measurements-calibrate` is the stable-first toy-calibration companion command; it returns a separate calibration report with the fitted reference result, empirical `q`/`q_star` moments, and a deterministic `seed`/`n_toys` record.
+- `nextstat combine-measurements-calibrate-study` is the stable-first repeated-seed companion command; it returns `per_seed` summaries plus aggregate stability diagnostics for CI inflation and Bartlett behavior across deterministic seed sweeps.
+- `nextstat combine-measurements-scenario-study` remains research-grade; it applies multiple `error_on_error` configurations to the same base spec and returns baseline-relative comparisons for each scenario plus aggregate ordering/stability diagnostics.
+- `nextstat combine-measurements-calibration-campaign` remains research-grade; it composes both layers, runs the named scenario study and a repeated-seed calibration study for each scenario, then emits one advanced artifact with fit-side and calibration-side envelopes.
+- `nextstat combine-measurements-solver-parity-scenario-study` is the direct paper-facing parity command for Fig. 5 style workflow checks at the scenario-study level; it runs the same scenarios with two solver modes and reports per-scenario baseline/fit differences.
+- `nextstat combine-measurements-solver-parity-calibration-campaign` extends that parity workflow to the full repeated-seed calibration campaign, comparing fit-side and calibration-side envelopes for two solver modes on the same seed grid.
+- `nextstat combine-measurements-solver-parity-scenario-study-from-reports` is the cached post-processing variant; it builds the same scenario-study parity artifact from two precomputed study reports and does not rerun fits.
+- `nextstat combine-measurements-solver-parity-calibration-campaign-from-reports` is the cached post-processing variant for repeated-seed campaigns; it builds the same calibration-campaign parity artifact from two precomputed campaign reports and does not rerun fits or toys.
+- Both solver-parity commands support `--format markdown` for a compact human-readable review note in addition to the canonical JSON artifact.
+- `nextstat combine-measurements-solver-parity-scenario-study-summarize` is the cheap post-processing companion for a scenario-study parity artifact; it emits a ranked digest with dominant gap scenarios, supported-systematics consistency, and perturbative-overlap flags.
+- `nextstat combine-measurements-solver-parity-calibration-campaign-summarize` is the cheap post-processing companion for a calibration-campaign parity artifact; it emits a ranked digest with dominant fit/calibration gap scenarios plus toy-generation-method consistency.
+- `nextstat combine-measurements-calibration-campaign-summarize` is the cheap post-processing companion command; it reads an existing campaign artifact and emits either a JSON digest or a Markdown review note with dominant scenarios, ranks, and near-neutral calibration cases.
+- `nextstat combine-measurements-calibration-campaign-brief` is the cheap multi-artifact post-processing companion command; it reads multiple existing campaign digests and emits either a comparative JSON brief or a Markdown research note spanning several scenario families or fixtures.
+- `nextstat combine-measurements-calibration-campaign-family-report` is the cheap post-processing layer above `...-brief`; it reads multiple existing brief artifacts and emits either a family-level JSON report or a Markdown research note for cross-family review.
+- `nextstat combine-measurements-calibration-campaign-family-matrix` is the machine-readable dominance layer above `...-family-report`; it reads one existing family report and emits either a JSON ranking/pairwise-comparison artifact or a Markdown matrix for deterministic cross-family review.
+- `nextstat combine-measurements-calibration-campaign-portfolio` is the portfolio layer above `...-family-matrix`; it reads multiple existing family-matrix artifacts and emits either a JSON portfolio-comparison artifact or a Markdown note for cross-campaign review.
+- `nextstat combine-measurements-calibration-campaign-portfolio-stability` is the stability layer above `...-portfolio`; it reads multiple existing portfolio artifacts and emits either a JSON stability report or a Markdown note for deterministic cross-run ordering checks.
+
+Recommended operator flow:
+
+1. `combine-measurements-build-spec` when your source of truth is tabular
+2. `combine-measurements`
+3. `combine-measurements-calibrate`
+4. `combine-measurements-calibrate-study`
+5. `combine-measurements-scenario-study`
+6. `combine-measurements-calibration-campaign`
+7. `...-summarize` / `...-brief` / `...-family-*` / `...-portfolio*`
+8. `...-solver-parity-*` only when you need paper-facing numerical-vs-perturbative comparison
 
 HEP / Unbinned (event-level) (Phase 1, experimental):
 - `nextstat convert --input data.root --tree MyTree --output events.parquet --observable mass:100:180 [--selection "..."] [--weight "..."] [--max-events 1000000]`
@@ -195,6 +291,7 @@ Time series (Phase 8):
 - `nextstat timeseries kalman-simulate --input kalman_1d.json ...`
 - `nextstat timeseries garch11-fit --input returns.json`
 - `nextstat timeseries sv-logchi2-fit --input returns.json`
+- Kalman JSON input accepts fixed weekly aliases `local_level_weekly` and `local_linear_trend_weekly` in addition to the generic seasonal builders.
 
 Survival analysis (Phase 9):
 - `nextstat survival cox-ph-fit --input cox.json [--ties efron|breslow] [--no-robust] [--no-cluster-correction] [--no-baseline]`
@@ -458,6 +555,96 @@ Supported commands: `fit`, `hypotest`, `hypotest-toys`, `significance`, `goodnes
 
 The CLI outputs pretty JSON to stdout by default, or to `--output`.
 
+### HEPData import catalog / materialization
+
+`nextstat import hepdata` uses a versioned JSON contract:
+
+- `schema_version = "nextstat.hepdata_import.v1"`
+- `mode = "catalog"` for `--list` and direct DOI `--list-patches`
+- `mode = "materialize"` for download/cache/materialization flow
+- additive `source_mode = "curated" | "direct_doi"` on catalog/materialize outputs
+- published JSON Schema: `nextstat config schema --name hepdata_import_v1`
+- canonical examples:
+  - `docs/specs/hepdata_import_v1.catalog.example.json`
+  - `docs/specs/hepdata_import_v1.list_patches.example.json`
+  - `docs/specs/hepdata_import_v1.materialize.example.json`
+- regen/check: `python scripts/generate_hepdata_schema_examples.py [--check]`
+- standalone reproducibility gate: `python scripts/check_io_contracts.py --family hepdata [--dry-run] [--report-json ...]`
+- aggregate runner report schema: `docs/schemas/io/nextstat_io_contract_runner_report_v1.schema.json`
+- acceptance criteria: `docs/specs/hep/hepdata_import_acceptance_v1.md`
+- runtime benchmark gate for runtime-affecting changes: `docs/benchmarks/hepdata-import-runtime-gate.md`
+- published frozen benchmark evidence: `docs/benchmarks/hepdata-import-benchmark-snapshot-2026-03-08.md`
+- stable-surface support matrix: `docs/benchmarks/hepdata-import-support-matrix-2026-03-08.md`
+- stable-surface release notes: `docs/benchmarks/hepdata-import-release-notes-2026-03-08.md`
+- promotion runbook: `docs/benchmarks/hepdata-import-promotion-runbook-2026-03-08.md`
+- release PR checklist: `docs/benchmarks/hepdata-import-release-pr-checklist-2026-03-08.md`
+
+Materialization also writes a lockfile with:
+
+- `schema_version = "nextstat.hepdata_lock.v1"`
+- additive `source_mode = "curated" | "direct_doi"`
+- per-dataset download provenance and output SHA-256 hashes
+- published JSON Schema: `nextstat config schema --name hepdata_lock_v1`
+- canonical example: `docs/specs/hepdata_lock_v1.example.json`
+- two explicit source modes:
+  - curated catalog mode: `--manifest` + `--dataset ...` or embedded catalog
+  - direct DOI mode: `--doi` + required `--dataset-id`
+
+Direct DOI mode is intentionally explicit:
+
+- `--doi` and `--dataset-id` are required together
+- `--manifest`, `--dataset`, and `--list` cannot be combined with direct DOI flags
+- `--list-patches` is direct DOI only and performs a read-only archive inspection
+- `--patch <id>` materializes the first PatchSet entry using a stable output id
+- `--patch <id>=<patch_name>` materializes an explicit PatchSet patch name using a stable output id
+- `--bkgonly-filename` / `--patchset-filename` override archive filenames when the bundle does not use the default `BkgOnly.json` / `patchset.json`
+- materialize summaries now include per-dataset `download` and `inputs.available_patch_names` provenance; lockfiles preserve the same input provenance alongside the existing `download` block
+- direct DOI patch-discovery and materialize outputs also expose additive per-dataset `timings` for archive preparation / inspection / materialization diagnostics
+
+Example catalog command:
+
+```bash
+nextstat import hepdata --list
+```
+
+Example direct DOI patch discovery command:
+
+```bash
+nextstat import hepdata \
+  --list-patches \
+  --doi https://doi.org/10.17182/hepdata.90607.v3/r3 \
+  --dataset-id custom.hepdata.90607.v3.r3 \
+  --bkgonly-filename BkgOnly.json \
+  --patchset-filename patchset.json \
+  --cache-dir hepdata-workspaces/_cache \
+  --offline
+```
+
+Example materialization command:
+
+```bash
+nextstat import hepdata \
+  --dataset hepdata.116034.v1.r34 \
+  --out-dir hepdata-workspaces \
+  --cache-dir hepdata-workspaces/_cache \
+  --lock hepdata-workspaces/workspaces.lock.json
+```
+
+Example direct DOI command:
+
+```bash
+nextstat import hepdata \
+  --doi https://doi.org/10.17182/hepdata.90607.v3/r3 \
+  --dataset-id custom.hepdata.90607.v3.r3 \
+  --display-name "Custom 90607" \
+  --bkgonly-filename BkgOnly.json \
+  --patchset-filename patchset.json \
+  --patch first_patch \
+  --out-dir hepdata-workspaces \
+  --cache-dir hepdata-workspaces/_cache \
+  --lock hepdata-workspaces/workspaces.lock.json
+```
+
 ### Survival (Phase 9): Cox PH (`survival cox-ph-fit`)
 
 Input JSON:
@@ -529,12 +716,13 @@ For the frequentist (CLs) workflow, see:
 For compact post-fit parameter tables, see:
 - `docs/references/fit-summary.md`
 
-## Input format auto-detection (pyhf vs HS3)
+## Input format auto-detection (pyhf vs HS3 vs simplified-likelihood)
 
 Commands that build a HistFactory model from `--input workspace.json` auto-detect the JSON format (for example: `fit`, `hypotest`, `scan`, `upper-limit`, and most `viz` subcommands):
 
 - **pyhf JSON** — standard HistFactory workspace with `"channels"` + `"measurements"` at top level.
 - **HS3 JSON** — HEP Statistics Serialization Standard (v0.2) with `"distributions"` + `"metadata"` (containing `"hs3_version"`), as produced by ROOT 6.37+.
+- **simplified-likelihood JSON** — reduced reinterpretation contract with `schema_version = "nextstat_simplified_likelihood_v0"` and explicit basis-form or covariance-form reduced nuisance information.
 
 Detection is instant (prefix scan of the first ~2 KB). No `--format` flag is needed.
 
@@ -545,13 +733,56 @@ nextstat fit --input workspace.json
 # HS3 workspace from ROOT (auto-detected)
 nextstat fit --input workspace-postFit_PTV.json
 
+# Simplified-likelihood workspace (auto-detected)
+nextstat fit --input simplified.json
+
 # Both produce the same HistFactoryModel internally
 ```
 
 When HS3 is detected, the CLI uses ROOT HistFactory default interpolation codes (Code1 for NormSys, Code0 for HistoSys) and selects the first analysis and `"default_values"` parameter point set.
 
-The following workspace utilities are currently pyhf-only:
+For simplified-likelihood inputs in March 2026, the promoted stable subset is:
+
 - `nextstat audit`
+- `nextstat fit`
+- `nextstat hypotest`
+- `nextstat upper-limit`
+- `nextstat scan`
+
+Other commands may accept simplified-likelihood JSON for compatibility-tested workflows, but discovery-style outputs, toy CLs, and ranking/impact surfaces remain outside the promoted stable subset.
+For simplified-likelihood specifically, ranking acts on reduced nuisance coordinates from the compiled model; covariance-form and `derived_from_workspace` artifacts do not preserve source-level nuisance identities.
+
+The promoted narrow exporter runtime for this surface is:
+
+```bash
+nextstat simplify workspace \
+  --input workspace.json \
+  --fit fit.json \
+  --derive-config derive.json \
+  --experiment ATLAS \
+  --analysis-id analysis.sl.v0 \
+  --reference internal-note \
+  --report export_report.json \
+  --output simplified.json
+```
+
+Current boundary for that runtime path in March 2026:
+
+- source workspaces are `pyhf`-only
+- the published stable exporter claim is explicitly narrower: `pyhf` source,
+  single-POI only, and
+  `constraint_covariance_source = "source_model_constraints"` for
+  Gaussian-constrained source nuisances
+- the command emits `metadata.source_format = "derived_from_workspace"`
+- partial per-channel bin selections are rejected explicitly instead of silently dropping semantics
+- `derive.json` must choose `reduction.constraint_covariance_source` explicitly
+- `source_model_constraints` is the preferred bench-backed mode for Gaussian-constrained nuisance sources and the only source-side path inside the published stable boundary
+- `aligned_fit_covariance` remains a research-grade fallback when the source nuisance surface is not Gaussian-constrained
+- derived reduced artifacts stay reduced-coordinate models and do not preserve original nuisance identities through reduction
+- the runtime path is versioned, tested, and promoted for the narrow stable boundary above
+- broader exporter fallback modes remain `research-grade`
+
+The following workspace utilities are currently pyhf-only:
 - `nextstat export histfactory`
 - `nextstat preprocess smooth`
 - `nextstat preprocess prune`
@@ -625,11 +856,32 @@ Example config (HIST wrapper): `docs/examples/trex_config_hist_minimal.txt`.
 
 ## Workspace audit
 
-`nextstat audit` inspects a pyhf workspace and reports channel/sample/modifier counts plus any unsupported features:
+`nextstat audit` inspects a pyhf or simplified-likelihood workspace.
+
+- For pyhf JSON, it reports channel/sample/modifier counts plus unsupported features.
+- For simplified-likelihood JSON, it reports channel/bin counts, reduced nuisance basis size, yield summaries, and factorization diagnostics for covariance-form inputs.
+- For simplified-likelihood in March 2026, `audit` is part of the promoted stable subset together with `fit`, `hypotest`, `upper-limit`, and `scan`.
+- Discovery-style outputs, toy CLs, and ranking/impact surfaces remain compatibility-tested rather than promoted on the simplified-likelihood path.
 
 ```bash
 nextstat audit --input workspace.json
 nextstat audit --input workspace.json --format json --output audit.json
+```
+
+Published JSON Schemas for the simplified-likelihood path:
+
+```bash
+nextstat config schema --name simplified_likelihood_v0
+nextstat config schema --name simplified_likelihood_audit_v0
+nextstat config schema --name simplified_likelihood_derive_v0
+nextstat config schema --name simplified_likelihood_export_report_v0
+nextstat config schema --name simplified_likelihood_export_benchmark_snapshot_report_v0
+nextstat config schema --name simplified_likelihood_export_public_validation_report_v0
+nextstat config schema --name simplified_likelihood_exporter_stable_review_assessment_v0
+nextstat config schema --name simplified_likelihood_exporter_stable_source_semantics_boundary_v0
+nextstat config schema --name simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0
+nextstat config schema --name simplified_likelihood_exporter_stable_candidate_review_packet_v0
+nextstat config schema --name simplified_likelihood_exporter_stable_promotion_decision_v0
 ```
 
 ## Export

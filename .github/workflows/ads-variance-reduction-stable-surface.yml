@@ -1,0 +1,162 @@
+name: Ads Variance Reduction Stable Surface
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - "crates/ns-inference/src/ads.rs"
+      - "crates/ns-inference/src/variance_reduction.rs"
+      - "crates/ns-inference/src/calculator.rs"
+      - "crates/ns-inference/src/lib.rs"
+      - "crates/ns-server/src/tools.rs"
+      - "bindings/ns-py/src/lib.rs"
+      - "bindings/ns-py/python/nextstat/ads.py"
+      - "bindings/ns-py/python/nextstat/tools.py"
+      - "bindings/ns-py/python/nextstat/ads.pyi"
+      - "bindings/ns-py/python/nextstat/_core.pyi"
+      - "bindings/ns-py/python/nextstat/_tool_manifest_v1.json"
+      - "tests/_tool_contract_helpers.py"
+      - "tests/python/test_ads.py"
+      - "tests/python/test_ads_variance_reduction_fixtures.py"
+      - "tests/python/test_ads_variance_reduction_benchmark_smoke.py"
+      - "tests/python/test_tools_ads_variance_reduction.py"
+      - "tests/python/test_tools_live_server_integration.py"
+      - "tests/fixtures/variance_reduction/**"
+      - "tests/fixtures/variance_reduction_benchmark/**"
+      - "tests/fixtures/tool_goldens/ads_*"
+      - "docs/references/python-api.md"
+      - "docs/references/rust-api.md"
+      - "docs/references/tool-api.md"
+      - "docs/references/server-api.md"
+      - "docs/README.md"
+      - "docs/benchmarks.md"
+      - "docs/benchmarks/ads-variance-reduction-*"
+      - "docs/schemas/benchmarks/ads_variance_reduction_benchmark_*.json"
+      - "docs/specs/benchmarks/ads_variance_reduction_benchmark_*.json"
+      - "docs/schemas/tools/nextstat_tool_result_strict_v1.schema.json"
+      - "docs/schemas/tools/nextstat_tool_result_server_strict_v1.schema.json"
+      - "docs/specs/nextstat_tool_schema_local_v1.example.json"
+      - "docs/specs/nextstat_tool_schema_server_v1.example.json"
+      - "docs/specs/agent_bootstrap/*.json"
+      - "benchmarks/artifacts/ads_variance_reduction_baselines/nextstat-bench/accepted.json"
+      - "scripts/validate_tool_manifest.py"
+      - "scripts/generate_tool_contract_schemas.py"
+      - "scripts/generate_tool_schema_examples.py"
+      - "scripts/generate_tool_reference_docs.py"
+      - "scripts/generate_agent_bootstrap_packs.py"
+      - "scripts/generate_tool_goldens.py"
+      - "scripts/benchmarks/bench_ads_variance_reduction_matrix.py"
+      - "scripts/benchmarks/bench_ads_variance_reduction_matrix_remote.sh"
+      - "scripts/benchmarks/compare_ads_variance_reduction_benchmark.py"
+      - "scripts/benchmarks/promote_ads_variance_reduction_benchmark_baseline.py"
+      - "scripts/benchmarks/run_ads_variance_reduction_benchmark_gate.py"
+      - "scripts/benchmarks/ads_variance_reduction_stable_surface_gate.sh"
+      - "Makefile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - "crates/ns-inference/src/ads.rs"
+      - "crates/ns-inference/src/variance_reduction.rs"
+      - "crates/ns-inference/src/calculator.rs"
+      - "crates/ns-inference/src/lib.rs"
+      - "crates/ns-server/src/tools.rs"
+      - "bindings/ns-py/src/lib.rs"
+      - "bindings/ns-py/python/nextstat/ads.py"
+      - "bindings/ns-py/python/nextstat/tools.py"
+      - "bindings/ns-py/python/nextstat/ads.pyi"
+      - "bindings/ns-py/python/nextstat/_core.pyi"
+      - "bindings/ns-py/python/nextstat/_tool_manifest_v1.json"
+      - "tests/_tool_contract_helpers.py"
+      - "tests/python/test_ads.py"
+      - "tests/python/test_ads_variance_reduction_fixtures.py"
+      - "tests/python/test_ads_variance_reduction_benchmark_smoke.py"
+      - "tests/python/test_tools_ads_variance_reduction.py"
+      - "tests/python/test_tools_live_server_integration.py"
+      - "tests/fixtures/variance_reduction/**"
+      - "tests/fixtures/variance_reduction_benchmark/**"
+      - "tests/fixtures/tool_goldens/ads_*"
+      - "docs/references/python-api.md"
+      - "docs/references/rust-api.md"
+      - "docs/references/tool-api.md"
+      - "docs/references/server-api.md"
+      - "docs/README.md"
+      - "docs/benchmarks.md"
+      - "docs/benchmarks/ads-variance-reduction-*"
+      - "docs/schemas/benchmarks/ads_variance_reduction_benchmark_*.json"
+      - "docs/specs/benchmarks/ads_variance_reduction_benchmark_*.json"
+      - "docs/schemas/tools/nextstat_tool_result_strict_v1.schema.json"
+      - "docs/schemas/tools/nextstat_tool_result_server_strict_v1.schema.json"
+      - "docs/specs/nextstat_tool_schema_local_v1.example.json"
+      - "docs/specs/nextstat_tool_schema_server_v1.example.json"
+      - "docs/specs/agent_bootstrap/*.json"
+      - "benchmarks/artifacts/ads_variance_reduction_baselines/nextstat-bench/accepted.json"
+      - "scripts/validate_tool_manifest.py"
+      - "scripts/generate_tool_contract_schemas.py"
+      - "scripts/generate_tool_schema_examples.py"
+      - "scripts/generate_tool_reference_docs.py"
+      - "scripts/generate_agent_bootstrap_packs.py"
+      - "scripts/generate_tool_goldens.py"
+      - "scripts/benchmarks/bench_ads_variance_reduction_matrix.py"
+      - "scripts/benchmarks/bench_ads_variance_reduction_matrix_remote.sh"
+      - "scripts/benchmarks/compare_ads_variance_reduction_benchmark.py"
+      - "scripts/benchmarks/promote_ads_variance_reduction_benchmark_baseline.py"
+      - "scripts/benchmarks/run_ads_variance_reduction_benchmark_gate.py"
+      - "scripts/benchmarks/ads_variance_reduction_stable_surface_gate.sh"
+      - "Makefile"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+concurrency:
+  group: ads-variance-reduction-stable-surface-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    name: Stable-Surface Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Create virtualenv
+        run: python -m venv .venv
+
+      - name: Install Python dependencies
+        run: |
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install "maturin>=1.11,<2.0" "pytest>=9.0" "jsonschema>=4.0"
+
+      - name: Shellcheck (bash -n) stable-surface gate
+        run: bash -n scripts/benchmarks/ads_variance_reduction_stable_surface_gate.sh
+
+      - name: Shellcheck (bash -n) remote benchmark runner
+        run: bash -n scripts/benchmarks/bench_ads_variance_reduction_matrix_remote.sh
+
+      - name: Run ads-variance-reduction stable-surface gate
+        run: make ads-variance-reduction-stable-surface-gate
+
+      - name: Upload benchmark-smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ads-variance-reduction-stable-surface-benchmark
+          path: tmp/ads-variance-reduction-stable-surface/ads_variance_reduction_benchmark.json
+          if-no-files-found: error

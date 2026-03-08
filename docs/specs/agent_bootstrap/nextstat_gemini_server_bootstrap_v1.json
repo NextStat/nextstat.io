@@ -1,0 +1,383 @@
+{
+  "client": "gemini",
+  "discovery_contract": {
+    "callable_surface": "tools",
+    "descriptor_schema_version": "nextstat.tool_schema.v1",
+    "guidance_surface": "guidance",
+    "policy_surface": "capabilities"
+  },
+  "instructions": [
+    "Map descriptor.tools into Gemini function declarations without changing tool names or argument schemas.",
+    "Use descriptor.guidance.recipes as prompt seeds so the model stays aligned with the intended transport surface.",
+    "Server transport keeps Gemini on the server-safe subset and is the right default for remote/shared deployments.",
+    "Use server transport when the agent needs remote, auth-enabled execution through nextstat-server.",
+    "Treat descriptor.tools as the only callable server surface and use descriptor.capabilities to explain why local-only tools are unavailable remotely.",
+    "When server auth is enabled, pass api_key explicitly or provide NEXTSTAT_TOOLS_API_KEY / NEXTSTAT_SERVER_API_KEY."
+  ],
+  "recipes": [
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/references/python-api.md"
+      ],
+      "id": "server_root_ingest_and_workspace_triage",
+      "prompt": "Over the remote server, upload the requested ROOT file bytes, read the requested TH1 histogram in memory without assuming server-side filesystem access, summarize suspicious bins and under or overflow content, then continue with deterministic workspace validation and fit checks.",
+      "summary": "Upload bounded ROOT bytes to nextstat-server, read TH1 histograms remotely in memory, then continue with the regular HEP inference tools on the derived workspace.",
+      "title": "Server-safe ROOT ingest and workspace triage",
+      "tools": [
+        "nextstat_read_root_histogram",
+        "nextstat_workspace_audit",
+        "nextstat_fit",
+        "nextstat_scan"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/e2e-pipeline.md"
+      ],
+      "id": "server_workspace_inference",
+      "prompt": "Over the remote server, audit this workspace, fit it, and report a short asymptotic CLs summary, observed and expected 95% CL upper limit, and a short profile scan summary. If the workspace is pyhf or HS3, also include discovery significance and top nuisance impacts by default. If it is simplified-likelihood, treat audit + fit + asymptotic CLs/upper-limit + scan as the promoted stable subset and use discovery, ranking, or toy CLs only when the user explicitly asks for the compatibility-tested surface. Use deterministic mode and do not assume local-only tools are available.",
+      "summary": "Remote, auth-aware HEP inference chain over nextstat-server using the restricted server-safe subset. For simplified-likelihood inputs, discovery, ranking, and toy CLs remain compatibility-tested rather than promoted stable.",
+      "title": "Server-safe workspace inference",
+      "tools": [
+        "nextstat_workspace_audit",
+        "nextstat_fit",
+        "nextstat_discovery_asymptotic",
+        "nextstat_hypotest",
+        "nextstat_upper_limit",
+        "nextstat_scan",
+        "nextstat_ranking",
+        "nextstat_hypotest_toys"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/phase-6-regression.md"
+      ],
+      "id": "server_glm_analysis",
+      "prompt": "Over the remote server, fit the requested GLM deterministically, report the coefficient estimates and standard errors, and keep the analysis on the server-safe subset without assuming local-only tools are available.",
+      "summary": "Run bounded generalized linear model fits remotely through nextstat-server without relying on local-only Python tooling.",
+      "title": "Server-safe GLM analysis",
+      "tools": [
+        "nextstat_glm_fit"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/references/python-api.md"
+      ],
+      "id": "server_bayesian_sampling_summary",
+      "prompt": "Over the remote server, run bounded Bayesian NUTS sampling on the requested server-safe model, keep the request inside the authenticated sample-budget limits, and report posterior means plus convergence diagnostics rather than raw posterior draws.",
+      "summary": "Run bounded NUTS sampling remotely over the promoted server-safe model subset and return posterior mean summaries plus convergence diagnostics.",
+      "title": "Server-safe Bayesian summary sampling",
+      "tools": [
+        "nextstat_bayesian_sample"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/phase-9-survival.md"
+      ],
+      "id": "server_survival_analysis",
+      "prompt": "Over the remote server, fit the requested survival, Kaplan-Meier, direct log-rank, or competing-risks analysis deterministically, report fitted parameters or incidence-curve outputs with any log-rank or Gray-test comparison when requested, and stay within the authenticated server-safe subset.",
+      "summary": "Run bounded survival-model, Kaplan-Meier, direct log-rank, and competing-risks analyses remotely through nextstat-server without relying on local-only Python tooling.",
+      "title": "Server-safe survival analysis",
+      "tools": [
+        "nextstat_survival_fit",
+        "nextstat_kaplan_meier",
+        "nextstat_log_rank_test",
+        "nextstat_competing_risks"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/churn-subscription.md"
+      ],
+      "id": "server_retention_analysis",
+      "prompt": "Over the remote server, run the requested seeded churn data generation, Cox PH churn-risk analysis, churn retention, raw-array ingest and validation, bounded bootstrap hazard-ratio analysis, trust-gate diagnostics, cohort life-table matrix, pairwise churn comparison, bounded uplift analysis, or survival-native uplift analysis deterministically, report synthetic or normalized churn arrays, Cox PH coefficients and hazard-ratio summaries, bootstrap HR summaries with explicit CI settings, overall survival, diagnostics warnings, cohort retention periods, pairwise segment-comparison outputs, causal uplift summaries, or RMST/survival-difference summaries with explicit statistical settings, and stay within the authenticated server-safe subset.",
+      "summary": "Run bounded synthetic churn generation, churn-risk modeling, churn-retention, churn ingest, bootstrap HR, churn diagnostics, cohort-matrix, churn-comparison, and churn-uplift analyses remotely through nextstat-server using deterministic JSON-only inputs and authenticated server execution.",
+      "title": "Server-safe churn retention analysis",
+      "tools": [
+        "nextstat_churn_generate_data",
+        "nextstat_churn_risk_model",
+        "nextstat_churn_retention",
+        "nextstat_churn_bootstrap_hr",
+        "nextstat_churn_ingest",
+        "nextstat_churn_diagnostics",
+        "nextstat_churn_cohort_matrix",
+        "nextstat_churn_compare",
+        "nextstat_churn_uplift",
+        "nextstat_churn_uplift_survival"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/benchmarks/ads-variance-reduction-benchmark-2026-03-08.md"
+      ],
+      "id": "server_ads_variance_reduction",
+      "prompt": "Over the remote server, run the requested ads variance-reduction adjustment deterministically, keep covariates strictly pre-treatment, and report adjusted means, treatment effect, variance-reduction diagnostics, selected covariates, provenance validation, and solver metadata without assuming local-only helpers are available.",
+      "summary": "Run deterministic CUPED or CURE adjustment remotely through nextstat-server using JSON-only ads inputs and provenance-aware leakage validation.",
+      "title": "Server-safe ads variance reduction",
+      "tools": [
+        "nextstat_ads_cuped_adjust",
+        "nextstat_ads_cure_adjust"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/references/python-api.md"
+      ],
+      "id": "server_reserving_analysis",
+      "prompt": "Over the remote server, run the requested chain ladder or Mack chain ladder analysis deterministically, normalize square triangles with null trailing cells when needed, and report development factors, ultimates, reserves, and uncertainty bands without assuming local-only tools are available.",
+      "summary": "Run deterministic chain ladder or Mack chain ladder reserving remotely through nextstat-server using JSON-only triangle inputs and authenticated server execution.",
+      "title": "Server-safe reserving analysis",
+      "tools": [
+        "nextstat_chain_ladder"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/references/python-api.md"
+      ],
+      "id": "server_fault_tree_analysis",
+      "prompt": "Over the remote server, run the requested fault-tree Monte Carlo or CE-IS analysis deterministically on CPU, report the estimated top-event probability, uncertainty interval, failure counts, and proposal diagnostics when available, and stay within the authenticated server-safe subset without assuming GPU or local-only tools are available.",
+      "summary": "Run bounded CPU-only fault-tree Monte Carlo or Bernoulli-only CE-IS analysis remotely through nextstat-server using deterministic JSON-only inputs.",
+      "title": "Server-safe fault-tree Monte Carlo",
+      "tools": [
+        "nextstat_fault_tree_mc",
+        "nextstat_fault_tree_ce_is"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/phase-9-cross-vertical.md"
+      ],
+      "id": "server_meta_analysis",
+      "prompt": "Over the remote server, run the requested fixed-effects or random-effects meta-analysis deterministically, report the pooled estimate, uncertainty, heterogeneity statistics, and forest rows, and stay within the authenticated server-safe subset.",
+      "summary": "Run bounded fixed-effects or random-effects meta-analysis remotely through nextstat-server using deterministic JSON-only inputs.",
+      "title": "Server-safe meta-analysis",
+      "tools": [
+        "nextstat_meta_analysis"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/phase-12-did-event-study.md"
+      ],
+      "id": "server_panel_econometrics",
+      "prompt": "Over the remote server, run the requested panel fixed-effects regression deterministically, keep the workflow inside the authenticated server-safe subset, and report coefficients, clustered standard errors, entity counts, and the effective clustering mode without assuming local-only tools are available.",
+      "summary": "Run bounded panel fixed-effects regressions remotely through nextstat-server using deterministic JSON-only inputs and authenticated server execution.",
+      "title": "Server-safe panel econometrics",
+      "tools": [
+        "nextstat_panel_fe"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/phase-12-did-event-study.md"
+      ],
+      "id": "server_did_analysis",
+      "prompt": "Over the remote server, run the requested Difference-in-Differences TWFE analysis deterministically, keep the workflow inside the authenticated server-safe subset, and report the ATT, its uncertainty, and the clustered coefficient surface without assuming local-only tools are available.",
+      "summary": "Run bounded Difference-in-Differences TWFE analyses remotely through nextstat-server using deterministic JSON-only inputs and authenticated server execution.",
+      "title": "Server-safe DiD analysis",
+      "tools": [
+        "nextstat_did"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/phase-12-did-event-study.md"
+      ],
+      "id": "server_iv_analysis",
+      "prompt": "Over the remote server, run the requested IV / 2SLS analysis deterministically, keep the workflow inside the authenticated server-safe subset, and report structural coefficients, uncertainty, and first-stage F diagnostics without assuming local-only tools are available.",
+      "summary": "Run bounded IV / 2SLS analyses remotely through nextstat-server using deterministic JSON-only inputs and authenticated server execution.",
+      "title": "Server-safe IV / 2SLS analysis",
+      "tools": [
+        "nextstat_iv_2sls"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/phase-12-did-event-study.md"
+      ],
+      "id": "server_aipw_analysis",
+      "prompt": "Over the remote server, run the requested AIPW causal analysis deterministically, keep the workflow inside the authenticated server-safe subset, and report the estimand, treatment effect estimate, uncertainty, and observation count without assuming local-only tools are available.",
+      "summary": "Run bounded doubly-robust AIPW causal analyses remotely through nextstat-server using deterministic JSON-only inputs and authenticated server execution.",
+      "title": "Server-safe AIPW causal analysis",
+      "tools": [
+        "nextstat_aipw"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/phase-12-did-event-study.md"
+      ],
+      "id": "server_event_study_analysis",
+      "prompt": "Over the remote server, run the requested event-study TWFE analysis deterministically, keep the workflow inside the authenticated server-safe subset, and report the relative-time coefficients, uncertainty, and reference period without assuming local-only tools are available.",
+      "summary": "Run bounded event-study TWFE analyses remotely through nextstat-server using deterministic JSON-only inputs and authenticated server execution.",
+      "title": "Server-safe event-study analysis",
+      "tools": [
+        "nextstat_event_study"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/references/econometrics.md"
+      ],
+      "id": "server_volatility_analysis",
+      "prompt": "Over the remote server, run the requested GARCH-family volatility analysis deterministically, keep the workflow inside the authenticated server-safe subset, and report fitted parameters, conditional variance paths, and convergence diagnostics without assuming local-only tools are available.",
+      "summary": "Run bounded GARCH-family volatility analyses remotely through nextstat-server using deterministic JSON-only inputs and authenticated server execution.",
+      "title": "Server-safe volatility analysis",
+      "tools": [
+        "nextstat_garch_fit"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/references/econometrics.md"
+      ],
+      "id": "server_state_space_analysis",
+      "prompt": "Over the remote server, run the requested Kalman filter, smoother, or forecast deterministically, keep the workflow inside the authenticated server-safe subset, and report log-likelihood, state trajectories, and forecast paths without assuming local-only tools are available.",
+      "summary": "Run bounded Kalman filtering, smoothing, or forecasting remotely through nextstat-server using deterministic JSON-only inputs and authenticated server execution.",
+      "title": "Server-safe state-space analysis",
+      "tools": [
+        "nextstat_kalman"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/pharma-pk.md"
+      ],
+      "id": "server_bioequivalence_analysis",
+      "prompt": "Over the remote server, run the requested bioequivalence test, power, or sample-size calculation deterministically, keep the workflow inside the authenticated server-safe subset, and report the geometric mean ratio, power, or achieved sample size without assuming local-only tools are available.",
+      "summary": "Run bounded average bioequivalence, power, or sample-size calculations remotely through nextstat-server using deterministic JSON-only inputs and authenticated server execution.",
+      "title": "Server-safe bioequivalence analysis",
+      "tools": [
+        "nextstat_bioequivalence"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/references/python-api.md"
+      ],
+      "id": "server_dose_response_analysis",
+      "prompt": "Over the remote server, run the requested Emax or Sigmoid-Emax dose-response prediction or likelihood evaluation deterministically, keep the workflow inside the authenticated server-safe subset, and report predictions or NLL values without assuming local-only tools are available.",
+      "summary": "Run bounded Emax or Sigmoid-Emax dose-response predictions and likelihood evaluations remotely through nextstat-server using deterministic JSON-only inputs and authenticated server execution.",
+      "title": "Server-safe dose-response analysis",
+      "tools": [
+        "nextstat_dose_response"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/pharma-pk.md"
+      ],
+      "id": "server_pharma_population_pk",
+      "prompt": "Over the remote server, fit the requested population PK model deterministically using the promoted nextstat_pharma_fit contract, report theta, omega, ETA summaries, OFV, convergence status, and any covariance-step or SAEM diagnostics that are returned, and when the user asks for bounded diagnostics, run nextstat_pk_gof, nextstat_pk_npde, or nextstat_pharma_vpc inside the authenticated server-safe subset with explicit deterministic inputs without assuming broader trial-simulation tools are available remotely.",
+      "summary": "Run bounded FOCE, FOCEI, FO, or SAEM population PK fits remotely through nextstat-server using deterministic JSON-only inputs, and run promoted GOF, NPDE, or VPC follow-up diagnostics when requested.",
+      "title": "Server-safe population PK fitting",
+      "tools": [
+        "nextstat_pharma_fit",
+        "nextstat_pk_gof",
+        "nextstat_pk_npde",
+        "nextstat_pharma_vpc"
+      ],
+      "transport": "server"
+    },
+    {
+      "docs": [
+        "docs/references/tool-api.md",
+        "docs/references/server-api.md",
+        "docs/tutorials/pharma-pk.md"
+      ],
+      "id": "server_pharma_trial_simulation",
+      "prompt": "Over the remote server, run the requested single-trial PK simulation deterministically using nextstat_trial_simulate, keep the workflow inside the authenticated server-safe subset, report concentration profiles, individual PK parameters, and derived endpoints (AUC, Cmax, Tmax, Ctrough), and do not assume Monte Carlo, dose-optimization, or other broader trial-simulation APIs are available remotely.",
+      "summary": "Run bounded single-trial PK simulations remotely through nextstat-server using deterministic JSON-only inputs and explicit seeds.",
+      "title": "Server-safe PK trial simulation",
+      "tools": [
+        "nextstat_trial_simulate"
+      ],
+      "transport": "server"
+    }
+  ],
+  "references": [
+    "docs/references/tool-api.md",
+    "docs/references/server-api.md",
+    "docs/references/python-api.md",
+    "docs/tutorials/e2e-pipeline.md",
+    "docs/tutorials/phase-6-regression.md",
+    "docs/tutorials/phase-9-survival.md",
+    "docs/tutorials/churn-subscription.md",
+    "docs/benchmarks/ads-variance-reduction-benchmark-2026-03-08.md",
+    "docs/tutorials/phase-9-cross-vertical.md",
+    "docs/tutorials/phase-12-did-event-study.md",
+    "docs/references/econometrics.md",
+    "docs/tutorials/pharma-pk.md"
+  ],
+  "schema_version": "nextstat.agent_bootstrap_pack.v1",
+  "snippets": {
+    "bootstrap": "descriptor = get_toolkit_descriptor(transport=\"server\", server_url=server_url, api_key=api_key)\\nfunction_declarations = descriptor[\"tools\"]\\nrecipe_seeds = descriptor[\"guidance\"][\"recipes\"]",
+    "execution_loop": "Only expose descriptor.tools to Gemini. When a call is selected, execute it remotely with nextstat.tools.execute_tool(..., transport=\"server\", server_url=..., api_key=..., fallback_to_local=False)."
+  },
+  "summary": "Bootstrap pack for Gemini-style function calling using the same canonical NextStat descriptor.",
+  "title": "Gemini function-calling (server)",
+  "transport": "server"
+}

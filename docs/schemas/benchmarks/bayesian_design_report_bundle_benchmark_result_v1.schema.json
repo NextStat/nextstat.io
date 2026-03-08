@@ -1,0 +1,316 @@
+{
+  "$id": "https://nextstat.io/schemas/benchmarks/bayesian_design_report_bundle_benchmark_result_v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Bayesian Design Report Bundle Benchmark Result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "suite",
+    "deterministic",
+    "environment",
+    "budget",
+    "meta",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.bayesian_design_report_bundle_benchmark_result.v1"
+    },
+    "suite": {
+      "const": "bayesian_design_report_bundle_packaging"
+    },
+    "deterministic": {
+      "type": "boolean"
+    },
+    "environment": {
+      "type": "object"
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "manifest_path",
+        "runner_mode",
+        "repeat",
+        "manifest_repeat"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "nextstat.bayesian_design_report_bundle_performance_budget.v1"
+        },
+        "manifest_path": {
+          "type": "string"
+        },
+        "runner_mode": {
+          "enum": [
+            "smoke",
+            "release"
+          ]
+        },
+        "repeat": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "manifest_repeat": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "host_policy",
+        "nextstat_command",
+        "smoke",
+        "out",
+        "work_root"
+      ],
+      "properties": {
+        "host_policy": {
+          "type": "string"
+        },
+        "nextstat_command": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "smoke": {
+          "type": "boolean"
+        },
+        "out": {
+          "type": "string"
+        },
+        "work_root": {
+          "type": "string"
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/case"
+      }
+    }
+  },
+  "$defs": {
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repeat",
+        "policy",
+        "per_run_s",
+        "best_s",
+        "median_s"
+      ],
+      "properties": {
+        "repeat": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "policy": {
+          "const": "min"
+        },
+        "per_run_s": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "best_s": {
+          "type": "number",
+          "minimum": 0
+        },
+        "median_s": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "sizes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_report_bytes",
+        "total_bundle_bytes",
+        "manifest_bytes",
+        "markdown_bytes"
+      ],
+      "properties": {
+        "input_report_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_bundle_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "manifest_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "markdown_bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "budget_thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_bundle_duration_s",
+        "max_manifest_regen_duration_s",
+        "max_bundle_bytes",
+        "max_manifest_bytes"
+      ],
+      "properties": {
+        "max_bundle_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "max_manifest_regen_duration_s": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "max_bundle_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_manifest_bytes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "budget_pass": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundle_duration",
+        "manifest_regen_duration",
+        "bundle_bytes",
+        "manifest_bytes"
+      ],
+      "properties": {
+        "bundle_duration": {
+          "type": "boolean"
+        },
+        "manifest_regen_duration": {
+          "type": "boolean"
+        },
+        "bundle_bytes": {
+          "type": "boolean"
+        },
+        "manifest_bytes": {
+          "type": "boolean"
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "summary_schema_version",
+        "summary_deterministic",
+        "created_unix_ms_zero",
+        "required_artifacts_present",
+        "manifest_file_count"
+      ],
+      "properties": {
+        "summary_schema_version": {
+          "type": "string"
+        },
+        "summary_deterministic": {
+          "type": "boolean"
+        },
+        "created_unix_ms_zero": {
+          "type": "boolean"
+        },
+        "required_artifacts_present": {
+          "type": "boolean"
+        },
+        "manifest_file_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "design_family",
+        "report_scale",
+        "input_mode",
+        "status",
+        "timing",
+        "manifest_regen_timing",
+        "sizes",
+        "budget_thresholds",
+        "budget_pass",
+        "validation"
+      ],
+      "properties": {
+        "id": {
+          "enum": [
+            "beta_small",
+            "beta_large",
+            "normal_small",
+            "normal_large"
+          ]
+        },
+        "design_family": {
+          "enum": [
+            "beta_binomial",
+            "normal_normal"
+          ]
+        },
+        "report_scale": {
+          "enum": [
+            "small",
+            "large"
+          ]
+        },
+        "input_mode": {
+          "const": "path"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "fail"
+          ]
+        },
+        "timing": {
+          "$ref": "#/$defs/timing"
+        },
+        "manifest_regen_timing": {
+          "$ref": "#/$defs/timing"
+        },
+        "sizes": {
+          "$ref": "#/$defs/sizes"
+        },
+        "budget_thresholds": {
+          "$ref": "#/$defs/budget_thresholds"
+        },
+        "budget_pass": {
+          "$ref": "#/$defs/budget_pass"
+        },
+        "validation": {
+          "$ref": "#/$defs/validation"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -145,6 +145,90 @@ nextstat config schema --name validation_report_v1
 
 Example JSON is in `docs/specs/validation_report_v1.example.json`.
 
+The optional frozen Bayesian appendix path is also shipped through the
+validation-pack wrapper:
+
+```bash
+bash validation-pack/render_validation_pack.sh \
+  --out-dir tmp/validation_pack_bayes \
+  --workspace tests/fixtures/simple_workspace.json \
+  --apex2-master tests/fixtures/apex2_master_min_plus.json \
+  --bayesian-design-report docs/specs/pharma/beta_binomial_design_report_v0.example.json \
+  --deterministic \
+  --json-only
+```
+
+This path accepts only committed/frozen Bayesian `*_design_report_v0` artifacts,
+copies the frozen report unchanged, and assembles
+`bayesian_design_regulatory_appendix.json` from the frozen report only. It also
+renders deterministic `bayesian_design_regulatory_appendix.md`, and when
+`--json-only` is omitted it renders deterministic
+`bayesian_design_regulatory_appendix.pdf`. It does not rebuild Bayesian
+analyses or simulations.
+
+To exercise the full deterministic Markdown/PDF appendix path:
+
+```bash
+bash validation-pack/render_validation_pack.sh \
+  --out-dir tmp/validation_pack_bayes_pdf \
+  --workspace tests/fixtures/simple_workspace.json \
+  --apex2-master tests/fixtures/apex2_master_min_plus.json \
+  --bayesian-design-report docs/specs/pharma/beta_binomial_design_report_v0.example.json \
+  --deterministic
+```
+
+Related ICH M15 foundation schemas are available via:
+
+```bash
+nextstat config schema --name m15_assessment_table_v1
+nextstat config schema --name m15_map_v1
+nextstat config schema --name m15_mar_v1
+nextstat config schema --name m15_profile_diff_report_v1
+```
+
+Example JSON artifacts are in:
+
+- `docs/specs/m15_assessment_table_v1.example.json`
+- `docs/specs/m15_map_v1.example.json`
+- `docs/specs/m15_mar_v1.example.json`
+- `docs/specs/m15_profile_diff_report_v1.example.json`
+
+The same wrapper also ships a publishable M15 report path from frozen artifacts only:
+
+```bash
+bash validation-pack/render_validation_pack.sh \
+  --out-dir tmp/validation_pack_m15_publishable \
+  --workspace tests/fixtures/simple_workspace.json \
+  --apex2-master tests/fixtures/apex2_master_min_plus.json \
+  --m15-config docs/specs/m15_config_v1.example.json \
+  --deterministic
+```
+
+This writes:
+
+- `m15_profile_diff_report.json`
+- `m15_profile_diff_report_v1.schema.json`
+- `m15_report.md`
+- `m15_report.pdf`
+- `m15_report.docx`
+
+The publishable renderer is frozen-artifact only and should use the installed
+package surface:
+
+```bash
+python -m nextstat.m15_report render \
+    --assessment-table tmp/validation_pack_m15_publishable/m15_assessment_table.json \
+    --map tmp/validation_pack_m15_publishable/m15_map.json \
+    --mar tmp/validation_pack_m15_publishable/m15_mar.json \
+    --profile-diff tmp/validation_pack_m15_publishable/m15_profile_diff_report.json \
+    --bundle tmp/validation_pack_m15_publishable/m15_bundle_manifest.json \
+    --markdown tmp/m15_report.md \
+    --pdf tmp/m15_report.pdf \
+    --docx tmp/m15_report.docx
+```
+
+It does not rerun Apex2, pharma validation, or any model analysis.
+
 ### Tests
 
 The `nextstat validation-report` CLI has integration tests covering deterministic JSON output and the minimum required `regulated_review` fields:
@@ -163,6 +247,26 @@ CI also exercises the end-to-end `validation-pack/render_validation_pack.sh` flo
 - A `--json-only` smoke run (no PDF / no matplotlib dependency path)
 
 The CI job uploads `validation_pack_manifest.json` alongside `validation_report.json`/`.pdf` as a convenient “index” for replication and (optional) signing.
+
+## Pharma evidence policy
+
+When the validation-pack path includes `pharma_validation.json`, that file is
+treated as canonical pharma release evidence for the release candidate build.
+
+This has two consequences:
+
+1. prerelease validation should obtain `nextstat` from installed local artifacts,
+   not from `PYTHONPATH=bindings/ns-py/python` shadowing
+2. deterministic rerender paths may reuse an already rendered
+   `pharma_validation.json` with `--skip-pharma-validation`
+
+This is intentional. FOCE and especially SAEM are not modeled as cross-platform
+bit-identical release snapshots. For release preparation, canonical Linux pharma
+evidence is rendered once and then reused for deterministic packaging surfaces
+such as the publishable M15 bundle.
+
+Cross-platform SAEM validation should use scientific acceptance criteria rather
+than exact `omega`/`eta` snapshot equality.
 
 ### Single Entrypoint (Local + CI)
 
@@ -210,12 +314,20 @@ bash validation-pack/render_validation_pack.sh \
 - `validation_pack_manifest.sha256` + `validation_pack_manifest.sha256.bin` + `validation_pack_manifest.json.sig` (only when `--sign-openssl-key` is used)
 - `validation_pack_manifest.pub.pem` (only when `--sign-openssl-pub` is used)
 - `validation_report_v1.schema.json`
+- `bayesian_design_report.json` (only when `--bayesian-design-report` is used)
+- `bayesian_design_regulatory_appendix.json` (only when `--bayesian-design-report` is used)
+- `bayesian_design_regulatory_appendix.md` (only when `--bayesian-design-report` is used)
+- `bayesian_design_regulatory_appendix.pdf` (only when `--bayesian-design-report` is used and `--json-only` is not supplied)
+- `bayesian_design_regulatory_appendix_v0.schema.json` (only when `--bayesian-design-report` is used)
+- one family-specific design-report schema copy, either `beta_binomial_design_report_v0.schema.json` or `normal_normal_design_report_v0.schema.json` (only when `--bayesian-design-report` is used)
 
 Notes:
 
 - PDF rendering requires `matplotlib` (install via `pip install 'nextstat[viz]'`).
 - To override the Python interpreter used by the validation pack script, pass `--python /path/to/python3` to `validation-pack/render_validation_pack.sh`.
 - `--nuts-quality` enables the (potentially slower) NUTS quality report for richer diagnostics.
+- `--bayesian-design-report PATH` is a frozen-input path only; it accepts the published `beta_binomial_design_report_v0` or `normal_normal_design_report_v0` artifacts and adds the machine-readable Bayesian appendix artifacts plus deterministic Markdown/PDF appendix renders to the pack.
+- Bayesian validation-pack acceptance is defined in `docs/specs/pharma/bayesian_design_validation_pack_acceptance_v0.md`; deterministic appendix Markdown/PDF rendering is defined in `docs/specs/pharma/bayesian_design_appendix_render_acceptance_v0.md`.
 
 ### Signing (Optional)
 

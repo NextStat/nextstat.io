@@ -366,6 +366,22 @@ impl KalmanModel {
         KalmanModel::new(f, q, h, r, m0, p0)
     }
 
+    /// Local level + fixed weekly component with 7-step cadence.
+    ///
+    /// This is a product-surface alias for
+    /// [`Self::local_level_seasonal`] with `period = 7`, intended for
+    /// regularly sampled daily data.
+    pub fn local_level_weekly(
+        q_level: f64,
+        q_weekly: f64,
+        r: f64,
+        level0: f64,
+        p0_level: f64,
+        p0_weekly: f64,
+    ) -> Result<Self> {
+        Self::local_level_seasonal(7, q_level, q_weekly, r, level0, p0_level, p0_weekly)
+    }
+
     /// Local linear trend + seasonal model with 1D observations.
     ///
     /// State is `[level, slope, s1, s2, ..., s_{period-1}]`
@@ -455,6 +471,27 @@ impl KalmanModel {
         }
 
         KalmanModel::new(f, q, h, r, m0, p0)
+    }
+
+    /// Local linear trend + fixed weekly component with 7-step cadence.
+    ///
+    /// This is a product-surface alias for
+    /// [`Self::local_linear_trend_seasonal`] with `period = 7`, intended for
+    /// regularly sampled daily data.
+    pub fn local_linear_trend_weekly(
+        q_level: f64,
+        q_slope: f64,
+        q_weekly: f64,
+        r: f64,
+        level0: f64,
+        slope0: f64,
+        p0_level: f64,
+        p0_slope: f64,
+        p0_weekly: f64,
+    ) -> Result<Self> {
+        Self::local_linear_trend_seasonal(
+            7, q_level, q_slope, q_weekly, r, level0, slope0, p0_level, p0_slope, p0_weekly,
+        )
     }
 
     /// Number of latent state dimensions.
@@ -982,5 +1019,38 @@ mod tests {
         ];
         let fr = kalman_filter(&model, &ys).unwrap();
         assert!(fr.log_likelihood.is_finite());
+    }
+
+    #[test]
+    fn test_local_level_weekly_matches_period_7_seasonal_builder() {
+        let weekly = KalmanModel::local_level_weekly(0.1, 0.2, 0.3, 0.0, 1.0, 1.0).unwrap();
+        let seasonal = KalmanModel::local_level_seasonal(7, 0.1, 0.2, 0.3, 0.0, 1.0, 1.0).unwrap();
+
+        assert_eq!(weekly.n_state(), 7);
+        assert_eq!(weekly.f, seasonal.f);
+        assert_eq!(weekly.q, seasonal.q);
+        assert_eq!(weekly.h, seasonal.h);
+        assert_eq!(weekly.r, seasonal.r);
+        assert_eq!(weekly.m0, seasonal.m0);
+        assert_eq!(weekly.p0, seasonal.p0);
+    }
+
+    #[test]
+    fn test_local_linear_trend_weekly_matches_period_7_seasonal_builder() {
+        let weekly =
+            KalmanModel::local_linear_trend_weekly(0.1, 0.05, 0.2, 0.3, 0.0, 0.0, 1.0, 1.0, 1.0)
+                .unwrap();
+        let seasonal = KalmanModel::local_linear_trend_seasonal(
+            7, 0.1, 0.05, 0.2, 0.3, 0.0, 0.0, 1.0, 1.0, 1.0,
+        )
+        .unwrap();
+
+        assert_eq!(weekly.n_state(), 8);
+        assert_eq!(weekly.f, seasonal.f);
+        assert_eq!(weekly.q, seasonal.q);
+        assert_eq!(weekly.h, seasonal.h);
+        assert_eq!(weekly.r, seasonal.r);
+        assert_eq!(weekly.m0, seasonal.m0);
+        assert_eq!(weekly.p0, seasonal.p0);
     }
 }

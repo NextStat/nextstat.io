@@ -1,0 +1,102 @@
+{
+  "admission_policy": {
+    "allow_silent_stable_boundary_expansion": false,
+    "allow_source_level_nuisance_identity_claims": false,
+    "require_cases_inside_promoted_stable_runtime_boundary": true,
+    "required_benchmark_host": "nextstat-bench",
+    "required_case_kind": "public_reinterpretation_style",
+    "required_constraint_covariance_source": "source_model_constraints",
+    "required_poi_scope": "single_poi",
+    "required_source_constraint_families": [
+      "gaussian"
+    ],
+    "required_source_workspace_formats": [
+      "pyhf"
+    ],
+    "required_source_workspace_modifier_types": [
+      "histosys",
+      "lumi",
+      "normfactor",
+      "normsys"
+    ]
+  },
+  "benchmark_host": "nextstat-bench",
+  "current_evidence_summary": {
+    "cases_outside_promoted_stable_runtime_boundary": 0,
+    "export_matrix_case_count": 8,
+    "max_abs_q_mu_diff": 0.09089073579143658,
+    "max_upper_limit_ratio_deviation": 0.0093663653819136,
+    "observed_constraint_covariance_sources": [
+      "source_model_constraints"
+    ],
+    "public_case_count": 6,
+    "public_case_names": [
+      "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
+      "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+      "atlas_public_sr_cr_gaussian_export_stable_example",
+      "cms_public_sr_cr_export_stable_example",
+      "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+      "cms_public_dual_sr_cr_gaussian_export_stable_example"
+    ],
+    "public_min_net_end_to_end_upper_limit_speedup": 0.9434751728263177,
+    "synthetic_min_net_end_to_end_upper_limit_speedup": 2.0581999472135606
+  },
+  "generated_at_utc": "1970-01-01T00:00:00Z",
+  "maintenance_cadence": {
+    "no_silent_boundary_expansion": true,
+    "refresh_cadence": "on_every_exporter_release_pr_or_public_case_admission",
+    "required_refresh_scope": [
+      "committed_current_exporter_snapshot",
+      "committed_public_validation_report",
+      "accepted_exporter_bundle",
+      "release_workflow_uploads",
+      "standalone_exporter_workflow_uploads",
+      "release_facing_docs_and_checklists"
+    ],
+    "required_refresh_triggers": [
+      "exporter_release_pr_touches_runtime_or_governance_surface",
+      "accepted_public_case_catalog_changes",
+      "committed_nextstat_bench_exporter_snapshot_refresh",
+      "promoted_runtime_boundary_or_support_wording_changes"
+    ]
+  },
+  "policy_id": "simplified_likelihood_exporter_stable_evidence_policy_v0",
+  "release_consumers": {
+    "doc_paths": [
+      "docs/benchmarks/simplified-likelihood-exporter-stable-evidence-policy-2026-03-09.md",
+      "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md",
+      "docs/benchmarks/simplified-likelihood-exporter-runtime-gate.md",
+      "docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md",
+      "docs/benchmarks/simplified-likelihood-exporter-stable-source-semantics-boundary-2026-03-09.md",
+      "docs/benchmarks/simplified-likelihood-exporter-stable-promotion-decision-2026-03-09.md",
+      "docs/benchmarks/simplified-likelihood-exporter-release-pr-checklist-2026-03-09.md",
+      "docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08.md",
+      "docs/benchmarks/simplified-likelihood-release-notes-2026-03-08.md",
+      "docs/references/simplified-likelihood-artifacts.md"
+    ],
+    "required_release_artifacts": [
+      "export_public_validation_report.json",
+      "stable_evidence_policy.json",
+      "stable_source_semantics_boundary.json",
+      "stable_promotion_decision.json"
+    ],
+    "workflow_paths": [
+      ".github/workflows/release.yml",
+      ".github/workflows/simplified-likelihood-exporter-surface.yml"
+    ]
+  },
+  "schema_version": "nextstat_simplified_likelihood_exporter_stable_evidence_policy_v0",
+  "source_artifacts": {
+    "benchmark_artifact_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
+    "public_validation_report_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_public_validation_report.json",
+    "stable_promotion_decision_path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json"
+  },
+  "stable_evidence_floor": {
+    "min_public_reinterpretation_style_case_count": 6,
+    "min_public_validation_net_end_to_end_upper_limit_speedup": 0.75,
+    "min_synthetic_control_net_end_to_end_upper_limit_speedup": 1.25,
+    "min_total_export_matrix_case_count": 8
+  },
+  "status": "accepted",
+  "support_class": "stable"
+}

@@ -1,0 +1,671 @@
+{
+  "aggregate": {
+    "all_calibration_sigma_star_ge_sigma_fraction_ge_0_99": false,
+    "all_converged": true,
+    "highest_calibration_sigma_ratio_scenario": "jes_family_0p5",
+    "max_calibration_mean_sigma_star_to_sigma_ratio": 1.1413389897265351,
+    "max_fit_sigma_ratio_to_baseline": 457.62763419644165,
+    "min_calibration_mean_sigma_star_to_sigma_ratio": 1.0000000084828273,
+    "min_fit_sigma_ratio_to_baseline": 1.5579963823999101,
+    "n_scenarios": 3,
+    "widest_fit_interval_scenario": "theory_core_0p5"
+  },
+  "baseline": {
+    "confidence_interval": {
+      "ci_level": 0.68,
+      "lower": 172.18590024128778,
+      "sigma": 0.3288481480456227,
+      "upper": 172.8399515076936
+    },
+    "converged": true,
+    "diagnostics": {
+      "bartlett": {
+        "b_mu": null,
+        "b_mu_theta": null,
+        "b_q": null,
+        "b_tilde_theta": null,
+        "method": "lawley_order_eps2",
+        "p_value_star": null,
+        "q_scale": null,
+        "q_star": null,
+        "sigma2_unbiased_estimates": [],
+        "sigma_scale": null,
+        "sigma_star": null,
+        "supported": false,
+        "supported_systematics": [],
+        "unsupported_reason": "Bartlett diagnostics require at least one systematic with error_on_error > 0",
+        "w_mu_scale": null
+      },
+      "corr_regularization_deltas": [
+        0.0,
+        0.0014765431203307422,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.8163625598350839,
+        0.001632116555109672,
+        0.0,
+        0.0,
+        0.0,
+        1.0181016502568485,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        2.4637179315401943,
+        0.0,
+        0.0,
+        2.179122126444023,
+        0.0,
+        0.0037176212439129553
+      ],
+      "input_schema_version": "nextstat_measurement_combination_v0",
+      "n_measurements": 15,
+      "n_systematics": 25,
+      "perturbative_validity": {
+        "condition_values": [],
+        "systematic_names": [],
+        "threshold": 1.0,
+        "within_threshold": []
+      },
+      "profiled_variance_scales": [
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "requested_error_on_error": false,
+      "supports_error_on_error": true,
+      "theta_l2_norms": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "goodness_of_fit": {
+      "chi2": 7.566540857656104,
+      "df": 14,
+      "method": "fixed_variance_gaussian",
+      "p_value": 0.9106650934354464
+    },
+    "mu_hat": 172.5129258744907,
+    "optimizer": {
+      "message": "closed form",
+      "method": "closed_form_blue",
+      "n_fev": 1,
+      "n_gev": 0,
+      "n_iter": 1
+    },
+    "poi": "m_top",
+    "schema_version": "nextstat_measurement_combination_result_v0",
+    "stability": "stable"
+  },
+  "ci_level": 0.68,
+  "n_toys": 8,
+  "poi": "m_top",
+  "scenarios": [
+    {
+      "assignments": [
+        {
+          "systematic": "b-JES",
+          "value": 0.5
+        }
+      ],
+      "calibration": {
+        "bartlett_improves_mean_q_fraction": 0.0,
+        "max_abs_mean_sigma_star_to_sigma_ratio_delta_from_reference": 7.036395910375859e-9,
+        "max_mean_sigma": 0.5123441331461525,
+        "max_mean_sigma_star": 0.513024028110673,
+        "max_mean_sigma_star_to_sigma_ratio": 1.001327038873368,
+        "max_sigma_star_ge_sigma_fraction": 1.0,
+        "mean_of_mean_q": 1.2931831817148467,
+        "mean_of_mean_q_star": 0.23900175497478054,
+        "mean_of_mean_sigma": 0.5123440921450104,
+        "mean_of_mean_sigma_star": 0.5130239898634741,
+        "min_mean_sigma": 0.5123440511438684,
+        "min_mean_sigma_star": 0.5130239516162751,
+        "min_mean_sigma_star_to_sigma_ratio": 1.0013270279106068,
+        "min_sigma_star_ge_sigma_fraction": 1.0,
+        "n_runs": 2,
+        "toy_generation_method": "measurement_side_gvm_unbiased_sigma2_star_normalized_spec_original_theta"
+      },
+      "comparison": {
+        "bartlett_improves_mean_q_fraction": 0.0,
+        "calibration_max_abs_ratio_delta_from_reference": 7.036395910375859e-9,
+        "calibration_max_mean_sigma_star_to_sigma_ratio": 1.001327038873368,
+        "calibration_min_mean_sigma_star_to_sigma_ratio": 1.0013270279106068,
+        "calibration_min_sigma_star_ge_sigma_fraction": 1.0,
+        "fit_interval_width_ratio_to_baseline": 1.5666791009501657,
+        "fit_sigma_ratio_to_baseline": 1.5579963823999101
+      },
+      "fit": {
+        "confidence_interval": {
+          "ci_level": 0.68,
+          "lower": 172.1891727775763,
+          "sigma": 0.5123442250139902,
+          "upper": 173.21386122760427
+        },
+        "converged": true,
+        "diagnostics": {
+          "bartlett": {
+            "b_mu": 0.00265583091575583,
+            "b_mu_theta": 1.999240196864829,
+            "b_q": 61.75075980313517,
+            "b_tilde_theta": 1.9965843659490732,
+            "method": "lawley_order_eps2_general",
+            "p_value_star": 0.9999999999890651,
+            "q_scale": 5.410768557366798,
+            "q_star": 0.1858257825053134,
+            "sigma2_unbiased_estimates": [
+              0.13148855701314563
+            ],
+            "sigma_scale": 1.0013270349470027,
+            "sigma_star": 0.5130241237054788,
+            "supported": true,
+            "supported_systematics": [
+              "b-JES"
+            ],
+            "unsupported_reason": null,
+            "w_mu_scale": 1.0026558309157558
+          },
+          "corr_regularization_deltas": [
+            0.0,
+            0.0014765431203307422,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.8163625598350839,
+            0.001632116555109672,
+            0.0,
+            0.0,
+            0.0,
+            1.0181016502568485,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            2.4637179315401943,
+            0.0,
+            0.0,
+            2.179122126444023,
+            0.0,
+            0.0037176212439129553
+          ],
+          "effective_solver": "analytic-perturbative",
+          "input_schema_version": "nextstat_measurement_combination_v0",
+          "n_measurements": 15,
+          "n_systematics": 25,
+          "perturbative_validity": {
+            "condition_values": [
+              0.000045062184008926494
+            ],
+            "systematic_names": [
+              "b-JES"
+            ],
+            "threshold": 1.0,
+            "within_threshold": [
+              true
+            ]
+          },
+          "profiled_variance_scales": [
+            0.11765236025694223
+          ],
+          "requested_error_on_error": true,
+          "requested_solver": "auto",
+          "supports_error_on_error": true,
+          "theta_l2_norms": [
+            11.37010407082827
+          ]
+        },
+        "goodness_of_fit": {
+          "chi2": 1.005460301127831,
+          "df": 14,
+          "method": "analytic_perturbative_profile",
+          "p_value": 0.9999989611406778
+        },
+        "mu_hat": 172.70151725101405,
+        "optimizer": {
+          "message": "perturbative profile in original theta basis",
+          "method": "analytic_perturbative_order_eps2",
+          "n_fev": 0,
+          "n_gev": 0,
+          "n_iter": 1
+        },
+        "poi": "m_top",
+        "schema_version": "nextstat_measurement_combination_result_v0",
+        "stability": "stable"
+      },
+      "name": "bjes_0p5"
+    },
+    {
+      "assignments": [
+        {
+          "systematic": "b-JES",
+          "value": 0.5
+        },
+        {
+          "systematic": "QCD radiation",
+          "value": 0.5
+        },
+        {
+          "systematic": "Hadronization",
+          "value": 0.5
+        },
+        {
+          "systematic": "Color reconnection",
+          "value": 0.5
+        }
+      ],
+      "calibration": {
+        "bartlett_improves_mean_q_fraction": 1.0,
+        "max_abs_mean_sigma_star_to_sigma_ratio_delta_from_reference": 6.260636731258984e-8,
+        "max_mean_sigma": 150.48999999999953,
+        "max_mean_sigma_star": 150.49000128104652,
+        "max_mean_sigma_star_to_sigma_ratio": 1.0000000085125058,
+        "max_sigma_star_ge_sigma_fraction": 0.375,
+        "mean_of_mean_q": 0.0,
+        "mean_of_mean_q_star": 0.0,
+        "mean_of_mean_sigma": 150.48999999999953,
+        "mean_of_mean_sigma_star": 150.49000127881337,
+        "min_mean_sigma": 150.48999999999953,
+        "min_mean_sigma_star": 150.49000127658022,
+        "min_mean_sigma_star_to_sigma_ratio": 1.0000000084828273,
+        "min_sigma_star_ge_sigma_fraction": 0.375,
+        "n_runs": 2,
+        "toy_generation_method": "measurement_side_gvm_unbiased_sigma2_star_normalized_spec_original_theta"
+      },
+      "comparison": {
+        "bartlett_improves_mean_q_fraction": 1.0,
+        "calibration_max_abs_ratio_delta_from_reference": 6.260636731258984e-8,
+        "calibration_max_mean_sigma_star_to_sigma_ratio": 1.0000000085125058,
+        "calibration_min_mean_sigma_star_to_sigma_ratio": 1.0000000084828273,
+        "calibration_min_sigma_star_ge_sigma_fraction": 0.375,
+        "fit_interval_width_ratio_to_baseline": 460.17799438561383,
+        "fit_sigma_ratio_to_baseline": 457.62763419644165
+      },
+      "fit": {
+        "confidence_interval": {
+          "ci_level": 0.68,
+          "lower": 23.080000000000524,
+          "sigma": 150.4899999999995,
+          "upper": 324.0599999999995
+        },
+        "converged": true,
+        "diagnostics": {
+          "bartlett": {
+            "b_mu": -1.0818772011589317e-7,
+            "b_mu_theta": 66.00000000010795,
+            "b_q": 188.99999999989205,
+            "b_tilde_theta": 66.00000010829567,
+            "method": "lawley_order_eps2_general",
+            "p_value_star": 1.0,
+            "q_scale": 14.499999999992289,
+            "q_star": 0.0,
+            "sigma2_unbiased_estimates": [
+              0.13148788927323954,
+              0.21453287197244172,
+              0.14532871972318334,
+              0.13148788927335636
+            ],
+            "sigma_scale": 0.9999999459061385,
+            "sigma_star": 150.4899918594143,
+            "supported": true,
+            "supported_systematics": [
+              "b-JES",
+              "QCD radiation",
+              "Hadronization",
+              "Color reconnection"
+            ],
+            "unsupported_reason": null,
+            "w_mu_scale": 0.9999998918122799
+          },
+          "corr_regularization_deltas": [
+            0.0,
+            0.0014765431203307422,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.8163625598350839,
+            0.001632116555109672,
+            0.0,
+            0.0,
+            0.0,
+            1.0181016502568485,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            2.4637179315401943,
+            0.0,
+            0.0,
+            2.179122126444023,
+            0.0,
+            0.0037176212439129553
+          ],
+          "effective_solver": "analytic-perturbative",
+          "input_schema_version": "nextstat_measurement_combination_v0",
+          "n_measurements": 15,
+          "n_systematics": 25,
+          "perturbative_validity": {
+            "condition_values": [
+              -4.2026758880104193e-16,
+              -7.202017659371434e-17,
+              -3.384704408347843e-16,
+              -1.7255478156701353e-16
+            ],
+            "systematic_names": [
+              "b-JES",
+              "QCD radiation",
+              "Hadronization",
+              "Color reconnection"
+            ],
+            "threshold": 1.0,
+            "within_threshold": [
+              true,
+              true,
+              true,
+              true
+            ]
+          },
+          "profiled_variance_scales": [
+            0.11764705882352935,
+            0.1176470588235294,
+            0.11764705882352937,
+            0.11764705882352938
+          ],
+          "requested_error_on_error": true,
+          "requested_solver": "auto",
+          "supports_error_on_error": true,
+          "theta_l2_norms": [
+            13.51307991461109,
+            3.3578403481057877,
+            14.223515510391596,
+            11.733122222582683
+          ]
+        },
+        "goodness_of_fit": {
+          "chi2": 0.0,
+          "df": 14,
+          "method": "analytic_perturbative_profile",
+          "p_value": 1.0
+        },
+        "mu_hat": 174.42852960735019,
+        "optimizer": {
+          "message": "perturbative profile in original theta basis",
+          "method": "analytic_perturbative_order_eps2",
+          "n_fev": 0,
+          "n_gev": 0,
+          "n_iter": 1
+        },
+        "poi": "m_top",
+        "schema_version": "nextstat_measurement_combination_result_v0",
+        "stability": "stable"
+      },
+      "name": "theory_core_0p5"
+    },
+    {
+      "assignments": [
+        {
+          "systematic": "JES 1",
+          "value": 0.5
+        },
+        {
+          "systematic": "JES 2",
+          "value": 0.5
+        },
+        {
+          "systematic": "JES 3",
+          "value": 0.5
+        },
+        {
+          "systematic": "b-JES",
+          "value": 0.5
+        },
+        {
+          "systematic": "g-JES",
+          "value": 0.5
+        },
+        {
+          "systematic": "l-JES",
+          "value": 0.5
+        },
+        {
+          "systematic": "CMS JES 1",
+          "value": 0.5
+        }
+      ],
+      "calibration": {
+        "bartlett_improves_mean_q_fraction": 0.0,
+        "max_abs_mean_sigma_star_to_sigma_ratio_delta_from_reference": 0.14133898972751568,
+        "max_mean_sigma": 3.2775792609118604,
+        "max_mean_sigma_star": 3.7386520607533167,
+        "max_mean_sigma_star_to_sigma_ratio": 1.1413389897265351,
+        "max_sigma_star_ge_sigma_fraction": 0.625,
+        "mean_of_mean_q": 0.10116343233947139,
+        "mean_of_mean_q_star": 0.003928676984057142,
+        "mean_of_mean_sigma": 3.26987812463236,
+        "mean_of_mean_sigma_star": 3.73095092447456,
+        "min_mean_sigma": 3.2621769883528593,
+        "min_mean_sigma_star": 3.7232497881958038,
+        "min_mean_sigma_star_to_sigma_ratio": 1.1406747978119622,
+        "min_sigma_star_ge_sigma_fraction": 0.625,
+        "n_runs": 2,
+        "toy_generation_method": "measurement_side_gvm_unbiased_sigma2_star_normalized_spec_original_theta"
+      },
+      "comparison": {
+        "bartlett_improves_mean_q_fraction": 0.0,
+        "calibration_max_abs_ratio_delta_from_reference": 0.14133898972751568,
+        "calibration_max_mean_sigma_star_to_sigma_ratio": 1.1413389897265351,
+        "calibration_min_mean_sigma_star_to_sigma_ratio": 1.1406747978119622,
+        "calibration_min_sigma_star_ge_sigma_fraction": 0.625,
+        "fit_interval_width_ratio_to_baseline": 9.56309244580615,
+        "fit_sigma_ratio_to_baseline": 9.510092670595865
+      },
+      "fit": {
+        "confidence_interval": {
+          "ci_level": 0.68,
+          "lower": 170.37262363753229,
+          "sigma": 3.1273763624677002,
+          "upper": 176.6273763624677
+        },
+        "converged": true,
+        "diagnostics": {
+          "bartlett": {
+            "b_mu": -1.9610979506978765e-12,
+            "b_mu_theta": 99.74999999999412,
+            "b_q": 346.5000000000059,
+            "b_tilde_theta": 99.74999999999608,
+            "method": "lawley_order_eps2_general",
+            "p_value_star": 1.0,
+            "q_scale": 25.750000000000423,
+            "q_star": 0.0,
+            "sigma2_unbiased_estimates": [
+              0.1730103806228307,
+              0.21453287197231632,
+              0.13148788927335642,
+              0.1314878892733559,
+              0.13148788927335645,
+              0.1314878892733564,
+              0.16608996539792398
+            ],
+            "sigma_scale": 0.9999999999990195,
+            "sigma_star": 3.127376362464634,
+            "supported": true,
+            "supported_systematics": [
+              "JES 1",
+              "JES 2",
+              "JES 3",
+              "b-JES",
+              "g-JES",
+              "l-JES",
+              "CMS JES 1"
+            ],
+            "unsupported_reason": null,
+            "w_mu_scale": 0.9999999999980389
+          },
+          "corr_regularization_deltas": [
+            0.0,
+            0.0014765431203307422,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.8163625598350839,
+            0.001632116555109672,
+            0.0,
+            0.0,
+            0.0,
+            1.0181016502568485,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            2.4637179315401943,
+            0.0,
+            0.0,
+            2.179122126444023,
+            0.0,
+            0.0037176212439129553
+          ],
+          "effective_solver": "analytic-perturbative",
+          "input_schema_version": "nextstat_measurement_combination_v0",
+          "n_measurements": 15,
+          "n_systematics": 25,
+          "perturbative_validity": {
+            "condition_values": [
+              -9.414496434443904e-18,
+              -4.1283764335972496e-17,
+              -7.05281327748307e-18,
+              -1.142844057905649e-16,
+              1.1040904935077984e-16,
+              6.146008000818404e-18,
+              3.115020998996502e-62
+            ],
+            "systematic_names": [
+              "JES 1",
+              "JES 2",
+              "JES 3",
+              "b-JES",
+              "g-JES",
+              "l-JES",
+              "CMS JES 1"
+            ],
+            "threshold": 1.0,
+            "within_threshold": [
+              true,
+              true,
+              true,
+              true,
+              true,
+              true,
+              true
+            ]
+          },
+          "profiled_variance_scales": [
+            0.11764705882352941,
+            0.11764705882352941,
+            0.11764705882352941,
+            0.1176470588235294,
+            0.11764705882352941,
+            0.11764705882352941,
+            0.11764705882352941
+          ],
+          "requested_error_on_error": true,
+          "requested_solver": "auto",
+          "supports_error_on_error": true,
+          "theta_l2_norms": [
+            4.713908452479142,
+            1.1003715319341962,
+            1.7419293973299448,
+            5.90208894867801,
+            5.891941113783262,
+            3.247099434039312,
+            1.8888389949233872
+          ]
+        },
+        "goodness_of_fit": {
+          "chi2": 0.0,
+          "df": 14,
+          "method": "analytic_perturbative_profile",
+          "p_value": 1.0
+        },
+        "mu_hat": 173.49999998751983,
+        "optimizer": {
+          "message": "perturbative profile in original theta basis",
+          "method": "analytic_perturbative_order_eps2",
+          "n_fev": 0,
+          "n_gev": 0,
+          "n_iter": 1
+        },
+        "poi": "m_top",
+        "schema_version": "nextstat_measurement_combination_result_v0",
+        "stability": "stable"
+      },
+      "name": "jes_family_0p5"
+    }
+  ],
+  "schema_version": "nextstat_measurement_combination_calibration_campaign_v0",
+  "seeds": [
+    2026,
+    2027
+  ],
+  "stability": "research-grade"
+}

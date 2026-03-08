@@ -1,0 +1,55 @@
+{
+  "derived_review_schema_version": "nextstat_bayesian_historical_control_borrowing_review_v0",
+  "design_family": "normal_normal",
+  "design_id": "continuous_superiority_demo",
+  "generated_from_seeded_simulation": true,
+  "n_replicates": 1,
+  "policy_id": "continuous_superiority_demo_historical_control_policy_v0",
+  "scenarios": [
+    {
+      "borrowing_eligible_rate": 0.0,
+      "decision_instability_rate": 1.0,
+      "high_conflict_rate": 1.0,
+      "look_summaries": [
+        {
+          "borrowing_eligible_probability": 0.0,
+          "decision_instability_probability": 1.0,
+          "high_conflict_probability": 1.0,
+          "look_id": "interim",
+          "mean_effective_borrowing_fraction_when_reviewed": 0.0,
+          "mean_effective_historical_control_sample_size_when_reviewed": 0.0,
+          "retain_probability": 0.0,
+          "review_probability": 1.0,
+          "suspend_probability": 1.0,
+          "taper_probability": 0.0
+        },
+        {
+          "borrowing_eligible_probability": 0.0,
+          "decision_instability_probability": 0.0,
+          "high_conflict_probability": 0.0,
+          "look_id": "final",
+          "mean_effective_borrowing_fraction_when_reviewed": 0.0,
+          "mean_effective_historical_control_sample_size_when_reviewed": 0.0,
+          "retain_probability": 0.0,
+          "review_probability": 0.0,
+          "suspend_probability": 0.0,
+          "taper_probability": 0.0
+        }
+      ],
+      "mean_control": 0.0,
+      "mean_terminal_effective_borrowing_fraction": 0.0,
+      "mean_terminal_effective_historical_control_sample_size": 0.0,
+      "mean_treatment": 0.75,
+      "retain_rate": 0.0,
+      "scenario_id": "alt",
+      "suspend_rate": 1.0,
+      "taper_rate": 0.0
+    }
+  ],
+  "schema_version": "nextstat_bayesian_historical_control_borrowing_operating_characteristics_v0",
+  "seed": 654,
+  "source_campaign_schema_version": "nextstat_normal_normal_prior_sensitivity_campaign_v0",
+  "source_design_schema_version": "nextstat_normal_normal_design_v0",
+  "source_policy_schema_version": "nextstat_bayesian_historical_control_borrowing_policy_v0",
+  "stability": "research-grade"
+}

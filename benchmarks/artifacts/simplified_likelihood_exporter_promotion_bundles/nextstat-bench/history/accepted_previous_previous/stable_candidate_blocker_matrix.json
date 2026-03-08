@@ -1,0 +1,221 @@
+{
+  "automatic_stable_promotion": false,
+  "blockers": [
+    {
+      "blocker_id": "public_exporter_matrix_not_yet_part_of_stable_candidate_evidence",
+      "blocking": false,
+      "category": "external_evidence",
+      "current_state": "Committed exporter evidence already includes machine-classified public export cases: atlas_public_dual_sr_dual_cr_gaussian_export_stable_example, atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example, atlas_public_sr_cr_gaussian_export_stable_example, cms_public_dual_sr_cr_gaussian_export_stable_example, cms_public_sr_cr_asymmetric_gaussian_export_stable_example, cms_public_sr_cr_export_stable_example, cms_public_sr_dual_cr_gaussian_export_stable_example",
+      "evidence_refs": [
+        "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
+        "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md",
+        "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-blocker-matrix-2026-03-09.md"
+      ],
+      "exit_criteria": [
+        "publish machine-readable exporter case classification for synthetic vs public reinterpretation-style cases",
+        "run nextstat-bench exporter matrix with at least three public reinterpretation-style export cases",
+        "commit the resulting evidence under the exporter benchmark and accepted bundle paths"
+      ],
+      "status": "resolved",
+      "title": "Public reinterpretation-style exporter matrix is not yet part of the stable-candidate evidence set",
+      "why_blocking_stable": "The committed exporter matrix on nextstat-bench is still synthetic-only. A future stable claim needs public reinterpretation-style export cases, not only synthetic covariance tiers."
+    },
+    {
+      "blocker_id": "stable_source_semantics_boundary_not_yet_promoted",
+      "blocking": false,
+      "category": "scope_boundary",
+      "current_state": "Accepted bundle now publishes a versioned stable-source-semantics boundary artifact for the future stable exporter claim: pyhf-only, single-POI, Gaussian-constrained source_model_constraints scope, with reduced-coordinate rather than source-level nuisance semantics.",
+      "evidence_refs": [
+        "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_source_semantics_boundary.json",
+        "docs/benchmarks/simplified-likelihood-exporter-stable-source-semantics-boundary-2026-03-09.md",
+        "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md",
+        "docs/benchmarks/simplified-likelihood-exporter-runtime-gate.md",
+        "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-blocker-matrix-2026-03-09.md"
+      ],
+      "exit_criteria": [
+        "publish the future stable exporter claim as pyhf-only, single-POI, Gaussian-constrained source scope",
+        "keep unsupported source semantics as explicit rejects or research-grade-only paths",
+        "align CLI, Python, server, and release wording around the same narrowed boundary"
+      ],
+      "status": "resolved",
+      "title": "Stable exporter source-semantics boundary is not yet promoted",
+      "why_blocking_stable": "The exporter still documents source semantics as research-grade. A stable claim requires a narrow but explicit source boundary for what source-model semantics are promised."
+    },
+    {
+      "blocker_id": "stable_candidate_review_packet_not_yet_published",
+      "blocking": false,
+      "category": "review_package",
+      "current_state": "Accepted bundle now commits a dedicated stable-candidate review packet artifact with maintainer recommendation and blocker summary.",
+      "evidence_refs": [
+        "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_candidate_review_packet.json",
+        "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-review-packet-2026-03-09.md",
+        "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-blocker-matrix-2026-03-09.md"
+      ],
+      "exit_criteria": [
+        "publish a versioned stable-candidate review packet contract",
+        "build the review packet from the accepted exporter bundle plus the blocker matrix",
+        "add smoke tests and gate checks for the committed accepted review packet"
+      ],
+      "status": "resolved",
+      "title": "Validator-facing stable-candidate review packet is not yet published",
+      "why_blocking_stable": "The accepted bundle and stable-review assessment exist, but there is not yet a single review packet that merges accepted evidence, blocker state, and maintainer-facing recommendation."
+    },
+    {
+      "blocker_id": "stable_release_promotion_decision_not_yet_taken",
+      "blocking": false,
+      "category": "release_governance",
+      "current_state": "Accepted bundle now commits an explicit narrow stable-promotion decision artifact and the release-facing governance consumes it.",
+      "evidence_refs": [
+        "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json",
+        "docs/benchmarks/simplified-likelihood-exporter-stable-promotion-decision-2026-03-09.md",
+        "docs/benchmarks/simplified-likelihood-exporter-release-pr-checklist-2026-03-09.md",
+        "docs/benchmarks/simplified-likelihood-exporter-stable-review-checklist-2026-03-09.md",
+        "docs/benchmarks/simplified-likelihood-exporter-runtime-gate.md"
+      ],
+      "exit_criteria": [
+        "publish a formal exporter stable-promotion decision note or checklist",
+        "wire accepted exporter stable-candidate artifacts into release-facing governance",
+        "change support-matrix and release-note wording only after the explicit promotion decision lands"
+      ],
+      "status": "resolved",
+      "title": "Explicit stable promotion decision and release wiring are not yet in place",
+      "why_blocking_stable": "The exporter surface intentionally stays outside automatic release promotion. A stable claim requires an explicit promotion decision and release-facing consumption of the accepted evidence."
+    }
+  ],
+  "bundle_dir": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted",
+  "foundation": {
+    "checks": [
+      {
+        "check_id": "accepted_bundle_integrity",
+        "detail": "promotion_evidence, promotion_evidence_check, and promotion report all exist with the expected schema versions and passing statuses",
+        "evidence_refs": [
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence_check.json",
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_bundle_promotion_report.json"
+        ],
+        "satisfied": true,
+        "status": "satisfied",
+        "title": "Accepted exporter bundle remains internally consistent"
+      },
+      {
+        "check_id": "stable_review_ready",
+        "detail": "stable_review_assessment.json exists, validates to the expected contract, and remains review_ready without automatic promotion",
+        "evidence_refs": [
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_review_assessment.json"
+        ],
+        "satisfied": true,
+        "status": "satisfied",
+        "title": "Accepted exporter bundle is already formal stable-review ready"
+      },
+      {
+        "check_id": "committed_nextstat_bench_snapshot",
+        "detail": "the committed nextstat-bench exporter matrix remains green for schema, fidelity, and net end-to-end speedup thresholds",
+        "evidence_refs": [
+          "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json"
+        ],
+        "satisfied": true,
+        "status": "satisfied",
+        "title": "Committed nextstat-bench exporter snapshot remains valid"
+      },
+      {
+        "check_id": "governance_boundary_explicit",
+        "detail": "the accepted evidence keeps automatic stable promotion disabled, and any explicit stable claim must remain versioned through stable_promotion_decision.json",
+        "evidence_refs": [
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_review_assessment.json",
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json"
+        ],
+        "satisfied": true,
+        "status": "satisfied",
+        "title": "Exporter governance boundary is still explicit rather than implicit"
+      }
+    ],
+    "failures": [],
+    "passed": true,
+    "status": "passed"
+  },
+  "generated_at_utc": "2026-03-11T19:28:40Z",
+  "review_documents": {
+    "acceptance_doc": "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md",
+    "artifact_reference_doc": "docs/references/simplified-likelihood-artifacts.md",
+    "blocker_matrix_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-blocker-matrix-2026-03-09.md",
+    "promotion_runbook_doc": "docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md",
+    "review_packet_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-review-packet-2026-03-09.md",
+    "runtime_gate_doc": "docs/benchmarks/simplified-likelihood-exporter-runtime-gate.md",
+    "stable_promotion_decision_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-promotion-decision-2026-03-09.md",
+    "stable_promotion_release_pr_checklist_doc": "docs/benchmarks/simplified-likelihood-exporter-release-pr-checklist-2026-03-09.md",
+    "stable_review_checklist_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-review-checklist-2026-03-09.md",
+    "stable_source_semantics_boundary_doc": "docs/benchmarks/simplified-likelihood-exporter-stable-source-semantics-boundary-2026-03-09.md"
+  },
+  "schema_version": "nextstat_simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0",
+  "source_artifacts": {
+    "benchmark_artifact": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
+      "schema_version": "nextstat_apex2_simplified_likelihood_report_v0",
+      "sha256": "1de25d52bbda6b6c856b14b70d64debc5a7f8c2fd44f3e5ec4c1ac12b28d72f1",
+      "status": null
+    },
+    "promotion_evidence": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_bundle_v0",
+      "sha256": "9ac5c36caed84bf3f247e1dc8ad92158d9c25db8cfe1d1a86667caebc69657be",
+      "status": null
+    },
+    "promotion_evidence_check": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence_check.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_check_v0",
+      "sha256": "48c535f6ee694be23d8e3a3d89a9e3e79652641a33dba460bc10fab267125898",
+      "status": "passed"
+    },
+    "promotion_report": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_bundle_promotion_report.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_promotion_bundle_promotion_report_v0",
+      "sha256": "fe81ef886c2eab6f2e272768975a16b035d18a78d943d8b7c42bd00ff52f678d",
+      "status": "promoted"
+    },
+    "stable_promotion_decision": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_stable_promotion_decision_v0",
+      "sha256": null,
+      "status": "accepted"
+    },
+    "stable_review_assessment": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_review_assessment.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_stable_review_assessment_v0",
+      "sha256": "10584cd7dd3d6c82f60378986149501d5c7c22ca03f031610e367ac5f9722b60",
+      "status": null
+    },
+    "stable_source_semantics_boundary": {
+      "exists": true,
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_source_semantics_boundary.json",
+      "schema_version": "nextstat_simplified_likelihood_exporter_stable_source_semantics_boundary_v0",
+      "sha256": "b66a9423f913d4494b7edc61021e7e494ec47c805ae2b68a2cb2cff200bd5391",
+      "status": "published"
+    }
+  },
+  "stable_candidate": {
+    "automatic_stable_promotion": false,
+    "next_action": "keep the accepted narrow stable exporter subset aligned and retain wider fallback modes as research-grade",
+    "open_blocker_count": 0,
+    "ready": true,
+    "resolved_foundation_count": 4,
+    "status": "ready",
+    "target_support_class": "stable"
+  },
+  "summary": {
+    "automatic_stable_promotion": false,
+    "benchmark_host": "nextstat-bench",
+    "foundation_passed": true,
+    "next_action": "keep the accepted narrow stable exporter subset aligned and retain wider fallback modes as research-grade",
+    "open_blocker_count": 0,
+    "status": "ready"
+  },
+  "support_class": "stable",
+  "surface": "simplified_likelihood_exporter"
+}

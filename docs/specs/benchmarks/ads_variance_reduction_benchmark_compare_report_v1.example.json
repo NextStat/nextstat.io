@@ -1,0 +1,1653 @@
+{
+  "artifacts": {
+    "baseline": {
+      "build_profile": "release",
+      "case_ids": [
+        "python_revenue_dense_signal_naive",
+        "python_revenue_dense_signal_cuped",
+        "python_revenue_dense_signal_cure",
+        "python_ratio_style_efficiency_naive",
+        "python_ratio_style_efficiency_cuped",
+        "python_ratio_style_efficiency_cure",
+        "python_sparse_new_user_conversion_naive",
+        "python_sparse_new_user_conversion_cuped",
+        "python_sparse_new_user_conversion_cure",
+        "python_collinear_account_history_naive",
+        "python_collinear_account_history_cuped",
+        "python_collinear_account_history_cure"
+      ],
+      "deterministic": true,
+      "host_policy": "nextstat-bench",
+      "hostname": "nextstat-bench",
+      "path": "benchmarks/artifacts/ads_variance_reduction_baselines/nextstat-bench/accepted.json",
+      "runs": 5,
+      "schema_version": "nextstat.ads_variance_reduction_benchmark_result.v1",
+      "smoke": false,
+      "suite": "ads_variance_reduction_matrix",
+      "warmups": 1
+    },
+    "current": {
+      "build_profile": "release",
+      "case_ids": [
+        "python_revenue_dense_signal_naive",
+        "python_revenue_dense_signal_cuped",
+        "python_revenue_dense_signal_cure",
+        "python_ratio_style_efficiency_naive",
+        "python_ratio_style_efficiency_cuped",
+        "python_ratio_style_efficiency_cure",
+        "python_sparse_new_user_conversion_naive",
+        "python_sparse_new_user_conversion_cuped",
+        "python_sparse_new_user_conversion_cure",
+        "python_collinear_account_history_naive",
+        "python_collinear_account_history_cuped",
+        "python_collinear_account_history_cure"
+      ],
+      "deterministic": true,
+      "host_policy": "nextstat-bench",
+      "hostname": "nextstat-bench",
+      "path": "tmp/ads_variance_reduction_benchmark_20260308T232335Z/nextstat-bench/ads_variance_reduction_benchmark.json",
+      "runs": 5,
+      "schema_version": "nextstat.ads_variance_reduction_benchmark_result.v1",
+      "smoke": false,
+      "suite": "ads_variance_reduction_matrix",
+      "warmups": 1
+    }
+  },
+  "baseline_path": "benchmarks/artifacts/ads_variance_reduction_baselines/nextstat-bench/accepted.json",
+  "cases": [
+    {
+      "errors": [],
+      "id": "python_revenue_dense_signal_naive",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adjusted_variance": 0.055168692043,
+            "available_covariates": 3,
+            "condition_number": null,
+            "covariate_provenance": [],
+            "effect": 4.26495296,
+            "effective_sample_multiplier": null,
+            "estimated_variance": 0.055168692043,
+            "mean_control": 196.94865063,
+            "mean_variant": 201.21360359,
+            "method": "naive",
+            "metric_type": "continuous",
+            "n_per_arm": 20000,
+            "num_covariates": 0,
+            "original_variance": 0.055168692043,
+            "pooled_covariate_zero_fraction": 4.167e-05,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_spend",
+            "provenance_validated": false,
+            "r_squared": null,
+            "regression_rank": null,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "moderate",
+            "scenario_description": "Continuous revenue metric with spend, clicks, and device-quality baselines.",
+            "scenario_id": "revenue_dense_signal",
+            "scenario_sparsity_regime": "dense",
+            "selected_covariates": [],
+            "solver": null,
+            "standard_error": 0.234880165283,
+            "variance_reduction_factor": null
+          },
+          "current": {
+            "adjusted_variance": 0.055168692043,
+            "available_covariates": 3,
+            "condition_number": null,
+            "covariate_provenance": [],
+            "effect": 4.26495296,
+            "effective_sample_multiplier": null,
+            "estimated_variance": 0.055168692043,
+            "mean_control": 196.94865063,
+            "mean_variant": 201.21360359,
+            "method": "naive",
+            "metric_type": "continuous",
+            "n_per_arm": 20000,
+            "num_covariates": 0,
+            "original_variance": 0.055168692043,
+            "pooled_covariate_zero_fraction": 4.167e-05,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_spend",
+            "provenance_validated": false,
+            "r_squared": null,
+            "regression_rank": null,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "moderate",
+            "scenario_description": "Continuous revenue metric with spend, clicks, and device-quality baselines.",
+            "scenario_id": "revenue_dense_signal",
+            "scenario_sparsity_regime": "dense",
+            "selected_covariates": [],
+            "solver": null,
+            "standard_error": 0.234880165283,
+            "variance_reduction_factor": null
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.009297,
+          "current_value": 0.009297,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_revenue_dense_signal_cuped",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adjusted_variance": 0.008894980215,
+            "available_covariates": 3,
+            "condition_number": 1.0,
+            "covariate_provenance": [
+              {
+                "name": "pre_spend",
+                "source_dataset": "ads_account_history_revenue",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 3.89575147,
+            "effective_sample_multiplier": 6.20222763,
+            "estimated_variance": 0.008894980215,
+            "mean_control": 196.94865063,
+            "mean_variant": 201.21360359,
+            "method": "cuped",
+            "metric_type": "continuous",
+            "n_per_arm": 20000,
+            "num_covariates": 1,
+            "original_variance": 0.055168692043,
+            "pooled_covariate_zero_fraction": 4.167e-05,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_spend",
+            "provenance_validated": true,
+            "r_squared": 0.83876761,
+            "regression_rank": 1,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "moderate",
+            "scenario_description": "Continuous revenue metric with spend, clicks, and device-quality baselines.",
+            "scenario_id": "revenue_dense_signal",
+            "scenario_sparsity_regime": "dense",
+            "selected_covariates": [
+              "pre_spend"
+            ],
+            "solver": "svd",
+            "standard_error": 0.094313202763,
+            "variance_reduction_factor": 0.16123239
+          },
+          "current": {
+            "adjusted_variance": 0.008894980215,
+            "available_covariates": 3,
+            "condition_number": 1.0,
+            "covariate_provenance": [
+              {
+                "name": "pre_spend",
+                "source_dataset": "ads_account_history_revenue",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 3.89575147,
+            "effective_sample_multiplier": 6.20222763,
+            "estimated_variance": 0.008894980215,
+            "mean_control": 196.94865063,
+            "mean_variant": 201.21360359,
+            "method": "cuped",
+            "metric_type": "continuous",
+            "n_per_arm": 20000,
+            "num_covariates": 1,
+            "original_variance": 0.055168692043,
+            "pooled_covariate_zero_fraction": 4.167e-05,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_spend",
+            "provenance_validated": true,
+            "r_squared": 0.83876761,
+            "regression_rank": 1,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "moderate",
+            "scenario_description": "Continuous revenue metric with spend, clicks, and device-quality baselines.",
+            "scenario_id": "revenue_dense_signal",
+            "scenario_sparsity_regime": "dense",
+            "selected_covariates": [
+              "pre_spend"
+            ],
+            "solver": "svd",
+            "standard_error": 0.094313202763,
+            "variance_reduction_factor": 0.16123239
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.030328,
+          "current_value": 0.030328,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_revenue_dense_signal_cure",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adjusted_variance": 0.008504792254,
+            "available_covariates": 3,
+            "condition_number": 1173.82662576,
+            "covariate_provenance": [
+              {
+                "name": "pre_spend",
+                "source_dataset": "ads_account_history_revenue",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_clicks",
+                "source_dataset": "ads_account_history_revenue",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "device_quality",
+                "source_dataset": "ads_account_history_revenue",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 3.91747453,
+            "effective_sample_multiplier": 6.48677715,
+            "estimated_variance": 0.008504792254,
+            "mean_control": 196.94865063,
+            "mean_variant": 201.21360359,
+            "method": "cure",
+            "metric_type": "continuous",
+            "n_per_arm": 20000,
+            "num_covariates": 3,
+            "original_variance": 0.055168692043,
+            "pooled_covariate_zero_fraction": 4.167e-05,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_spend",
+            "provenance_validated": true,
+            "r_squared": 0.84584024,
+            "regression_rank": 3,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "moderate",
+            "scenario_description": "Continuous revenue metric with spend, clicks, and device-quality baselines.",
+            "scenario_id": "revenue_dense_signal",
+            "scenario_sparsity_regime": "dense",
+            "selected_covariates": [
+              "pre_spend",
+              "pre_clicks",
+              "device_quality"
+            ],
+            "solver": "svd",
+            "standard_error": 0.092221430558,
+            "variance_reduction_factor": 0.15415976
+          },
+          "current": {
+            "adjusted_variance": 0.008504792254,
+            "available_covariates": 3,
+            "condition_number": 1173.82662576,
+            "covariate_provenance": [
+              {
+                "name": "pre_spend",
+                "source_dataset": "ads_account_history_revenue",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_clicks",
+                "source_dataset": "ads_account_history_revenue",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "device_quality",
+                "source_dataset": "ads_account_history_revenue",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 3.91747453,
+            "effective_sample_multiplier": 6.48677715,
+            "estimated_variance": 0.008504792254,
+            "mean_control": 196.94865063,
+            "mean_variant": 201.21360359,
+            "method": "cure",
+            "metric_type": "continuous",
+            "n_per_arm": 20000,
+            "num_covariates": 3,
+            "original_variance": 0.055168692043,
+            "pooled_covariate_zero_fraction": 4.167e-05,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_spend",
+            "provenance_validated": true,
+            "r_squared": 0.84584024,
+            "regression_rank": 3,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "moderate",
+            "scenario_description": "Continuous revenue metric with spend, clicks, and device-quality baselines.",
+            "scenario_id": "revenue_dense_signal",
+            "scenario_sparsity_regime": "dense",
+            "selected_covariates": [
+              "pre_spend",
+              "pre_clicks",
+              "device_quality"
+            ],
+            "solver": "svd",
+            "standard_error": 0.092221430558,
+            "variance_reduction_factor": 0.15415976
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.057242,
+          "current_value": 0.057242,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_ratio_style_efficiency_naive",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adjusted_variance": 3.48744e-07,
+            "available_covariates": 3,
+            "condition_number": null,
+            "covariate_provenance": [],
+            "effect": 0.02144838,
+            "effective_sample_multiplier": null,
+            "estimated_variance": 3.48744e-07,
+            "mean_control": 0.82821708,
+            "mean_variant": 0.84966546,
+            "method": "naive",
+            "metric_type": "ratio_style",
+            "n_per_arm": 24000,
+            "num_covariates": 0,
+            "original_variance": 3.48744e-07,
+            "pooled_covariate_zero_fraction": 0.0,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_ctr",
+            "provenance_validated": false,
+            "r_squared": null,
+            "regression_rank": null,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "low",
+            "scenario_description": "Ratio-style efficiency metric with CTR, CPC, and conversion-rate baselines.",
+            "scenario_id": "ratio_style_efficiency",
+            "scenario_sparsity_regime": "dense",
+            "selected_covariates": [],
+            "solver": null,
+            "standard_error": 0.000590545098,
+            "variance_reduction_factor": null
+          },
+          "current": {
+            "adjusted_variance": 3.48744e-07,
+            "available_covariates": 3,
+            "condition_number": null,
+            "covariate_provenance": [],
+            "effect": 0.02144838,
+            "effective_sample_multiplier": null,
+            "estimated_variance": 3.48744e-07,
+            "mean_control": 0.82821708,
+            "mean_variant": 0.84966546,
+            "method": "naive",
+            "metric_type": "ratio_style",
+            "n_per_arm": 24000,
+            "num_covariates": 0,
+            "original_variance": 3.48744e-07,
+            "pooled_covariate_zero_fraction": 0.0,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_ctr",
+            "provenance_validated": false,
+            "r_squared": null,
+            "regression_rank": null,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "low",
+            "scenario_description": "Ratio-style efficiency metric with CTR, CPC, and conversion-rate baselines.",
+            "scenario_id": "ratio_style_efficiency",
+            "scenario_sparsity_regime": "dense",
+            "selected_covariates": [],
+            "solver": null,
+            "standard_error": 0.000590545098,
+            "variance_reduction_factor": null
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.011319,
+          "current_value": 0.011319,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_ratio_style_efficiency_cuped",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adjusted_variance": 1.40753e-07,
+            "available_covariates": 3,
+            "condition_number": 1.0,
+            "covariate_provenance": [
+              {
+                "name": "pre_ctr",
+                "source_dataset": "ads_ratio_metric_history",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 0.02185698,
+            "effective_sample_multiplier": 2.4776946,
+            "estimated_variance": 1.40753e-07,
+            "mean_control": 0.82821708,
+            "mean_variant": 0.84966546,
+            "method": "cuped",
+            "metric_type": "ratio_style",
+            "n_per_arm": 24000,
+            "num_covariates": 1,
+            "original_variance": 3.48744e-07,
+            "pooled_covariate_zero_fraction": 0.0,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_ctr",
+            "provenance_validated": true,
+            "r_squared": 0.59639901,
+            "regression_rank": 1,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "low",
+            "scenario_description": "Ratio-style efficiency metric with CTR, CPC, and conversion-rate baselines.",
+            "scenario_id": "ratio_style_efficiency",
+            "scenario_sparsity_regime": "dense",
+            "selected_covariates": [
+              "pre_ctr"
+            ],
+            "solver": "svd",
+            "standard_error": 0.000375170931,
+            "variance_reduction_factor": 0.40360099
+          },
+          "current": {
+            "adjusted_variance": 1.40753e-07,
+            "available_covariates": 3,
+            "condition_number": 1.0,
+            "covariate_provenance": [
+              {
+                "name": "pre_ctr",
+                "source_dataset": "ads_ratio_metric_history",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 0.02185698,
+            "effective_sample_multiplier": 2.4776946,
+            "estimated_variance": 1.40753e-07,
+            "mean_control": 0.82821708,
+            "mean_variant": 0.84966546,
+            "method": "cuped",
+            "metric_type": "ratio_style",
+            "n_per_arm": 24000,
+            "num_covariates": 1,
+            "original_variance": 3.48744e-07,
+            "pooled_covariate_zero_fraction": 0.0,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_ctr",
+            "provenance_validated": true,
+            "r_squared": 0.59639901,
+            "regression_rank": 1,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "low",
+            "scenario_description": "Ratio-style efficiency metric with CTR, CPC, and conversion-rate baselines.",
+            "scenario_id": "ratio_style_efficiency",
+            "scenario_sparsity_regime": "dense",
+            "selected_covariates": [
+              "pre_ctr"
+            ],
+            "solver": "svd",
+            "standard_error": 0.000375170931,
+            "variance_reduction_factor": 0.40360099
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.039632,
+          "current_value": 0.039632,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_ratio_style_efficiency_cure",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adjusted_variance": 8.3258e-08,
+            "available_covariates": 3,
+            "condition_number": 136.02516401,
+            "covariate_provenance": [
+              {
+                "name": "pre_ctr",
+                "source_dataset": "ads_ratio_metric_history",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_cpc",
+                "source_dataset": "ads_ratio_metric_history",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_conversion_rate",
+                "source_dataset": "ads_ratio_metric_history",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 0.02202081,
+            "effective_sample_multiplier": 4.18869651,
+            "estimated_variance": 8.3258e-08,
+            "mean_control": 0.82821708,
+            "mean_variant": 0.84966546,
+            "method": "cure",
+            "metric_type": "ratio_style",
+            "n_per_arm": 24000,
+            "num_covariates": 3,
+            "original_variance": 3.48744e-07,
+            "pooled_covariate_zero_fraction": 0.0,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_ctr",
+            "provenance_validated": true,
+            "r_squared": 0.76126225,
+            "regression_rank": 3,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "low",
+            "scenario_description": "Ratio-style efficiency metric with CTR, CPC, and conversion-rate baselines.",
+            "scenario_id": "ratio_style_efficiency",
+            "scenario_sparsity_regime": "dense",
+            "selected_covariates": [
+              "pre_ctr",
+              "pre_cpc",
+              "pre_conversion_rate"
+            ],
+            "solver": "svd",
+            "standard_error": 0.000288545045,
+            "variance_reduction_factor": 0.23873775
+          },
+          "current": {
+            "adjusted_variance": 8.3258e-08,
+            "available_covariates": 3,
+            "condition_number": 136.02516401,
+            "covariate_provenance": [
+              {
+                "name": "pre_ctr",
+                "source_dataset": "ads_ratio_metric_history",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_cpc",
+                "source_dataset": "ads_ratio_metric_history",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_conversion_rate",
+                "source_dataset": "ads_ratio_metric_history",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 0.02202081,
+            "effective_sample_multiplier": 4.18869651,
+            "estimated_variance": 8.3258e-08,
+            "mean_control": 0.82821708,
+            "mean_variant": 0.84966546,
+            "method": "cure",
+            "metric_type": "ratio_style",
+            "n_per_arm": 24000,
+            "num_covariates": 3,
+            "original_variance": 3.48744e-07,
+            "pooled_covariate_zero_fraction": 0.0,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_ctr",
+            "provenance_validated": true,
+            "r_squared": 0.76126225,
+            "regression_rank": 3,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "low",
+            "scenario_description": "Ratio-style efficiency metric with CTR, CPC, and conversion-rate baselines.",
+            "scenario_id": "ratio_style_efficiency",
+            "scenario_sparsity_regime": "dense",
+            "selected_covariates": [
+              "pre_ctr",
+              "pre_cpc",
+              "pre_conversion_rate"
+            ],
+            "solver": "svd",
+            "standard_error": 0.000288545045,
+            "variance_reduction_factor": 0.23873775
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.163329,
+          "current_value": 0.163329,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_sparse_new_user_conversion_naive",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adjusted_variance": 2.714104e-06,
+            "available_covariates": 4,
+            "condition_number": null,
+            "covariate_provenance": [],
+            "effect": 0.01292,
+            "effective_sample_multiplier": null,
+            "estimated_variance": 2.714104e-06,
+            "mean_control": 0.0668,
+            "mean_variant": 0.07972,
+            "method": "naive",
+            "metric_type": "binary",
+            "n_per_arm": 50000,
+            "num_covariates": 0,
+            "original_variance": 2.714104e-06,
+            "pooled_covariate_zero_fraction": 0.6199025,
+            "pooled_outcome_zero_fraction": 0.92674,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_sessions",
+            "provenance_validated": false,
+            "r_squared": null,
+            "regression_rank": null,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "moderate",
+            "scenario_description": "Sparse new-user conversion metric with zero-inflated pre-period activity baselines.",
+            "scenario_id": "sparse_new_user_conversion",
+            "scenario_sparsity_regime": "high",
+            "selected_covariates": [],
+            "solver": null,
+            "standard_error": 0.001647453767,
+            "variance_reduction_factor": null
+          },
+          "current": {
+            "adjusted_variance": 2.714104e-06,
+            "available_covariates": 4,
+            "condition_number": null,
+            "covariate_provenance": [],
+            "effect": 0.01292,
+            "effective_sample_multiplier": null,
+            "estimated_variance": 2.714104e-06,
+            "mean_control": 0.0668,
+            "mean_variant": 0.07972,
+            "method": "naive",
+            "metric_type": "binary",
+            "n_per_arm": 50000,
+            "num_covariates": 0,
+            "original_variance": 2.714104e-06,
+            "pooled_covariate_zero_fraction": 0.6199025,
+            "pooled_outcome_zero_fraction": 0.92674,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_sessions",
+            "provenance_validated": false,
+            "r_squared": null,
+            "regression_rank": null,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "moderate",
+            "scenario_description": "Sparse new-user conversion metric with zero-inflated pre-period activity baselines.",
+            "scenario_id": "sparse_new_user_conversion",
+            "scenario_sparsity_regime": "high",
+            "selected_covariates": [],
+            "solver": null,
+            "standard_error": 0.001647453767,
+            "variance_reduction_factor": null
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.019323,
+          "current_value": 0.019323,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_sparse_new_user_conversion_cuped",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adjusted_variance": 2.701279e-06,
+            "available_covariates": 4,
+            "condition_number": 1.0,
+            "covariate_provenance": [
+              {
+                "name": "pre_sessions",
+                "source_dataset": "ads_new_user_history",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 0.01283615,
+            "effective_sample_multiplier": 1.00474763,
+            "estimated_variance": 2.701279e-06,
+            "mean_control": 0.0668,
+            "mean_variant": 0.07972,
+            "method": "cuped",
+            "metric_type": "binary",
+            "n_per_arm": 50000,
+            "num_covariates": 1,
+            "original_variance": 2.714104e-06,
+            "pooled_covariate_zero_fraction": 0.6199025,
+            "pooled_outcome_zero_fraction": 0.92674,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_sessions",
+            "provenance_validated": true,
+            "r_squared": 0.0047252,
+            "regression_rank": 1,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "moderate",
+            "scenario_description": "Sparse new-user conversion metric with zero-inflated pre-period activity baselines.",
+            "scenario_id": "sparse_new_user_conversion",
+            "scenario_sparsity_regime": "high",
+            "selected_covariates": [
+              "pre_sessions"
+            ],
+            "solver": "svd",
+            "standard_error": 0.001643556884,
+            "variance_reduction_factor": 0.9952748
+          },
+          "current": {
+            "adjusted_variance": 2.701279e-06,
+            "available_covariates": 4,
+            "condition_number": 1.0,
+            "covariate_provenance": [
+              {
+                "name": "pre_sessions",
+                "source_dataset": "ads_new_user_history",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 0.01283615,
+            "effective_sample_multiplier": 1.00474763,
+            "estimated_variance": 2.701279e-06,
+            "mean_control": 0.0668,
+            "mean_variant": 0.07972,
+            "method": "cuped",
+            "metric_type": "binary",
+            "n_per_arm": 50000,
+            "num_covariates": 1,
+            "original_variance": 2.714104e-06,
+            "pooled_covariate_zero_fraction": 0.6199025,
+            "pooled_outcome_zero_fraction": 0.92674,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_sessions",
+            "provenance_validated": true,
+            "r_squared": 0.0047252,
+            "regression_rank": 1,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "moderate",
+            "scenario_description": "Sparse new-user conversion metric with zero-inflated pre-period activity baselines.",
+            "scenario_id": "sparse_new_user_conversion",
+            "scenario_sparsity_regime": "high",
+            "selected_covariates": [
+              "pre_sessions"
+            ],
+            "solver": "svd",
+            "standard_error": 0.001643556884,
+            "variance_reduction_factor": 0.9952748
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.085185,
+          "current_value": 0.085185,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_sparse_new_user_conversion_cure",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adjusted_variance": 2.358548e-06,
+            "available_covariates": 4,
+            "condition_number": 50.71510778,
+            "covariate_provenance": [
+              {
+                "name": "pre_sessions",
+                "source_dataset": "ads_new_user_history",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_impressions",
+                "source_dataset": "ads_new_user_history",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_installs",
+                "source_dataset": "ads_new_user_history",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "account_age_days",
+                "source_dataset": "ads_new_user_history",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 0.013168,
+            "effective_sample_multiplier": 1.15075216,
+            "estimated_variance": 2.358548e-06,
+            "mean_control": 0.0668,
+            "mean_variant": 0.07972,
+            "method": "cure",
+            "metric_type": "binary",
+            "n_per_arm": 50000,
+            "num_covariates": 4,
+            "original_variance": 2.714104e-06,
+            "pooled_covariate_zero_fraction": 0.6199025,
+            "pooled_outcome_zero_fraction": 0.92674,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_sessions",
+            "provenance_validated": true,
+            "r_squared": 0.13100315,
+            "regression_rank": 4,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "moderate",
+            "scenario_description": "Sparse new-user conversion metric with zero-inflated pre-period activity baselines.",
+            "scenario_id": "sparse_new_user_conversion",
+            "scenario_sparsity_regime": "high",
+            "selected_covariates": [
+              "pre_sessions",
+              "pre_impressions",
+              "pre_installs",
+              "account_age_days"
+            ],
+            "solver": "svd",
+            "standard_error": 0.001535756408,
+            "variance_reduction_factor": 0.86899685
+          },
+          "current": {
+            "adjusted_variance": 2.358548e-06,
+            "available_covariates": 4,
+            "condition_number": 50.71510778,
+            "covariate_provenance": [
+              {
+                "name": "pre_sessions",
+                "source_dataset": "ads_new_user_history",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_impressions",
+                "source_dataset": "ads_new_user_history",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_installs",
+                "source_dataset": "ads_new_user_history",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "account_age_days",
+                "source_dataset": "ads_new_user_history",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 0.013168,
+            "effective_sample_multiplier": 1.15075216,
+            "estimated_variance": 2.358548e-06,
+            "mean_control": 0.0668,
+            "mean_variant": 0.07972,
+            "method": "cure",
+            "metric_type": "binary",
+            "n_per_arm": 50000,
+            "num_covariates": 4,
+            "original_variance": 2.714104e-06,
+            "pooled_covariate_zero_fraction": 0.6199025,
+            "pooled_outcome_zero_fraction": 0.92674,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_sessions",
+            "provenance_validated": true,
+            "r_squared": 0.13100315,
+            "regression_rank": 4,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "moderate",
+            "scenario_description": "Sparse new-user conversion metric with zero-inflated pre-period activity baselines.",
+            "scenario_id": "sparse_new_user_conversion",
+            "scenario_sparsity_regime": "high",
+            "selected_covariates": [
+              "pre_sessions",
+              "pre_impressions",
+              "pre_installs",
+              "account_age_days"
+            ],
+            "solver": "svd",
+            "standard_error": 0.001535756408,
+            "variance_reduction_factor": 0.86899685
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.248373,
+          "current_value": 0.248373,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_collinear_account_history_naive",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adjusted_variance": 0.158733213175,
+            "available_covariates": 5,
+            "condition_number": null,
+            "covariate_provenance": [],
+            "effect": 3.88194237,
+            "effective_sample_multiplier": null,
+            "estimated_variance": 0.158733213175,
+            "mean_control": 227.18715476,
+            "mean_variant": 231.06909713,
+            "method": "naive",
+            "metric_type": "continuous",
+            "n_per_arm": 18000,
+            "num_covariates": 0,
+            "original_variance": 0.158733213175,
+            "pooled_covariate_zero_fraction": 5.56e-06,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_spend",
+            "provenance_validated": false,
+            "r_squared": null,
+            "regression_rank": null,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "high",
+            "scenario_description": "Continuous account-history metric with deliberately collinear spend, impression, and click baselines.",
+            "scenario_id": "collinear_account_history",
+            "scenario_sparsity_regime": "low",
+            "selected_covariates": [],
+            "solver": null,
+            "standard_error": 0.398413369724,
+            "variance_reduction_factor": null
+          },
+          "current": {
+            "adjusted_variance": 0.158733213175,
+            "available_covariates": 5,
+            "condition_number": null,
+            "covariate_provenance": [],
+            "effect": 3.88194237,
+            "effective_sample_multiplier": null,
+            "estimated_variance": 0.158733213175,
+            "mean_control": 227.18715476,
+            "mean_variant": 231.06909713,
+            "method": "naive",
+            "metric_type": "continuous",
+            "n_per_arm": 18000,
+            "num_covariates": 0,
+            "original_variance": 0.158733213175,
+            "pooled_covariate_zero_fraction": 5.56e-06,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_spend",
+            "provenance_validated": false,
+            "r_squared": null,
+            "regression_rank": null,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "high",
+            "scenario_description": "Continuous account-history metric with deliberately collinear spend, impression, and click baselines.",
+            "scenario_id": "collinear_account_history",
+            "scenario_sparsity_regime": "low",
+            "selected_covariates": [],
+            "solver": null,
+            "standard_error": 0.398413369724,
+            "variance_reduction_factor": null
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.012861,
+          "current_value": 0.012861,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_collinear_account_history_cuped",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adjusted_variance": 0.007861487394,
+            "available_covariates": 5,
+            "condition_number": 1.0,
+            "covariate_provenance": [
+              {
+                "name": "pre_spend",
+                "source_dataset": "ads_account_history_collinear",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 3.52467714,
+            "effective_sample_multiplier": 20.19124438,
+            "estimated_variance": 0.007861487394,
+            "mean_control": 227.18715476,
+            "mean_variant": 231.06909713,
+            "method": "cuped",
+            "metric_type": "continuous",
+            "n_per_arm": 18000,
+            "num_covariates": 1,
+            "original_variance": 0.158733213175,
+            "pooled_covariate_zero_fraction": 5.56e-06,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_spend",
+            "provenance_validated": true,
+            "r_squared": 0.95047358,
+            "regression_rank": 1,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "high",
+            "scenario_description": "Continuous account-history metric with deliberately collinear spend, impression, and click baselines.",
+            "scenario_id": "collinear_account_history",
+            "scenario_sparsity_regime": "low",
+            "selected_covariates": [
+              "pre_spend"
+            ],
+            "solver": "svd",
+            "standard_error": 0.088665029151,
+            "variance_reduction_factor": 0.04952642
+          },
+          "current": {
+            "adjusted_variance": 0.007861487394,
+            "available_covariates": 5,
+            "condition_number": 1.0,
+            "covariate_provenance": [
+              {
+                "name": "pre_spend",
+                "source_dataset": "ads_account_history_collinear",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 3.52467714,
+            "effective_sample_multiplier": 20.19124438,
+            "estimated_variance": 0.007861487394,
+            "mean_control": 227.18715476,
+            "mean_variant": 231.06909713,
+            "method": "cuped",
+            "metric_type": "continuous",
+            "n_per_arm": 18000,
+            "num_covariates": 1,
+            "original_variance": 0.158733213175,
+            "pooled_covariate_zero_fraction": 5.56e-06,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_spend",
+            "provenance_validated": true,
+            "r_squared": 0.95047358,
+            "regression_rank": 1,
+            "ridge_lambda": null,
+            "ridge_used": false,
+            "scenario_collinearity_regime": "high",
+            "scenario_description": "Continuous account-history metric with deliberately collinear spend, impression, and click baselines.",
+            "scenario_id": "collinear_account_history",
+            "scenario_sparsity_regime": "low",
+            "selected_covariates": [
+              "pre_spend"
+            ],
+            "solver": "svd",
+            "standard_error": 0.088665029151,
+            "variance_reduction_factor": 0.04952642
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.037762,
+          "current_value": 0.037762,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    },
+    {
+      "errors": [],
+      "id": "python_collinear_account_history_cure",
+      "identity": {
+        "details": {
+          "baseline": {
+            "adjusted_variance": 0.007435984464,
+            "available_covariates": 5,
+            "condition_number": 273.09667546,
+            "covariate_provenance": [
+              {
+                "name": "pre_spend",
+                "source_dataset": "ads_account_history_collinear",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_spend_x2",
+                "source_dataset": "ads_account_history_collinear",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_impressions",
+                "source_dataset": "ads_account_history_collinear",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_clicks",
+                "source_dataset": "ads_account_history_collinear",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_budget",
+                "source_dataset": "ads_account_history_collinear",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 3.53147809,
+            "effective_sample_multiplier": 21.34663056,
+            "estimated_variance": 0.007435984464,
+            "mean_control": 227.18715476,
+            "mean_variant": 231.06909713,
+            "method": "cure",
+            "metric_type": "continuous",
+            "n_per_arm": 18000,
+            "num_covariates": 5,
+            "original_variance": 0.158733213175,
+            "pooled_covariate_zero_fraction": 5.56e-06,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_spend",
+            "provenance_validated": true,
+            "r_squared": 0.9531542,
+            "regression_rank": 4,
+            "ridge_lambda": 107.365577843049,
+            "ridge_used": true,
+            "scenario_collinearity_regime": "high",
+            "scenario_description": "Continuous account-history metric with deliberately collinear spend, impression, and click baselines.",
+            "scenario_id": "collinear_account_history",
+            "scenario_sparsity_regime": "low",
+            "selected_covariates": [
+              "pre_spend",
+              "pre_spend_x2",
+              "pre_impressions",
+              "pre_clicks",
+              "pre_budget"
+            ],
+            "solver": "ridge",
+            "standard_error": 0.086232154469,
+            "variance_reduction_factor": 0.0468458
+          },
+          "current": {
+            "adjusted_variance": 0.007435984464,
+            "available_covariates": 5,
+            "condition_number": 273.09667546,
+            "covariate_provenance": [
+              {
+                "name": "pre_spend",
+                "source_dataset": "ads_account_history_collinear",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_spend_x2",
+                "source_dataset": "ads_account_history_collinear",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_impressions",
+                "source_dataset": "ads_account_history_collinear",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_clicks",
+                "source_dataset": "ads_account_history_collinear",
+                "timing": "pre_treatment"
+              },
+              {
+                "name": "pre_budget",
+                "source_dataset": "ads_account_history_collinear",
+                "timing": "pre_treatment"
+              }
+            ],
+            "effect": 3.53147809,
+            "effective_sample_multiplier": 21.34663056,
+            "estimated_variance": 0.007435984464,
+            "mean_control": 227.18715476,
+            "mean_variant": 231.06909713,
+            "method": "cure",
+            "metric_type": "continuous",
+            "n_per_arm": 18000,
+            "num_covariates": 5,
+            "original_variance": 0.158733213175,
+            "pooled_covariate_zero_fraction": 5.56e-06,
+            "pooled_outcome_zero_fraction": 0.0,
+            "pre_treatment_only": true,
+            "primary_covariate": "pre_spend",
+            "provenance_validated": true,
+            "r_squared": 0.9531542,
+            "regression_rank": 4,
+            "ridge_lambda": 107.365577843049,
+            "ridge_used": true,
+            "scenario_collinearity_regime": "high",
+            "scenario_description": "Continuous account-history metric with deliberately collinear spend, impression, and click baselines.",
+            "scenario_id": "collinear_account_history",
+            "scenario_sparsity_regime": "low",
+            "selected_covariates": [
+              "pre_spend",
+              "pre_spend_x2",
+              "pre_impressions",
+              "pre_clicks",
+              "pre_budget"
+            ],
+            "solver": "ridge",
+            "standard_error": 0.086232154469,
+            "variance_reduction_factor": 0.0468458
+          },
+          "matches": true
+        },
+        "status": {
+          "baseline": "ok",
+          "current": "ok",
+          "matches": true
+        },
+        "surface": {
+          "baseline": "python",
+          "current": "python",
+          "matches": true
+        }
+      },
+      "metrics": [
+        {
+          "baseline_value": 0.067894,
+          "current_value": 0.067894,
+          "fail_ratio": 2.0,
+          "min_baseline_value": 0.001,
+          "name": "median_s",
+          "ratio": 1.0,
+          "reasons": [],
+          "review_ratio": 1.5,
+          "status": "passed"
+        }
+      ],
+      "status": "passed",
+      "surface": "python",
+      "warnings": []
+    }
+  ],
+  "current_path": "tmp/ads_variance_reduction_benchmark_20260308T232335Z/nextstat-bench/ads_variance_reduction_benchmark.json",
+  "environment_checks": {
+    "case_set": {
+      "baseline": [
+        "python_revenue_dense_signal_naive",
+        "python_revenue_dense_signal_cuped",
+        "python_revenue_dense_signal_cure",
+        "python_ratio_style_efficiency_naive",
+        "python_ratio_style_efficiency_cuped",
+        "python_ratio_style_efficiency_cure",
+        "python_sparse_new_user_conversion_naive",
+        "python_sparse_new_user_conversion_cuped",
+        "python_sparse_new_user_conversion_cure",
+        "python_collinear_account_history_naive",
+        "python_collinear_account_history_cuped",
+        "python_collinear_account_history_cure"
+      ],
+      "current": [
+        "python_revenue_dense_signal_naive",
+        "python_revenue_dense_signal_cuped",
+        "python_revenue_dense_signal_cure",
+        "python_ratio_style_efficiency_naive",
+        "python_ratio_style_efficiency_cuped",
+        "python_ratio_style_efficiency_cure",
+        "python_sparse_new_user_conversion_naive",
+        "python_sparse_new_user_conversion_cuped",
+        "python_sparse_new_user_conversion_cure",
+        "python_collinear_account_history_naive",
+        "python_collinear_account_history_cuped",
+        "python_collinear_account_history_cure"
+      ],
+      "matches": true,
+      "required": [
+        "python_revenue_dense_signal_naive",
+        "python_revenue_dense_signal_cuped",
+        "python_revenue_dense_signal_cure",
+        "python_ratio_style_efficiency_naive",
+        "python_ratio_style_efficiency_cuped",
+        "python_ratio_style_efficiency_cure",
+        "python_sparse_new_user_conversion_naive",
+        "python_sparse_new_user_conversion_cuped",
+        "python_sparse_new_user_conversion_cure",
+        "python_collinear_account_history_naive",
+        "python_collinear_account_history_cuped",
+        "python_collinear_account_history_cure"
+      ]
+    },
+    "deterministic": {
+      "baseline": true,
+      "current": true,
+      "matches": true
+    },
+    "host_policy": {
+      "baseline": "nextstat-bench",
+      "current": "nextstat-bench",
+      "matches": true
+    },
+    "hostname": {
+      "baseline": "nextstat-bench",
+      "current": "nextstat-bench",
+      "matches": true
+    },
+    "non_smoke": {
+      "baseline": true,
+      "current": true,
+      "matches": true
+    },
+    "release_build": {
+      "baseline": "release",
+      "current": "release",
+      "matches": true
+    },
+    "runs": {
+      "baseline": 5,
+      "current": 5,
+      "matches": true
+    },
+    "warmups": {
+      "baseline": 1,
+      "current": 1,
+      "matches": true
+    }
+  },
+  "policy": {
+    "case_ids": [
+      "python_revenue_dense_signal_naive",
+      "python_revenue_dense_signal_cuped",
+      "python_revenue_dense_signal_cure",
+      "python_ratio_style_efficiency_naive",
+      "python_ratio_style_efficiency_cuped",
+      "python_ratio_style_efficiency_cure",
+      "python_sparse_new_user_conversion_naive",
+      "python_sparse_new_user_conversion_cuped",
+      "python_sparse_new_user_conversion_cure",
+      "python_collinear_account_history_naive",
+      "python_collinear_account_history_cuped",
+      "python_collinear_account_history_cure"
+    ],
+    "python_metric": {
+      "fail_ratio": 2.0,
+      "min_baseline_value": 0.001,
+      "review_ratio": 1.5
+    },
+    "require_deterministic": true,
+    "require_non_smoke": true,
+    "required_build_profile": "release",
+    "required_host_policy": "nextstat-bench",
+    "required_hostname": "nextstat-bench",
+    "required_runs": 5,
+    "required_warmups": 1,
+    "schema_version": "nextstat.ads_variance_reduction_benchmark_compare_policy.v1"
+  },
+  "requires_review": false,
+  "schema_version": "nextstat.ads_variance_reduction_benchmark_compare_report.v1",
+  "status": "passed",
+  "suite": "ads_variance_reduction_matrix",
+  "summary": {
+    "failed_cases": 0,
+    "review_cases": 0,
+    "skipped_floor_cases": 0,
+    "top_level_errors": []
+  }
+}

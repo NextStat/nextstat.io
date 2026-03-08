@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/tools/nextstat_tool_schema_v1.schema.json",
+  "title": "NextStat Tool Schema v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "transport",
+    "tools",
+    "capabilities",
+    "guidance"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat.tool_schema.v1"
+    },
+    "transport": {
+      "type": "string",
+      "enum": [
+        "local",
+        "server"
+      ]
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/tool_definition"
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/tool_capability"
+      }
+    },
+    "guidance": {
+      "$ref": "#/$defs/tool_guidance"
+    }
+  },
+  "$defs": {
+    "tool_definition": {
+      "type": "object",
+      "required": [
+        "type",
+        "function"
+      ],
+      "properties": {
+        "type": {
+          "const": "function"
+        },
+        "function": {
+          "type": "object",
+          "required": [
+            "name",
+            "description",
+            "parameters"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "pattern": "^nextstat_[a-z0-9_]+$"
+            },
+            "description": {
+              "type": "string",
+              "minLength": 1
+            },
+            "parameters": {
+              "type": "object"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "tool_policy": {
+      "type": "object",
+      "required": [
+        "availability",
+        "reason_code",
+        "reason"
+      ],
+      "properties": {
+        "availability": {
+          "type": "string",
+          "enum": [
+            "exposed",
+            "local_only"
+          ]
+        },
+        "reason_code": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "tool_capability": {
+      "type": "object",
+      "required": [
+        "name",
+        "local_available",
+        "server_available",
+        "server_policy"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^nextstat_[a-z0-9_]+$"
+        },
+        "local_available": {
+          "type": "boolean"
+        },
+        "server_available": {
+          "type": "boolean"
+        },
+        "server_policy": {
+          "$ref": "#/$defs/tool_policy"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tool_guidance_recipe": {
+      "type": "object",
+      "required": [
+        "id",
+        "transport",
+        "title",
+        "summary",
+        "prompt",
+        "tools",
+        "docs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9_]+$"
+        },
+        "transport": {
+          "type": "string",
+          "enum": [
+            "local",
+            "server"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tools": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^nextstat_[a-z0-9_]+$"
+          }
+        },
+        "docs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "tool_guidance": {
+      "type": "object",
+      "required": [
+        "hints",
+        "recipes"
+      ],
+      "properties": {
+        "hints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "recipes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/tool_guidance_recipe"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
