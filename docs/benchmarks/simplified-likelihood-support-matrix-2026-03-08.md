@@ -36,7 +36,7 @@ It answers one narrow question:
 | `nextstat config schema --name simplified_likelihood_exporter_promotion_evidence_check_v0` | `research-grade` | published verification report contract for exporter promotion-readiness evidence bundles |
 | `nextstat config schema --name simplified_likelihood_exporter_promotion_bundle_promotion_report_v0` | `research-grade` | published persistence contract for moving an accepted exporter evidence bundle under a stable committed path |
 | `nextstat config schema --name simplified_likelihood_exporter_stable_review_assessment_v0` | `research-grade` | published formal stable-review assessment contract derived from the committed accepted exporter bundle; it is review governance, not a stable promotion |
-| `nextstat config schema --name simplified_likelihood_exporter_stable_evidence_policy_v0` | `stable` | published machine-readable release-facing admission policy and maintenance cadence for the accepted `8 public / 10 total` exporter stable-evidence floor |
+| `nextstat config schema --name simplified_likelihood_exporter_stable_evidence_policy_v0` | `stable` | published machine-readable release-facing admission policy and maintenance cadence for the accepted `9 public / 11 total` exporter stable-evidence floor |
 | `nextstat config schema --name simplified_likelihood_exporter_stable_evidence_freshness_report_v0` | `stable` | published machine-readable freshness-breach report for the accepted exporter stable-evidence floor; it enforces the `45-day` freshness window for `stable_evidence_freshness_report.json` |
 | `nextstat config schema --name simplified_likelihood_exporter_stable_source_semantics_boundary_v0` | `research-grade` | published machine-readable future-stable source-semantics boundary for the exporter; it narrows any later stable claim to `pyhf` source, single-POI, Gaussian-constrained `source_model_constraints`, and reduced-coordinate output semantics |
 | `nextstat config schema --name simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0` | `research-grade` | published blocker-matrix contract for the exporter stable-candidate lifecycle; current accepted artifact now resolves all blockers for the promoted narrow subset |
@@ -47,7 +47,7 @@ It answers one narrow question:
 | `nextstat upper-limit` | `stable` | promoted reinterpretation benchmark path |
 | `nextstat scan` | `stable` | promoted reduced-model profile-scan path |
 | `nextstat simplify workspace` | `stable` | promoted narrow exporter runtime: `pyhf` source only, single-POI only, `constraint_covariance_source="source_model_constraints"` for Gaussian-constrained sources, explicit provenance, no partial-bin selection, reduced-coordinate rather than source-level nuisance semantics, and explicit research-grade fallback outside that boundary |
-| `nextstat significance` | `research-grade` | simplified-likelihood input is compatibility-tested, but discovery-style output is outside the promoted stable subset |
+| `nextstat significance` | `stable` | deterministic asymptotic discovery significance (q0, z0, p0) |
 | `nextstat hypotest-toys` | `research-grade` | simplified-likelihood input is compatibility-tested, but toy CLs is outside the promoted stable subset |
 | ranking / impact surfaces | `research-grade` | simplified-likelihood input is compatibility-tested, but ranking acts on reduced nuisance coordinates rather than source-level systematics; covariance-form and `derived_from_workspace` source semantics remain outside the promoted stable subset |
 | export / publication commands | `research-grade` | advanced export/publication flows beyond the narrow stable boundary remain outside the promoted subset as research-grade fallback, including `aligned_fit_covariance`, broader source nuisance semantics, and source-level identity preservation |
@@ -62,7 +62,7 @@ It answers one narrow question:
 | `nextstat.tools.execute_tool("nextstat_hypotest", ...)` | `stable` | local and server tool surface |
 | `nextstat.tools.execute_tool("nextstat_upper_limit", ...)` | `stable` | local and server tool surface |
 | `nextstat.tools.execute_tool("nextstat_scan", ...)` | `stable` | local and server tool surface |
-| `nextstat.tools.execute_tool("nextstat_discovery_asymptotic", ...)` | `research-grade` | simplified-likelihood input is compatibility-tested, but discovery-style output is outside the promoted stable subset |
+| `nextstat.tools.execute_tool("nextstat_discovery_asymptotic", ...)` | `stable` | deterministic asymptotic discovery significance tool |
 | `nextstat.tools.execute_tool("nextstat_hypotest_toys", ...)` | `research-grade` | simplified-likelihood input is compatibility-tested, but toy CLs is outside the promoted stable subset |
 | `nextstat.tools.execute_tool("nextstat_ranking", ...)` | `research-grade` | simplified-likelihood input is compatibility-tested, but ranking acts on reduced nuisance coordinates rather than source-level systematics |
 
@@ -75,7 +75,7 @@ It answers one narrow question:
 | `nextstat_hypotest` | `stable` | remote server-safe asymptotic CLs path |
 | `nextstat_upper_limit` | `stable` | remote server-safe reinterpretation benchmark path |
 | `nextstat_scan` | `stable` | remote server-safe reduced-model profile scan |
-| `nextstat_discovery_asymptotic` | `research-grade` | simplified-likelihood input is compatibility-tested, but discovery-style output is outside the promoted stable subset |
+| `nextstat_discovery_asymptotic` | `stable` | deterministic asymptotic discovery significance |
 | `nextstat_hypotest_toys` | `research-grade` | simplified-likelihood input is compatibility-tested, but toy CLs is outside the promoted stable subset |
 | `nextstat_ranking` | `research-grade` | simplified-likelihood input is compatibility-tested, but ranking acts on reduced nuisance coordinates rather than source-level systematics |
 
@@ -177,8 +177,8 @@ Operational gate:
 
 The stable product promise is intentionally narrow:
 
-- audit, fit, asymptotic CLs, upper-limit, and scan are `stable`
-- discovery, ranking, and toy CLs remain available but stay
+- audit, fit, asymptotic CLs, upper-limit, scan, and discovery significance are `stable`
+- ranking and toy CLs remain available but stay
   `research-grade` for simplified-likelihood inputs
 - export/publication and broader reduced-model semantics outside the published
   narrow source boundary remain outside the current promoted subset

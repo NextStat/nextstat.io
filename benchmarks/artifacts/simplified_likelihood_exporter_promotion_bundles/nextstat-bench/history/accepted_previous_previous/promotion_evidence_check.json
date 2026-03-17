@@ -11,7 +11,7 @@
     "supports_committed_snapshot": true,
     "supports_future_stable_review": true
   },
-  "checked_at_utc": "2026-03-11T19:28:40Z",
+  "checked_at_utc": "1970-01-01T00:00:00Z",
   "checks": {
     "consistency": {
       "artifact_count": 28,
@@ -38,11 +38,11 @@
       "actual_benchmark_host": "nextstat-bench",
       "actual_committed_snapshot_supported": true,
       "actual_future_stable_review_ready": true,
-      "actual_max_abs_q_mu_diff": 0.09089073579143658,
-      "actual_max_upper_limit_ratio_deviation": 0.0093663653819136,
-      "actual_min_net_end_to_end_upper_limit_speedup": 2.019831571730792,
-      "actual_overall_min_net_end_to_end_upper_limit_speedup": 0.8810048879955428,
-      "actual_public_reinterpretation_style_min_net_end_to_end_upper_limit_speedup": 0.8810048879955428,
+      "actual_max_abs_q_mu_diff": 0.09618848026584459,
+      "actual_max_upper_limit_ratio_deviation": 0.011190668120821257,
+      "actual_min_net_end_to_end_upper_limit_speedup": 2.1792428549098894,
+      "actual_overall_min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
+      "actual_public_reinterpretation_style_min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
       "actual_research_grade_acceptance_supported": true,
       "errors": [],
       "ok": true,

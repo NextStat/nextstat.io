@@ -154,17 +154,18 @@ def test_simplified_likelihood_export_benchmark_snapshot_schema_example_and_runn
     assert persisted_report["environment"]["hostname"] == "nextstat-bench"
     assert persisted_report["summary"]["export_matrix_included"] is True
     assert persisted_report["summary"]["export_matrix_status"] == "ok"
-    assert persisted_report["summary"]["export_matrix_public_reinterpretation_style_case_count"] == 8
+    assert persisted_report["summary"]["export_matrix_public_reinterpretation_style_case_count"] == 9
     assert (
         public_validation_report["schema_version"]
         == "nextstat_simplified_likelihood_export_public_validation_report_v0"
     )
     assert public_validation_report["status"] == "ok"
     assert public_validation_report["summary"]["benchmark_host"] == "nextstat-bench"
-    assert public_validation_report["summary"]["public_case_count"] == 8
+    assert public_validation_report["summary"]["public_case_count"] == 9
     assert public_validation_report["summary"]["public_case_names"] == [
         "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
         "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+        "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
         "atlas_public_sr_cr_gaussian_export_stable_example",
         "cms_public_sr_cr_export_stable_example",
         "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
@@ -268,10 +269,10 @@ def test_simplified_likelihood_export_benchmark_current_path_is_published() -> N
     assert snapshot_report["persisted"] is True
     assert snapshot_report["source_summary"]["benchmark_host"] == "nextstat-bench"
     assert snapshot_report["source_summary"]["export_matrix_status"] == "ok"
-    assert snapshot_report["source_summary"]["export_matrix_case_count"] == 10
+    assert snapshot_report["source_summary"]["export_matrix_case_count"] == 11
     assert (
         snapshot_report["source_summary"]["export_matrix_public_reinterpretation_style_case_count"]
-        == 8
+        == 9
     )
     assert (
         public_validation_report["schema_version"]
@@ -279,10 +280,11 @@ def test_simplified_likelihood_export_benchmark_current_path_is_published() -> N
     )
     assert public_validation_report["status"] == "ok"
     assert public_validation_report["summary"]["benchmark_host"] == "nextstat-bench"
-    assert public_validation_report["summary"]["public_case_count"] == 8
+    assert public_validation_report["summary"]["public_case_count"] == 9
     assert public_validation_report["summary"]["public_case_names"] == [
         "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
         "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+        "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
         "atlas_public_sr_cr_gaussian_export_stable_example",
         "cms_public_sr_cr_export_stable_example",
         "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",

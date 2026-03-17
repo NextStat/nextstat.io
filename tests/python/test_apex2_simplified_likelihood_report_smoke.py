@@ -312,9 +312,9 @@ def test_apex2_simplified_likelihood_report_export_matrix_with_public_cases_smok
     export_matrix = generated["export_matrix"]
     summary = export_matrix["summary"]
     assert summary["status"] == "ok"
-    assert summary["case_count"] == 9
+    assert summary["case_count"] == 10
     assert summary["synthetic_case_count"] >= 1
-    assert summary["public_reinterpretation_style_case_count"] == 8
+    assert summary["public_reinterpretation_style_case_count"] == 9
     assert set(summary["case_kinds"]) == {"synthetic", "public_reinterpretation_style"}
 
     public_cases = [
@@ -325,6 +325,7 @@ def test_apex2_simplified_likelihood_report_export_matrix_with_public_cases_smok
         "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
         "atlas_public_sr_cr_gaussian_export_stable_example",
         "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
+        "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
         "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
         "cms_public_dual_sr_cr_gaussian_export_stable_example",
         "cms_public_sr_dual_cr_gaussian_export_stable_example",

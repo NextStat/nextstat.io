@@ -156,7 +156,7 @@
     },
     "provenance": {
       "software_name": "nextstat",
-      "software_version": "0.9.9",
+      "software_version": "0.10.1",
       "design_schema_version": "nextstat_beta_binomial_design_v0",
       "analysis_schema_version": "nextstat_beta_binomial_design_analysis_v0",
       "operating_characteristics_schema_version": "nextstat_beta_binomial_operating_characteristics_v0",

@@ -5,7 +5,7 @@
 //! - a family-specific CUDA kernel computes the interval-censored Weibull AFT
 //!   data NLL, `d(nll)/d(log_lambda_i)`, and `d(nll)/d(log_k)`
 //! - `grad_beta = X^T @ diff_log_lambda` via strided batched GEMM
-//! - a standard normal prior is added on the full packed parameter vector
+//! - an optional standard normal prior can be added on the full packed parameter vector
 
 #![cfg(feature = "cuda")]
 
@@ -136,6 +136,7 @@ pub struct CudaWeibullAftCublasEvaluator {
     zeros_beta_grad: Vec<f64>,
     zeros_grad: Vec<f64>,
     zeros_nll: Vec<f64>,
+    apply_standard_normal_prior: bool,
 }
 
 impl CudaWeibullAftCublasEvaluator {
@@ -152,6 +153,62 @@ impl CudaWeibullAftCublasEvaluator {
         beta_dim: usize,
         n_chains: usize,
         device_id: usize,
+    ) -> ns_core::Result<Self> {
+        Self::new_on_device_impl(
+            x_col,
+            time_lower,
+            time_upper,
+            ln_time_lower,
+            ln_time_upper,
+            censor_code,
+            n,
+            beta_dim,
+            n_chains,
+            device_id,
+            true,
+        )
+    }
+
+    /// Create a CUDA evaluator without a prior term.
+    pub fn new_on_device_no_prior(
+        x_col: &[f64],
+        time_lower: &[f64],
+        time_upper: &[f64],
+        ln_time_lower: &[f64],
+        ln_time_upper: &[f64],
+        censor_code: &[u8],
+        n: usize,
+        beta_dim: usize,
+        n_chains: usize,
+        device_id: usize,
+    ) -> ns_core::Result<Self> {
+        Self::new_on_device_impl(
+            x_col,
+            time_lower,
+            time_upper,
+            ln_time_lower,
+            ln_time_upper,
+            censor_code,
+            n,
+            beta_dim,
+            n_chains,
+            device_id,
+            false,
+        )
+    }
+
+    fn new_on_device_impl(
+        x_col: &[f64],
+        time_lower: &[f64],
+        time_upper: &[f64],
+        ln_time_lower: &[f64],
+        ln_time_upper: &[f64],
+        censor_code: &[u8],
+        n: usize,
+        beta_dim: usize,
+        n_chains: usize,
+        device_id: usize,
+        apply_standard_normal_prior: bool,
     ) -> ns_core::Result<Self> {
         if n == 0 || beta_dim == 0 || n_chains == 0 {
             return Err(ns_core::Error::Validation("n, beta_dim and n_chains must be > 0".into()));
@@ -251,6 +308,7 @@ impl CudaWeibullAftCublasEvaluator {
             zeros_beta_grad: vec![0.0; n_chains * beta_dim],
             zeros_grad: vec![0.0; n_chains * param_dim],
             zeros_nll: vec![0.0; n_chains],
+            apply_standard_normal_prior,
         })
     }
 
@@ -384,23 +442,25 @@ impl CudaWeibullAftCublasEvaluator {
                 .map_err(|e| cuda_err(format!("launch weibull_aft_scatter_beta_grad: {e}")))?;
         }
 
-        let total_params = self.n_chains * self.param_dim;
-        let grid_prior = (total_params as u32).div_ceil(block).min(65535);
-        let cfg_prior = LaunchConfig {
-            grid_dim: (grid_prior, 1, 1),
-            block_dim: (block, 1, 1),
-            shared_mem_bytes: 0,
-        };
-        let mut builder = self.stream.launch_builder(&self.k_add_prior);
-        builder.arg(&self.d_params);
-        builder.arg(&mut self.d_grad);
-        builder.arg(&mut self.d_nll);
-        builder.arg(&param_dim_arg);
-        builder.arg(&n_chains_arg);
-        unsafe {
-            builder
-                .launch(cfg_prior)
-                .map_err(|e| cuda_err(format!("launch weibull_aft_add_prior: {e}")))?;
+        if self.apply_standard_normal_prior {
+            let total_params = self.n_chains * self.param_dim;
+            let grid_prior = (total_params as u32).div_ceil(block).min(65535);
+            let cfg_prior = LaunchConfig {
+                grid_dim: (grid_prior, 1, 1),
+                block_dim: (block, 1, 1),
+                shared_mem_bytes: 0,
+            };
+            let mut builder = self.stream.launch_builder(&self.k_add_prior);
+            builder.arg(&self.d_params);
+            builder.arg(&mut self.d_grad);
+            builder.arg(&mut self.d_nll);
+            builder.arg(&param_dim_arg);
+            builder.arg(&n_chains_arg);
+            unsafe {
+                builder
+                    .launch(cfg_prior)
+                    .map_err(|e| cuda_err(format!("launch weibull_aft_add_prior: {e}")))?;
+            }
         }
 
         self.stream.synchronize().map_err(cuda_err)?;

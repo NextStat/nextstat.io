@@ -14,6 +14,8 @@
 	m15-reporting-stable-surface-gate \
 	simplified-likelihood-exporter-surface-gate \
 	simplified-likelihood-stable-surface-gate \
+	histfactory-stable-surface-gate \
+	hepdata-import-stable-surface-gate \
 	adoption-playbook-smoke \
 	validation-pack \
 	rust-slow-tests \
@@ -143,6 +145,12 @@ simplified-likelihood-exporter-surface-gate:
 
 simplified-likelihood-stable-surface-gate:
 	bash scripts/benchmarks/simplified_likelihood_stable_surface_gate.sh
+
+histfactory-stable-surface-gate:
+	bash scripts/benchmarks/histfactory_stable_surface_gate.sh
+
+hepdata-import-stable-surface-gate:
+	PYTHONPATH="$(PYTHONPATH)" "$(PY)" scripts/benchmarks/run_hepdata_import_benchmark_gate.py --promotion-mode none
 
 adoption-playbook-smoke:
 	PYTHONPATH="$(PYTHONPATH)" "$(PY)" scripts/guides/verify_adoption_playbook.py \

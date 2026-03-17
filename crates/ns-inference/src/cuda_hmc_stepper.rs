@@ -8,7 +8,6 @@
 
 use crate::hmc::{HamiltonianStepper, HmcState, Metric, StepProbeOutcome, StepSequenceOutcome};
 use ns_compute::cuda_hmc_stdnormal::CudaStdNormalLeapfrog;
-use ns_core::traits::PreparedModelRef;
 use ns_core::{Error, Result};
 use std::sync::Mutex;
 
@@ -141,7 +140,7 @@ mod tests {
     use crate::hmc::LeapfrogIntegrator;
     use crate::posterior::Posterior;
     use crate::walnuts::{WalnutsConfig, walnuts_transition};
-    use ns_core::traits::LogDensityModel;
+    use ns_core::traits::{LogDensityModel, PreparedModelRef};
     use rand::SeedableRng;
     use serde::Serialize;
     use std::hint::black_box;

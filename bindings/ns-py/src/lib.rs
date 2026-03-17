@@ -10,6 +10,8 @@
 
 use pyo3::IntoPyObjectExt;
 use pyo3::buffer::PyBuffer;
+#[cfg(not(feature = "cuda"))]
+use pyo3::exceptions::PyRuntimeError;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -55,6 +57,8 @@ use ns_inference::pd::{
     IndirectResponseType as RustIndirectResponseType, SigmoidEmaxModel as RustSigmoidEmaxModel,
 };
 use ns_inference::regression::NegativeBinomialRegressionModel as RustNegativeBinomialRegressionModel;
+#[cfg(feature = "cuda")]
+use ns_inference::sample_walnuts_multichain_cuda as rust_sample_walnuts_multichain_cuda;
 use ns_inference::timeseries::em::{
     KalmanEmConfig as RustKalmanEmConfig, kalman_em as rust_kalman_em,
 };
@@ -1465,6 +1469,37 @@ impl PosteriorModel {
             PosteriorModel::IntervalCensoredExponential(m) => dispatch!(m),
             PosteriorModel::IntervalCensoredLogNormal(m) => dispatch!(m),
             PosteriorModel::EightSchools(m) => dispatch!(m),
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    fn sample_walnuts_multichain_cuda(
+        &self,
+        n_chains: usize,
+        n_warmup: usize,
+        n_samples: usize,
+        seed: u64,
+        config: AdaptiveWalnutsConfig,
+    ) -> NsResult<RustSamplerResult> {
+        match self {
+            PosteriorModel::LinearRegression(m) => {
+                rust_sample_walnuts_multichain_cuda(m, n_chains, n_warmup, n_samples, seed, config, 0)
+            }
+            PosteriorModel::LogisticRegression(m) => {
+                rust_sample_walnuts_multichain_cuda(m, n_chains, n_warmup, n_samples, seed, config, 0)
+            }
+            PosteriorModel::PoissonRegression(m) => {
+                rust_sample_walnuts_multichain_cuda(m, n_chains, n_warmup, n_samples, seed, config, 0)
+            }
+            PosteriorModel::NegativeBinomialRegression(m) => {
+                rust_sample_walnuts_multichain_cuda(m, n_chains, n_warmup, n_samples, seed, config, 0)
+            }
+            PosteriorModel::IntervalCensoredWeibullAft(m) => {
+                rust_sample_walnuts_multichain_cuda(m, n_chains, n_warmup, n_samples, seed, config, 0)
+            }
+            _ => Err(NsError::Validation(
+                "WALNUTS device='cuda' stable surface currently supports only LinearRegressionModel, LogisticRegressionModel, PoissonRegressionModel, NegativeBinomialRegressionModel, and IntervalCensoredWeibullAftModel".to_string(),
+            )),
         }
     }
 
@@ -14180,13 +14215,17 @@ fn sample<'py>(
 }
 
 /// Adaptive WALNUTS sampling with ArviZ-compatible output.
+///
+/// Stable public surface:
+/// - `device="cpu"` for the general WALNUTS product surface
+/// - `device="cuda"` for the narrow supported model subset on diagonal metric
 #[pyfunction]
 #[pyo3(name = "sample_walnuts", signature = (
     model, *, n_chains=4, n_warmup=500, n_samples=1000, seed=42,
     max_treedepth=10, max_step_halvings=4, min_micro_steps=1, max_energy_error=2.0,
     target_accept=0.8, target_tree_depth=4.0, init_strategy="random", metric="diagonal",
     init_jitter=0.0, init_jitter_rel=None, init_overdispersed_rel=None, stepsize_jitter=0.0,
-    data=None
+    data=None, device="cpu"
 ))]
 fn sample_walnuts_py<'py>(
     py: Python<'py>,
@@ -14208,6 +14247,7 @@ fn sample_walnuts_py<'py>(
     init_overdispersed_rel: Option<f64>,
     stepsize_jitter: f64,
     data: Option<Vec<f64>>,
+    device: &str,
 ) -> PyResult<Py<PyAny>> {
     validate_walnuts_config(
         n_chains,
@@ -14243,24 +14283,62 @@ fn sample_walnuts_py<'py>(
         stepsize_jitter,
     };
 
-    let result = if let Ok(post) = model.extract::<PyRef<'_, PyPosterior>>() {
-        if data.is_some() {
-            return Err(PyValueError::new_err(
-                "data= is not supported when sampling a Posterior; build the Posterior from the desired model/data",
-            ));
+    if device == "cuda" && metric_type != MetricType::Diagonal {
+        return Err(PyValueError::new_err(
+            "WALNUTS device='cuda' currently supports only metric='diagonal'",
+        ));
+    }
+
+    let result = match device {
+        "cpu" => {
+            if let Ok(post) = model.extract::<PyRef<'_, PyPosterior>>() {
+                if data.is_some() {
+                    return Err(PyValueError::new_err(
+                        "data= is not supported when sampling a Posterior; build the Posterior from the desired model/data",
+                    ));
+                }
+                let priors = post.priors.clone();
+                let m = post.model.clone();
+                py.detach(move || {
+                    m.sample_walnuts_multichain_map(
+                        n_chains, n_warmup, n_samples, seed, config, priors,
+                    )
+                })
+                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+            } else {
+                let sample_model = extract_posterior_model_with_data(model, data)?;
+                py.detach(move || {
+                    sample_model
+                        .sample_walnuts_multichain(n_chains, n_warmup, n_samples, seed, config)
+                })
+                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+            }
         }
-        let priors = post.priors.clone();
-        let m = post.model.clone();
-        py.detach(move || {
-            m.sample_walnuts_multichain_map(n_chains, n_warmup, n_samples, seed, config, priors)
-        })
-        .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
-    } else {
-        let sample_model = extract_posterior_model_with_data(model, data)?;
-        py.detach(move || {
-            sample_model.sample_walnuts_multichain(n_chains, n_warmup, n_samples, seed, config)
-        })
-        .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+        "cuda" => {
+            #[cfg(feature = "cuda")]
+            {
+                if model.extract::<PyRef<'_, PyPosterior>>().is_ok() {
+                    return Err(PyValueError::new_err(
+                        "WALNUTS device='cuda' is not part of the stable public surface when sampling a Posterior; pass a supported model directly",
+                    ));
+                }
+                let sample_model = extract_posterior_model_with_data(model, data)?;
+                py.detach(move || {
+                    sample_model
+                        .sample_walnuts_multichain_cuda(n_chains, n_warmup, n_samples, seed, config)
+                })
+                .map_err(|e| PyValueError::new_err(format!("Sampling failed: {}", e)))?
+            }
+            #[cfg(not(feature = "cuda"))]
+            {
+                return Err(PyRuntimeError::new_err("WALNUTS device='cuda' requires a CUDA build"));
+            }
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "device must be 'cpu' or 'cuda', got '{other}'"
+            )));
+        }
     };
 
     sampler_result_to_py(py, &result, n_chains, n_warmup, n_samples)

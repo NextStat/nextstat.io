@@ -434,4 +434,6 @@ pub use walnuts::{
     AdaptiveWalnutsConfig, WalnutsConfig, WalnutsTransition, WalnutsTuning, sample_walnuts,
     sample_walnuts_fixed, sample_walnuts_multichain,
 };
+#[cfg(feature = "cuda")]
+pub use walnuts::{WalnutsCudaModel, sample_walnuts_multichain_cuda};
 pub use xpt::{XptDataset, XptValue, XptVarType, XptVariable, read_xpt, write_xpt, xpt_to_nonmem};

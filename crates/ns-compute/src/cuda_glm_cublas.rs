@@ -3,7 +3,7 @@
 //! This module provides a focused primitive for large-`n` GLM families:
 //! - `eta = X @ beta` for many chains in parallel (strided batched GEMM)
 //! - `grad = X^T @ diff(eta, y)` (strided batched GEMM)
-//! - `nll = sum(data_nll(eta, y)) + 0.5*||beta||^2`
+//! - `nll = sum(data_nll(eta, y))`, with optional standard-normal prior
 //!
 //! It is intentionally kept separate from MAMS transition kernels so we can
 //! benchmark and validate a cuBLAS path before deeper integrator refactors.
@@ -167,6 +167,7 @@ pub struct CudaGlmCublasEvaluator {
     zeros_grad: Vec<f64>,
     zeros_nll: Vec<f64>,
     family: CudaGlmFamily,
+    apply_standard_normal_prior: bool,
 }
 
 impl CudaGlmCublasEvaluator {
@@ -180,7 +181,7 @@ impl CudaGlmCublasEvaluator {
         family: CudaGlmFamily,
         device_id: usize,
     ) -> ns_core::Result<Self> {
-        Self::new_on_device_impl(x_col, y, None, n, beta_dim, n_chains, family, device_id)
+        Self::new_on_device_impl(x_col, y, None, n, beta_dim, n_chains, family, device_id, true)
     }
 
     /// Create evaluator for a specific GLM family with an optional observation offset.
@@ -194,7 +195,34 @@ impl CudaGlmCublasEvaluator {
         family: CudaGlmFamily,
         device_id: usize,
     ) -> ns_core::Result<Self> {
-        Self::new_on_device_impl(x_col, y, offset, n, beta_dim, n_chains, family, device_id)
+        Self::new_on_device_impl(x_col, y, offset, n, beta_dim, n_chains, family, device_id, true)
+    }
+
+    /// Create evaluator for a specific GLM family on a specific GPU device without a prior term.
+    pub fn new_on_device_with_family_no_prior(
+        x_col: &[f64], // column-major [p * n]
+        y: &[f64],     // [n]
+        n: usize,
+        beta_dim: usize,
+        n_chains: usize,
+        family: CudaGlmFamily,
+        device_id: usize,
+    ) -> ns_core::Result<Self> {
+        Self::new_on_device_impl(x_col, y, None, n, beta_dim, n_chains, family, device_id, false)
+    }
+
+    /// Create evaluator for a specific GLM family with an optional observation offset and no prior.
+    pub fn new_on_device_with_family_and_offset_no_prior(
+        x_col: &[f64],          // column-major [p * n]
+        y: &[f64],              // [n]
+        offset: Option<&[f64]>, // [n]
+        n: usize,
+        beta_dim: usize,
+        n_chains: usize,
+        family: CudaGlmFamily,
+        device_id: usize,
+    ) -> ns_core::Result<Self> {
+        Self::new_on_device_impl(x_col, y, offset, n, beta_dim, n_chains, family, device_id, false)
     }
 
     /// Create evaluator on a specific GPU device.
@@ -215,6 +243,7 @@ impl CudaGlmCublasEvaluator {
             n_chains,
             CudaGlmFamily::Logistic,
             device_id,
+            true,
         )
     }
 
@@ -227,6 +256,7 @@ impl CudaGlmCublasEvaluator {
         n_chains: usize,
         family: CudaGlmFamily,
         device_id: usize,
+        apply_standard_normal_prior: bool,
     ) -> ns_core::Result<Self> {
         if n == 0 || beta_dim == 0 || n_chains == 0 {
             return Err(ns_core::Error::Validation("n, beta_dim and n_chains must be > 0".into()));
@@ -309,6 +339,7 @@ impl CudaGlmCublasEvaluator {
             zeros_grad: vec![0.0; n_chains * param_dim],
             zeros_nll: vec![0.0; n_chains],
             family,
+            apply_standard_normal_prior,
         })
     }
 
@@ -321,7 +352,7 @@ impl CudaGlmCublasEvaluator {
         n_chains: usize,
         family: CudaGlmFamily,
     ) -> ns_core::Result<Self> {
-        Self::new_on_device_impl(x_col, y, None, n, beta_dim, n_chains, family, 0)
+        Self::new_on_device_impl(x_col, y, None, n, beta_dim, n_chains, family, 0, true)
     }
 
     /// Create evaluator for a specific GLM family with an optional observation offset on GPU 0.
@@ -334,7 +365,7 @@ impl CudaGlmCublasEvaluator {
         n_chains: usize,
         family: CudaGlmFamily,
     ) -> ns_core::Result<Self> {
-        Self::new_on_device_impl(x_col, y, offset, n, beta_dim, n_chains, family, 0)
+        Self::new_on_device_impl(x_col, y, offset, n, beta_dim, n_chains, family, 0, true)
     }
 
     /// Create evaluator on GPU 0.
@@ -345,7 +376,17 @@ impl CudaGlmCublasEvaluator {
         beta_dim: usize,
         n_chains: usize,
     ) -> ns_core::Result<Self> {
-        Self::new_on_device_impl(x_col, y, None, n, beta_dim, n_chains, CudaGlmFamily::Logistic, 0)
+        Self::new_on_device_impl(
+            x_col,
+            y,
+            None,
+            n,
+            beta_dim,
+            n_chains,
+            CudaGlmFamily::Logistic,
+            0,
+            true,
+        )
     }
 
     /// Evaluate batched GLM grad and NLL for packed per-chain parameters.
@@ -457,24 +498,26 @@ impl CudaGlmCublasEvaluator {
                 .map_err(|e| cublas_err("gemm_strided_batched(X^T @ diff)", e))?;
         }
 
-        // Add Gaussian prior: grad += params; nll += 0.5 * ||params||^2
-        let total_params = self.n_chains * self.param_dim;
-        let grid_prior = (total_params as u32).div_ceil(block).min(65535);
-        let cfg_prior = LaunchConfig {
-            grid_dim: (grid_prior, 1, 1),
-            block_dim: (block, 1, 1),
-            shared_mem_bytes: 0,
-        };
-        let mut builder = self.stream.launch_builder(&self.k_add_prior);
-        builder.arg(&self.d_params);
-        builder.arg(&mut self.d_grad);
-        builder.arg(&mut self.d_nll);
-        builder.arg(&param_dim_arg);
-        builder.arg(&n_chains_arg);
-        unsafe {
-            builder
-                .launch(cfg_prior)
-                .map_err(|e| cuda_err(format!("launch glm_add_prior: {e}")))?;
+        if self.apply_standard_normal_prior {
+            // Add Gaussian prior: grad += params; nll += 0.5 * ||params||^2
+            let total_params = self.n_chains * self.param_dim;
+            let grid_prior = (total_params as u32).div_ceil(block).min(65535);
+            let cfg_prior = LaunchConfig {
+                grid_dim: (grid_prior, 1, 1),
+                block_dim: (block, 1, 1),
+                shared_mem_bytes: 0,
+            };
+            let mut builder = self.stream.launch_builder(&self.k_add_prior);
+            builder.arg(&self.d_params);
+            builder.arg(&mut self.d_grad);
+            builder.arg(&mut self.d_nll);
+            builder.arg(&param_dim_arg);
+            builder.arg(&n_chains_arg);
+            unsafe {
+                builder
+                    .launch(cfg_prior)
+                    .map_err(|e| cuda_err(format!("launch glm_add_prior: {e}")))?;
+            }
         }
 
         self.stream.synchronize().map_err(cuda_err)?;

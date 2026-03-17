@@ -1,39 +1,87 @@
 //! Internal CUDA-backed HamiltonianPotential prototypes for linear-predictor targets.
 //!
-//! This is a seam-validation slice only. It intentionally does not expose a
-//! public sampler API and currently supports:
+//! This module contains both:
+//! - internal prior-backed CUDA evaluator slices used for benchmark/cert hooks
+//! - flat-likelihood CUDA evaluator slices used by the narrow public WALNUTS
+//!   `device="cuda"` surface
+//!
+//! The supported families currently are:
 //! - CUDA runtime only
-//! - linear regression with fixed sigma=1 and a standard normal prior on all
-//!   coefficients
-//! - logistic regression with a standard normal prior on all coefficients
-//! - Poisson regression with optional offsets and with a standard normal prior
-//!   on all coefficients
-//! - Negative Binomial regression with optional offsets and with a standard
-//!   normal prior on all coefficients, including `log_alpha`
-//! - interval-censored Weibull AFT survival with covariates and a standard
-//!   normal prior on `[log_k, beta...]`
+//! - linear regression with fixed sigma=1
+//! - logistic regression
+//! - Poisson regression with optional offsets
+//! - Negative Binomial regression with optional offsets, including `log_alpha`
+//! - interval-censored Weibull AFT survival with covariates
 //! - diagonal Euclidean metric on the host-side leapfrog integrator
 
 #![cfg(feature = "cuda")]
 
-use crate::hmc::{HamiltonianPotential, HmcState, LeapfrogIntegrator, Metric};
-use crate::posterior::{Posterior, Prior};
+use crate::hmc::HamiltonianPotential;
 use crate::regression::{
     LinearRegressionModel, LogisticRegressionModel, NegativeBinomialRegressionModel,
     PoissonRegressionModel,
 };
-use crate::survival::{CensoringType, IntervalCensoredWeibullAftModel};
+use crate::survival::IntervalCensoredWeibullAftModel;
 use crate::transforms::ParameterTransform;
-use crate::walnuts::{WalnutsConfig, walnuts_transition};
 use ns_compute::cuda_glm_cublas::{CudaGlmCublasEvaluator, CudaGlmFamily};
 use ns_compute::cuda_weibull_aft_cublas::CudaWeibullAftCublasEvaluator;
 use ns_core::traits::LogDensityModel;
 use ns_core::{Error, Result};
-use rand::SeedableRng;
-use serde::Serialize;
-use std::hint::black_box;
 use std::sync::Mutex;
-use std::time::Instant;
+
+fn potential_grad_with_transform(
+    family_name: &str,
+    dim: usize,
+    transform: &ParameterTransform,
+    eval: &Mutex<impl CudaEvalHost>,
+    q: &[f64],
+) -> Result<(f64, Vec<f64>)> {
+    if q.len() != dim {
+        return Err(Error::Validation(format!(
+            "CUDA {} potential expected {} parameters, got {}",
+            family_name,
+            dim,
+            q.len()
+        )));
+    }
+    let (theta, jac_diag, grad_log_jac, log_jac) = if transform.is_all_identity() {
+        (q.to_vec(), Vec::new(), Vec::new(), 0.0)
+    } else {
+        (
+            transform.forward(q),
+            transform.jacobian_diag(q),
+            transform.grad_log_abs_det_jacobian(q),
+            transform.log_abs_det_jacobian(q),
+        )
+    };
+    let mut eval = eval
+        .lock()
+        .map_err(|_| Error::Computation(format!("CUDA {family_name} potential lock poisoned")))?;
+    let (mut grad_theta, nll) = eval.evaluate_host(&theta)?;
+    if transform.is_all_identity() {
+        return Ok((nll[0], grad_theta));
+    }
+    for ((g, jd), glj) in grad_theta.iter_mut().zip(jac_diag).zip(grad_log_jac) {
+        *g = *g * jd - glj;
+    }
+    Ok((nll[0] - log_jac, grad_theta))
+}
+
+trait CudaEvalHost {
+    fn evaluate_host(&mut self, params: &[f64]) -> Result<(Vec<f64>, Vec<f64>)>;
+}
+
+impl CudaEvalHost for CudaGlmCublasEvaluator {
+    fn evaluate_host(&mut self, params: &[f64]) -> Result<(Vec<f64>, Vec<f64>)> {
+        CudaGlmCublasEvaluator::evaluate_host(self, params)
+    }
+}
+
+impl CudaEvalHost for CudaWeibullAftCublasEvaluator {
+    fn evaluate_host(&mut self, params: &[f64]) -> Result<(Vec<f64>, Vec<f64>)> {
+        CudaWeibullAftCublasEvaluator::evaluate_host(self, params)
+    }
+}
 
 /// CUDA-backed potential evaluator for supported GLM families with `N(0, 1)` priors.
 pub(crate) struct CudaStdNormalPriorGlmPotential {
@@ -132,35 +180,103 @@ impl HamiltonianPotential for CudaStdNormalPriorGlmPotential {
     }
 
     fn potential_grad(&self, q: &[f64]) -> Result<(f64, Vec<f64>)> {
-        if q.len() != self.dim {
-            return Err(Error::Validation(format!(
-                "CUDA {} potential expected {} parameters, got {}",
-                self.family_name,
-                self.dim,
-                q.len()
-            )));
-        }
-        let (theta, jac_diag, grad_log_jac, log_jac) = if self.transform.is_all_identity() {
-            (q.to_vec(), Vec::new(), Vec::new(), 0.0)
-        } else {
-            (
-                self.transform.forward(q),
-                self.transform.jacobian_diag(q),
-                self.transform.grad_log_abs_det_jacobian(q),
-                self.transform.log_abs_det_jacobian(q),
-            )
-        };
-        let mut eval = self.eval.lock().map_err(|_| {
-            Error::Computation(format!("CUDA {} potential lock poisoned", self.family_name))
-        })?;
-        let (mut grad_theta, nll) = eval.evaluate_host(&theta)?;
-        if self.transform.is_all_identity() {
-            return Ok((nll[0], grad_theta));
-        }
-        for ((g, jd), glj) in grad_theta.iter_mut().zip(jac_diag).zip(grad_log_jac) {
-            *g = *g * jd - glj;
-        }
-        Ok((nll[0] - log_jac, grad_theta))
+        potential_grad_with_transform(self.family_name, self.dim, &self.transform, &self.eval, q)
+    }
+}
+
+/// CUDA-backed likelihood-only potential evaluator for supported GLM families.
+pub(crate) struct CudaLikelihoodGlmPotential {
+    dim: usize,
+    family_name: &'static str,
+    transform: ParameterTransform,
+    eval: Mutex<CudaGlmCublasEvaluator>,
+}
+
+impl CudaLikelihoodGlmPotential {
+    pub(crate) fn new_linear_on_device(
+        model: &LinearRegressionModel,
+        device_id: usize,
+    ) -> Result<Self> {
+        let (x_col, y, n, p_total) = model.cuda_glm_design_colmajor();
+        let eval = CudaGlmCublasEvaluator::new_on_device_with_family_no_prior(
+            &x_col,
+            &y,
+            n,
+            p_total,
+            1,
+            CudaGlmFamily::Linear,
+            device_id,
+        )?;
+        let transform = ParameterTransform::from_bounds(&model.parameter_bounds());
+        Ok(Self { dim: p_total, family_name: "linear", transform, eval: Mutex::new(eval) })
+    }
+
+    pub(crate) fn new_logistic_on_device(
+        model: &LogisticRegressionModel,
+        device_id: usize,
+    ) -> Result<Self> {
+        let (x_col, y, n, p_total) = model.cuda_glm_design_colmajor();
+        let eval = CudaGlmCublasEvaluator::new_on_device_with_family_no_prior(
+            &x_col,
+            &y,
+            n,
+            p_total,
+            1,
+            CudaGlmFamily::Logistic,
+            device_id,
+        )?;
+        let transform = ParameterTransform::from_bounds(&model.parameter_bounds());
+        Ok(Self { dim: p_total, family_name: "logistic", transform, eval: Mutex::new(eval) })
+    }
+
+    pub(crate) fn new_poisson_on_device(
+        model: &PoissonRegressionModel,
+        device_id: usize,
+    ) -> Result<Self> {
+        let (x_col, y, offset, n, p_total) = model.cuda_glm_design_colmajor()?;
+        let family_name = if offset.is_some() { "poisson_with_offset" } else { "poisson" };
+        let eval = CudaGlmCublasEvaluator::new_on_device_with_family_and_offset_no_prior(
+            &x_col,
+            &y,
+            offset.as_deref(),
+            n,
+            p_total,
+            1,
+            CudaGlmFamily::Poisson,
+            device_id,
+        )?;
+        let transform = ParameterTransform::from_bounds(&model.parameter_bounds());
+        Ok(Self { dim: p_total, family_name, transform, eval: Mutex::new(eval) })
+    }
+
+    pub(crate) fn new_negbin_on_device(
+        model: &NegativeBinomialRegressionModel,
+        device_id: usize,
+    ) -> Result<Self> {
+        let (x_col, y, offset, n, beta_dim, param_dim) = model.cuda_glm_design_colmajor();
+        let family_name = if offset.is_some() { "negbin_with_offset" } else { "negbin" };
+        let eval = CudaGlmCublasEvaluator::new_on_device_with_family_and_offset_no_prior(
+            &x_col,
+            &y,
+            offset.as_deref(),
+            n,
+            beta_dim,
+            1,
+            CudaGlmFamily::NegativeBinomial,
+            device_id,
+        )?;
+        let transform = ParameterTransform::from_bounds(&model.parameter_bounds());
+        Ok(Self { dim: param_dim, family_name, transform, eval: Mutex::new(eval) })
+    }
+}
+
+impl HamiltonianPotential for CudaLikelihoodGlmPotential {
+    fn dim(&self) -> usize {
+        self.dim
+    }
+
+    fn potential_grad(&self, q: &[f64]) -> Result<(f64, Vec<f64>)> {
+        potential_grad_with_transform(self.family_name, self.dim, &self.transform, &self.eval, q)
     }
 }
 
@@ -215,40 +331,136 @@ impl HamiltonianPotential for CudaStdNormalPriorIcWeibullAftPotential {
     }
 
     fn potential_grad(&self, q: &[f64]) -> Result<(f64, Vec<f64>)> {
-        if q.len() != self.dim {
-            return Err(Error::Validation(format!(
-                "CUDA weibull_ic_aft potential expected {} parameters, got {}",
-                self.dim,
-                q.len()
-            )));
-        }
-        let (theta, jac_diag, grad_log_jac, log_jac) = if self.transform.is_all_identity() {
-            (q.to_vec(), Vec::new(), Vec::new(), 0.0)
-        } else {
-            (
-                self.transform.forward(q),
-                self.transform.jacobian_diag(q),
-                self.transform.grad_log_abs_det_jacobian(q),
-                self.transform.log_abs_det_jacobian(q),
-            )
-        };
-        let mut eval = self.eval.lock().map_err(|_| {
-            Error::Computation("CUDA weibull_ic_aft potential lock poisoned".to_string())
-        })?;
-        let (mut grad_theta, nll) = eval.evaluate_host(&theta)?;
-        if self.transform.is_all_identity() {
-            return Ok((nll[0], grad_theta));
-        }
-        for ((g, jd), glj) in grad_theta.iter_mut().zip(jac_diag).zip(grad_log_jac) {
-            *g = *g * jd - glj;
-        }
-        Ok((nll[0] - log_jac, grad_theta))
+        potential_grad_with_transform("weibull_ic_aft", self.dim, &self.transform, &self.eval, q)
+    }
+}
+
+/// CUDA-backed likelihood-only potential evaluator for interval-censored Weibull AFT.
+pub(crate) struct CudaLikelihoodIcWeibullAftPotential {
+    dim: usize,
+    transform: ParameterTransform,
+    eval: Mutex<CudaWeibullAftCublasEvaluator>,
+}
+
+impl CudaLikelihoodIcWeibullAftPotential {
+    pub(crate) fn new_on_device(
+        model: &IntervalCensoredWeibullAftModel,
+        device_id: usize,
+    ) -> Result<Self> {
+        let (
+            x_col,
+            time_lower,
+            time_upper,
+            ln_time_lower,
+            ln_time_upper,
+            censor_code,
+            n,
+            beta_dim,
+            dim,
+        ) = model.cuda_weibull_aft_design_colmajor();
+        let eval = CudaWeibullAftCublasEvaluator::new_on_device_no_prior(
+            &x_col,
+            &time_lower,
+            &time_upper,
+            &ln_time_lower,
+            &ln_time_upper,
+            &censor_code,
+            n,
+            beta_dim,
+            1,
+            device_id,
+        )?;
+        let transform = ParameterTransform::from_bounds(&model.parameter_bounds());
+        Ok(Self { dim, transform, eval: Mutex::new(eval) })
+    }
+}
+
+impl HamiltonianPotential for CudaLikelihoodIcWeibullAftPotential {
+    fn dim(&self) -> usize {
+        self.dim
+    }
+
+    fn potential_grad(&self, q: &[f64]) -> Result<(f64, Vec<f64>)> {
+        potential_grad_with_transform("weibull_ic_aft", self.dim, &self.transform, &self.eval, q)
+    }
+}
+
+impl crate::walnuts::WalnutsCudaModel for LinearRegressionModel {
+    fn build_cuda_walnuts_potential(
+        &self,
+        device_id: usize,
+    ) -> Result<Box<dyn HamiltonianPotential + Send>> {
+        Ok(Box::new(CudaLikelihoodGlmPotential::new_linear_on_device(self, device_id)?))
+    }
+
+    fn cuda_walnuts_surface_name(&self) -> &'static str {
+        "LinearRegressionModel"
+    }
+}
+
+impl crate::walnuts::WalnutsCudaModel for LogisticRegressionModel {
+    fn build_cuda_walnuts_potential(
+        &self,
+        device_id: usize,
+    ) -> Result<Box<dyn HamiltonianPotential + Send>> {
+        Ok(Box::new(CudaLikelihoodGlmPotential::new_logistic_on_device(self, device_id)?))
+    }
+
+    fn cuda_walnuts_surface_name(&self) -> &'static str {
+        "LogisticRegressionModel"
+    }
+}
+
+impl crate::walnuts::WalnutsCudaModel for PoissonRegressionModel {
+    fn build_cuda_walnuts_potential(
+        &self,
+        device_id: usize,
+    ) -> Result<Box<dyn HamiltonianPotential + Send>> {
+        Ok(Box::new(CudaLikelihoodGlmPotential::new_poisson_on_device(self, device_id)?))
+    }
+
+    fn cuda_walnuts_surface_name(&self) -> &'static str {
+        "PoissonRegressionModel"
+    }
+}
+
+impl crate::walnuts::WalnutsCudaModel for NegativeBinomialRegressionModel {
+    fn build_cuda_walnuts_potential(
+        &self,
+        device_id: usize,
+    ) -> Result<Box<dyn HamiltonianPotential + Send>> {
+        Ok(Box::new(CudaLikelihoodGlmPotential::new_negbin_on_device(self, device_id)?))
+    }
+
+    fn cuda_walnuts_surface_name(&self) -> &'static str {
+        "NegativeBinomialRegressionModel"
+    }
+}
+
+impl crate::walnuts::WalnutsCudaModel for IntervalCensoredWeibullAftModel {
+    fn build_cuda_walnuts_potential(
+        &self,
+        device_id: usize,
+    ) -> Result<Box<dyn HamiltonianPotential + Send>> {
+        Ok(Box::new(CudaLikelihoodIcWeibullAftPotential::new_on_device(self, device_id)?))
+    }
+
+    fn cuda_walnuts_surface_name(&self) -> &'static str {
+        "IntervalCensoredWeibullAftModel"
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hmc::{HmcState, LeapfrogIntegrator, Metric};
+    use crate::posterior::{Posterior, Prior};
+    use crate::survival::CensoringType;
+    use crate::walnuts::{WalnutsConfig, walnuts_transition};
+    use rand::SeedableRng;
+    use serde::Serialize;
+    use std::hint::black_box;
+    use std::time::Instant;
 
     fn linear_model(n: usize, p: usize, include_intercept: bool) -> LinearRegressionModel {
         let mut x = vec![vec![0.0; p]; n];
@@ -392,6 +604,13 @@ mod tests {
         Posterior::new(model)
             .with_priors(vec![Prior::Normal { center: 0.0, width: 1.0 }; model.dim()])
             .unwrap()
+    }
+
+    fn flat_posterior<'a, M>(model: &'a M) -> Posterior<'a, M>
+    where
+        M: LogDensityModel,
+    {
+        Posterior::new(model)
     }
 
     fn seeded_state_from_potential(
@@ -620,6 +839,24 @@ mod tests {
 
     #[cfg(feature = "cuda")]
     #[test]
+    fn cuda_logistic_likelihood_potential_matches_cpu_flat_potential_grad() {
+        if !CudaStdNormalPriorGlmPotential::is_available() {
+            return;
+        }
+
+        let model = logistic_model(256, 8, true);
+        let cpu = flat_posterior(&model);
+        let gpu =
+            CudaLikelihoodGlmPotential::new_logistic_on_device(&model, 0).unwrap_or_else(|err| {
+                panic!("failed to create CUDA logistic likelihood potential: {err}")
+            });
+        let q = (0..model.dim()).map(|i| -0.11 + i as f64 * 0.05).collect::<Vec<_>>();
+
+        assert_potential_matches_cpu(&cpu, &gpu, &q);
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
     fn cuda_linear_potential_matches_cpu_potential_grad() {
         if !CudaStdNormalPriorGlmPotential::is_available() {
             return;
@@ -630,6 +867,24 @@ mod tests {
         let gpu = CudaStdNormalPriorGlmPotential::new_linear_on_device(&model, 0)
             .unwrap_or_else(|err| panic!("failed to create CUDA linear potential: {err}"));
         let q = (0..model.dim()).map(|i| -0.18 + i as f64 * 0.06).collect::<Vec<_>>();
+
+        assert_potential_matches_cpu(&cpu, &gpu, &q);
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_linear_likelihood_potential_matches_cpu_flat_potential_grad() {
+        if !CudaStdNormalPriorGlmPotential::is_available() {
+            return;
+        }
+
+        let model = linear_model(256, 8, true);
+        let cpu = flat_posterior(&model);
+        let gpu =
+            CudaLikelihoodGlmPotential::new_linear_on_device(&model, 0).unwrap_or_else(|err| {
+                panic!("failed to create CUDA linear likelihood potential: {err}")
+            });
+        let q = (0..model.dim()).map(|i| -0.14 + i as f64 * 0.06).collect::<Vec<_>>();
 
         assert_potential_matches_cpu(&cpu, &gpu, &q);
     }
@@ -683,6 +938,24 @@ mod tests {
 
     #[cfg(feature = "cuda")]
     #[test]
+    fn cuda_poisson_offset_likelihood_potential_matches_cpu_flat_potential_grad() {
+        if !CudaStdNormalPriorGlmPotential::is_available() {
+            return;
+        }
+
+        let model = poisson_model(256, 8, true, true);
+        let cpu = flat_posterior(&model);
+        let gpu =
+            CudaLikelihoodGlmPotential::new_poisson_on_device(&model, 0).unwrap_or_else(|err| {
+                panic!("failed to create CUDA poisson-with-offset likelihood potential: {err}")
+            });
+        let q = (0..model.dim()).map(|i| -0.08 + i as f64 * 0.045).collect::<Vec<_>>();
+
+        assert_potential_matches_cpu(&cpu, &gpu, &q);
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
     fn cuda_poisson_offset_leapfrog_matches_cpu_one_step() {
         if !CudaStdNormalPriorGlmPotential::is_available() {
             return;
@@ -717,6 +990,24 @@ mod tests {
 
     #[cfg(feature = "cuda")]
     #[test]
+    fn cuda_negbin_offset_likelihood_potential_matches_cpu_flat_potential_grad() {
+        if !CudaStdNormalPriorGlmPotential::is_available() {
+            return;
+        }
+
+        let model = negbin_model(256, 8, true, true);
+        let cpu = flat_posterior(&model);
+        let gpu =
+            CudaLikelihoodGlmPotential::new_negbin_on_device(&model, 0).unwrap_or_else(|err| {
+                panic!("failed to create CUDA negbin-with-offset likelihood potential: {err}")
+            });
+        let q = (0..model.dim()).map(|i| -0.07 + i as f64 * 0.035).collect::<Vec<_>>();
+
+        assert_potential_matches_cpu(&cpu, &gpu, &q);
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
     fn cuda_negbin_offset_leapfrog_matches_cpu_one_step() {
         if !CudaStdNormalPriorGlmPotential::is_available() {
             return;
@@ -744,6 +1035,24 @@ mod tests {
         let gpu = CudaStdNormalPriorIcWeibullAftPotential::new_on_device(&model, 0)
             .unwrap_or_else(|err| panic!("failed to create CUDA weibull_ic_aft potential: {err}"));
         let q = (0..model.dim()).map(|i| -0.16 + i as f64 * 0.045).collect::<Vec<_>>();
+
+        assert_potential_matches_cpu(&cpu, &gpu, &q);
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn cuda_weibull_aft_likelihood_potential_matches_cpu_flat_potential_grad() {
+        if !CudaStdNormalPriorIcWeibullAftPotential::is_available() {
+            return;
+        }
+
+        let model = weibull_aft_model(256, 8);
+        let cpu = flat_posterior(&model);
+        let gpu =
+            CudaLikelihoodIcWeibullAftPotential::new_on_device(&model, 0).unwrap_or_else(|err| {
+                panic!("failed to create CUDA weibull_ic_aft likelihood potential: {err}")
+            });
+        let q = (0..model.dim()).map(|i| -0.13 + i as f64 * 0.04).collect::<Vec<_>>();
 
         assert_potential_matches_cpu(&cpu, &gpu, &q);
     }

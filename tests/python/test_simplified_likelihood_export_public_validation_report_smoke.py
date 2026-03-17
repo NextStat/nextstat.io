@@ -106,11 +106,12 @@ def test_simplified_likelihood_export_public_validation_report_schema_example_an
     assert _without_generated_at(committed_report) == _without_generated_at(generated_report)
     assert committed_report["status"] == "ok"
     assert committed_report["summary"]["benchmark_host"] == "nextstat-bench"
-    assert committed_report["summary"]["public_case_count"] == 8
-    assert committed_report["summary"]["catalog_case_count"] == 8
+    assert committed_report["summary"]["public_case_count"] == 9
+    assert committed_report["summary"]["catalog_case_count"] == 9
     assert committed_report["summary"]["public_case_names"] == [
         "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
         "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+        "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
         "atlas_public_sr_cr_gaussian_export_stable_example",
         "cms_public_sr_cr_export_stable_example",
         "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",

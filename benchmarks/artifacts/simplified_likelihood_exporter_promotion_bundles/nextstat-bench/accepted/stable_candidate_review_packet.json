@@ -1,13 +1,13 @@
 {
   "automatic_stable_promotion": false,
-  "bundle_dir": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted",
+  "bundle_dir": "tmp/exporter_bundle_refresh/accepted",
   "evidence_snapshot": {
     "benchmark_host": "nextstat-bench",
     "future_stable_review_ready": true,
     "max_abs_q_mu_diff": 0.09618848026584459,
     "max_upper_limit_ratio_deviation": 0.011190668120821257,
     "min_net_end_to_end_upper_limit_speedup": 2.1792428549098894,
-    "public_reinterpretation_style_case_count": 8,
+    "public_reinterpretation_style_case_count": 9,
     "stable_candidate_status": "ready",
     "stable_review_status": "review_ready"
   },
@@ -48,56 +48,56 @@
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
       "schema_version": "nextstat_apex2_simplified_likelihood_report_v0",
-      "sha256": "2ad2e9cf55ce55a81ea4465ebd389182bad64fbd464aef829f62d1a6006eb7cf",
+      "sha256": "7c6ee0a78709a0094a1f3e5935d7aee31c51558dd63f6f904778b7cb1a8ae2b7",
       "status": null
     },
     "promotion_evidence": {
       "exists": true,
-      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
+      "path": "tmp/exporter_bundle_refresh/accepted/promotion_evidence.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_bundle_v0",
-      "sha256": "fcffc0a6436d40c9f9015aba957fe849136b2c5944d61f7c8dc70042cedfb2d1",
+      "sha256": "9fc18e3e53af342bf7aaf420f42db6bbbd74bb6bae60b6606976f79a80078cfa",
       "status": null
     },
     "promotion_evidence_check": {
       "exists": true,
-      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence_check.json",
+      "path": "tmp/exporter_bundle_refresh/accepted/promotion_evidence_check.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_check_v0",
-      "sha256": "5e26d1116f734c548b1b31506696fa3528ec9348b525bc7a4504a21f5fe9671e",
+      "sha256": "49a243da3b54823f91f959523c3e2fc282593757d819d308119267ac951b6bc7",
       "status": "passed"
     },
     "promotion_report": {
       "exists": true,
-      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_bundle_promotion_report.json",
+      "path": "tmp/exporter_bundle_refresh/accepted/promotion_bundle_promotion_report.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_bundle_promotion_report_v0",
-      "sha256": "a80ac5f4e2de7766f61a093d3b1426d9e0793022718f0fd65ac78b0bb9fc99df",
+      "sha256": "ad08e3cb5f117b3f3e5637c76fffa35ee190fce0ee272aa7338a0f49ba3109eb",
       "status": "promoted"
     },
     "stable_candidate_blocker_matrix": {
       "exists": true,
-      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_candidate_blocker_matrix.json",
+      "path": "tmp/exporter_bundle_refresh/accepted/stable_candidate_blocker_matrix.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0",
-      "sha256": "9a9694e037fab34c5262f84d2f1b261f201f90dd1424e44cee430c05ea53514a",
+      "sha256": "15813f50bc984f294b139ac327515d70e3c2973a1de245d61232169aa2e79b64",
       "status": null
     },
     "stable_promotion_decision": {
       "exists": true,
-      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json",
+      "path": "tmp/exporter_bundle_refresh/accepted/stable_promotion_decision.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_promotion_decision_v0",
       "sha256": null,
       "status": "accepted"
     },
     "stable_review_assessment": {
       "exists": true,
-      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_review_assessment.json",
+      "path": "tmp/exporter_bundle_refresh/accepted/stable_review_assessment.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_review_assessment_v0",
-      "sha256": "72bcd8ed33bafe314e9149c5a8d6fc6eddc495fb387650c847790cc39bbd7168",
+      "sha256": "88df4f3fed3be62b6c040f9ad05725d76913839bd6627f8abccd1481a6e94ac3",
       "status": null
     },
     "stable_source_semantics_boundary": {
       "exists": true,
-      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_source_semantics_boundary.json",
+      "path": "tmp/exporter_bundle_refresh/accepted/stable_source_semantics_boundary.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_source_semantics_boundary_v0",
-      "sha256": "294d8a6a08148eedf582ddd9a6f0c54c29869f4f428347fea016fb4b5ddedeaa",
+      "sha256": "27c70cb9393ece3a6baa4d433a630bc8dd89bfb58fcf4aea8ade5db8f7c388a1",
       "status": "published"
     }
   },

@@ -28,6 +28,18 @@ def test_release_grade_python_gates_use_local_wheelhouse_and_prefer_installed_bi
         assert 'elif [[ -x "${repo_root}/.venv/bin/python" ]]; then' in text, path
 
 
+def test_apex2_pre_release_gate_builds_nextstat_wheel_for_the_install_python() -> None:
+    gate = (_repo_root() / "scripts" / "apex2" / "pre_release_gate.sh").read_text(encoding="utf-8")
+    assert "os.path.abspath(sys.executable)" in gate
+    assert "realpath(sys.executable)" not in gate
+    assert '--interpreter "${py}"' in gate
+    assert 'maturin build --release --interpreter "${py}" -o "${wheelhouse}"' in gate
+    assert '"nextstat==${version}"' in gate
+    assert 'APEX2_PERF_POLICY' in gate
+    assert 'APEX2_CANONICAL_PERF_RUNNER' in gate
+    assert "passed with performance advisories on non-canonical hardware" in gate
+
+
 def test_release_build_config_does_not_force_native_cpu_for_apple_arm() -> None:
     lines = (_repo_root() / ".cargo" / "config.toml").read_text(encoding="utf-8").splitlines()
     active = [line.strip() for line in lines if line.strip() and not line.strip().startswith("#")]
@@ -42,3 +54,31 @@ def test_release_candidate_cli_aarch64_linux_build_pins_ring_arm_asm_env() -> No
     assert "CFLAGS_aarch64_unknown_linux_gnu" in workflow
     assert "-D__ARM_ARCH=8 -march=armv8-a" in workflow
     assert "matrix.target == 'aarch64-unknown-linux-gnu'" in workflow
+
+
+def test_trex_analysis_spec_runners_prefer_wheelhouse_cli_binary() -> None:
+    repo = _repo_root()
+    files = [
+        repo / "scripts" / "trex" / "run_analysis_spec.py",
+        repo / "tests" / "record_trex_analysis_spec_baseline.py",
+        repo / "tests" / "compare_trex_analysis_spec_with_latest_baseline.py",
+    ]
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        assert '".venv" / "bin" / "nextstat"' in text, path
+        assert 'shutil.which("nextstat")' in text, path
+
+
+def test_trex_analysis_spec_materializers_resolve_baseline_dir_to_absolute_paths() -> None:
+    repo = _repo_root()
+    files = [
+        repo / "tests" / "record_trex_analysis_spec_baseline.py",
+        repo / "tests" / "compare_trex_analysis_spec_with_latest_baseline.py",
+    ]
+    for path in files:
+        text = path.read_text(encoding="utf-8")
+        assert 'baseline_compare["enabled"] = False' in text, path
+        assert 'baseline_compare["baseline_dir"]' in text, path
+        assert 'resolve(spec_base, baseline_compare.get("baseline_dir"))' in text or 'resolve(baseline_compare.get("baseline_dir"))' in text, path
+    compare_text = files[1].read_text(encoding="utf-8")
+    assert "baseline_manifest_dir=args.manifest.parent" in compare_text

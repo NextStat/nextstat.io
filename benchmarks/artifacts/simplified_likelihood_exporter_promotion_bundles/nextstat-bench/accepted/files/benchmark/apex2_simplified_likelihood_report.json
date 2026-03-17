@@ -248,7 +248,7 @@
   "environment": {
     "cwd": "/tmp/apex2_simplified_likelihood_repo_20260311T204927Z",
     "hostname": "nextstat-bench",
-    "nextstat_version": "0.10.0",
+    "nextstat_version": "0.10.1",
     "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
     "python": "3.12.3",
     "timestamp": 1773263602
@@ -595,6 +595,123 @@
         "source_fit_schema_version": "nextstat_fit_result_v0",
         "source_workspace_format": "pyhf",
         "source_workspace_path": "tests/fixtures/atlas_public_sr_cr_gaussian_workspace.json",
+        "source_workspace_schema_version": "pyhf_workspace_v1",
+        "status": "ok",
+        "validation": {
+          "audit_schema_valid": true,
+          "export_report_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_export_ok": true,
+          "schema_valid": true
+        }
+      },
+      {
+        "analysis_id": "atlas.public.triple_sr_vr_dual_cr_gaussian.export.stable.example",
+        "bench": {
+          "export_wall_s": 0.04648030921816826,
+          "exported_end_to_end_upper_limit_wall_s": 0.01476057106629014,
+          "net_end_to_end_upper_limit_wall_s": 0.0612408802844584,
+          "speedup": {
+            "net_end_to_end_upper_limit": 1.9063922871235959
+          }
+        },
+        "case_kind": "public_reinterpretation_style",
+        "experiment": "ATLAS",
+        "export_report_schema_version": "nextstat_simplified_likelihood_export_report_v0",
+        "factorization": {
+          "clipped_negative_eigenvalues": 2,
+          "explained_variance_fraction": 1.0000000000000002,
+          "frobenius_residual": 1.1449011959546867e-12,
+          "input_trace": 1018.9262026471597,
+          "max_clipped_negative_eigenvalue_magnitude": 1.0549517711944108e-13,
+          "method": "symmetric_eigendecomposition",
+          "original_rank": 5,
+          "retained_rank": 5,
+          "retained_trace": 1018.9262026471599,
+          "shared_systematic_trace": null,
+          "stat_covariance_trace": null
+        },
+        "fidelity": {
+          "delta_mu_hat": 0.0003542635508217984,
+          "delta_mu_hat_over_sigma_full": 0.000538324596421961,
+          "max_abs_q_mu_diff": 0.07209092928133032,
+          "mu_hat_exported": 1.1416632095341246,
+          "mu_hat_full": 1.1413089459833028,
+          "passes": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "q_mu_exported": [
+            0.0,
+            0.0,
+            0.0,
+            0.2952052089161441,
+            1.6730554681626018,
+            4.138334324357231,
+            7.649701665208738
+          ],
+          "q_mu_full": [
+            0.0,
+            0.0,
+            0.0,
+            0.2922882972966221,
+            1.6580692633161505,
+            4.1001955032214426,
+            7.577610735927408
+          ],
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "sigma_mu_full": 0.6580853878430477,
+          "upper_limit_exported": 2.2501373291015625,
+          "upper_limit_full": 2.2553253173828125,
+          "upper_limit_ratio": 0.9976996718649572
+        },
+        "gates": {
+          "fidelity": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "performance": {
+            "net_end_to_end_upper_limit_speedup": true
+          }
+        },
+        "name": "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
+        "output": {
+          "bins_count": 9,
+          "full_nuisance_count": 6,
+          "json_bytes": 6516,
+          "json_sha256": "975d192945d60caebf5a53b8b1a985124065ab2173083f525685a0e5b5bf8ddc",
+          "reduced_nuisance_count": 5,
+          "reduction_ratio": 0.8333333333333334,
+          "schema_version": "nextstat_simplified_likelihood_v0",
+          "uncertainty_model_kind": "basis"
+        },
+        "reference": "https://nextstat.io/examples/atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
+        "report_fidelity": {
+          "bins_count": 9,
+          "max_abs_expected_delta_at_nominal": 165.9238044485884,
+          "max_abs_expected_delta_random_draws": 1.2434497875801753e-13,
+          "max_abs_yield_delta": 165.9238044485884,
+          "max_rel_yield_delta": 0.7495870420178452,
+          "nuisance_count_full": 6,
+          "nuisance_count_reduced": 5,
+          "qmu_delta_smoke": 0.0,
+          "relative_background_cov_residual": 1.5447594255011406e-15,
+          "upper_limit_ratio_smoke": 0.9978349120433018
+        },
+        "source_fit_schema_version": "nextstat_fit_result_v0",
+        "source_workspace_format": "pyhf",
+        "source_workspace_path": "tests/fixtures/atlas_public_triple_sr_vr_dual_cr_gaussian_workspace.json",
         "source_workspace_schema_version": "pyhf_workspace_v1",
         "status": "ok",
         "validation": {
@@ -1431,7 +1548,7 @@
       "all_fidelity_gates_pass": true,
       "all_performance_gates_pass": true,
       "all_schema_valid": true,
-      "case_count": 10,
+      "case_count": 11,
       "case_kinds": [
         "public_reinterpretation_style",
         "synthetic"
@@ -1439,14 +1556,15 @@
       "max_abs_q_mu_diff": 0.09618848026584459,
       "max_upper_limit_ratio_deviation": 0.011190668120821257,
       "min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
-      "public_reinterpretation_style_case_count": 8,
+      "public_reinterpretation_style_case_count": 9,
       "public_reinterpretation_style_case_names": [
         "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
         "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
         "atlas_public_sr_cr_gaussian_export_stable_example",
-        "cms_public_sr_cr_export_stable_example",
-        "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+        "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
         "cms_public_dual_sr_cr_gaussian_export_stable_example",
+        "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+        "cms_public_sr_cr_export_stable_example",
         "cms_public_sr_dual_cr_gaussian_export_stable_example",
         "cms_public_sr_vr_dual_cr_gaussian_export_stable_example"
       ],
@@ -1758,14 +1876,14 @@
       "min_speedup_upper_limit": 11.500057507997205
     },
     "case_count": 2,
-    "export_matrix_case_count": 10,
+    "export_matrix_case_count": 11,
     "export_matrix_case_kinds": [
       "public_reinterpretation_style",
       "synthetic"
     ],
     "export_matrix_included": true,
     "export_matrix_min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
-    "export_matrix_public_reinterpretation_style_case_count": 8,
+    "export_matrix_public_reinterpretation_style_case_count": 9,
     "export_matrix_status": "ok",
     "max_abs_q_mu_diff": 2.393811229239873e-07,
     "max_delta_mu_hat_over_sigma_full": 0.0,

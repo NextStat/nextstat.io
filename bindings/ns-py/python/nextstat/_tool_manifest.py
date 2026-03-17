@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import copy
 import json
+import os
 import re
 from functools import lru_cache
 from pathlib import Path
@@ -125,7 +126,29 @@ def _validate_policy_manifest(manifest: dict[str, Any], *, tool_names: set[str])
         _validate_policy_rule(policy, path=f"manifest.policies.server.overrides[{tool_name!r}]")
 
 
+def _is_repo_root(path: Path) -> bool:
+    return (
+        path / "docs" / "references" / "tool-api.md"
+    ).exists() and (path / "scripts").is_dir()
+
+
 def _repo_root() -> Path:
+    env_root = os.environ.get("NEXTSTAT_REPO_ROOT")
+    if env_root:
+        candidate = Path(env_root).expanduser().resolve()
+        if _is_repo_root(candidate):
+            return candidate
+
+    cwd = Path.cwd().resolve()
+    for candidate in (cwd, *cwd.parents):
+        if _is_repo_root(candidate):
+            return candidate
+
+    manifest_path = _manifest_path().resolve()
+    for candidate in manifest_path.parents:
+        if _is_repo_root(candidate):
+            return candidate
+
     return _manifest_path().parents[4]
 
 

@@ -3,7 +3,7 @@
 - Family: beta_binomial
 - Design ID: binary_superiority_demo
 - Stability: research-grade
-- Software: nextstat 0.9.9
+- Software: nextstat 0.10.1
 - Simulation: 32 replicates, seed 123
 
 ## Provenance

@@ -292,7 +292,15 @@ def sample(
         max_energy_error (float): Max allowed energy error at accepted macro steps. Default: 2.0.
         target_tree_depth (float): Target average macro-tree depth during warmup. Default: 4.0.
         init_strategy (str): ``"random"``, ``"mle"``, or ``"pathfinder"``. Default: ``"random"``.
-        metric (str): ``"diagonal"``, ``"dense"``, or ``"auto"``. Default: ``"diagonal"``.
+        metric (str): ``"diagonal"``, ``"dense"``, or ``"auto"`` on CPU. ``device="cuda"``
+            is part of the stable public surface only for
+            ``LinearRegressionModel``, ``LogisticRegressionModel``,
+            ``PoissonRegressionModel``, ``NegativeBinomialRegressionModel``,
+            and ``IntervalCensoredWeibullAftModel``, and currently requires
+            ``metric="diagonal"``. Default: ``"diagonal"``.
+        device (str): ``"cpu"`` (default) or ``"cuda"``. CUDA WALNUTS is a
+            narrow stable surface for the supported model families above.
+            `Posterior` objects are CPU-only on the stable public surface.
         stepsize_jitter (float): Step size jitter. Default: 0.0.
 
     MAMS-specific kwargs:

@@ -2061,6 +2061,7 @@ def sample_walnuts(
     init_overdispersed_rel: Optional[float] = ...,
     stepsize_jitter: float = ...,
     data: Optional[List[float]] = ...,
+    device: Literal["cpu"] = ...,
 ) -> SamplerResult: ...
 @overload
 def sample_walnuts(
@@ -2083,6 +2084,65 @@ def sample_walnuts(
     init_overdispersed_rel: Optional[float] = ...,
     stepsize_jitter: float = ...,
     data: Literal[None] = ...,
+    device: Literal["cpu"] = ...,
+) -> SamplerResult: ...
+@overload
+def sample_walnuts(
+    model: Union[
+        LinearRegressionModel,
+        LogisticRegressionModel,
+        PoissonRegressionModel,
+        NegativeBinomialRegressionModel,
+        IntervalCensoredWeibullAftModel,
+    ],
+    *,
+    n_chains: int = ...,
+    n_warmup: int = ...,
+    n_samples: int = ...,
+    seed: int = ...,
+    max_treedepth: int = ...,
+    max_step_halvings: int = ...,
+    min_micro_steps: int = ...,
+    max_energy_error: float = ...,
+    target_accept: float = ...,
+    target_tree_depth: float = ...,
+    init_strategy: str = ...,
+    metric: Literal["diagonal", "dense", "auto"] = ...,
+    init_jitter: float = ...,
+    init_jitter_rel: Optional[float] = ...,
+    init_overdispersed_rel: Optional[float] = ...,
+    stepsize_jitter: float = ...,
+    data: Literal[None] = ...,
+    device: Literal["cpu"] = ...,
+) -> SamplerResult: ...
+@overload
+def sample_walnuts(
+    model: Union[
+        LinearRegressionModel,
+        LogisticRegressionModel,
+        PoissonRegressionModel,
+        NegativeBinomialRegressionModel,
+        IntervalCensoredWeibullAftModel,
+    ],
+    *,
+    n_chains: int = ...,
+    n_warmup: int = ...,
+    n_samples: int = ...,
+    seed: int = ...,
+    max_treedepth: int = ...,
+    max_step_halvings: int = ...,
+    min_micro_steps: int = ...,
+    max_energy_error: float = ...,
+    target_accept: float = ...,
+    target_tree_depth: float = ...,
+    init_strategy: str = ...,
+    metric: Literal["diagonal"] = ...,
+    init_jitter: float = ...,
+    init_jitter_rel: Optional[float] = ...,
+    init_overdispersed_rel: Optional[float] = ...,
+    stepsize_jitter: float = ...,
+    data: Literal[None] = ...,
+    device: Literal["cuda"] = ...,
 ) -> SamplerResult: ...
 @overload
 def sample_walnuts(
@@ -2091,12 +2151,8 @@ def sample_walnuts(
         FunnelModel,
         FunnelNcpModel,
         StdNormalModel,
-        LinearRegressionModel,
-        LogisticRegressionModel,
         OrderedLogitModel,
         OrderedProbitModel,
-        PoissonRegressionModel,
-        NegativeBinomialRegressionModel,
         GammaRegressionModel,
         TweedieRegressionModel,
         ComposedGlmModel,
@@ -2133,6 +2189,7 @@ def sample_walnuts(
     init_overdispersed_rel: Optional[float] = ...,
     stepsize_jitter: float = ...,
     data: Literal[None] = ...,
+    device: Literal["cpu"] = ...,
 ) -> SamplerResult: ...
 
 

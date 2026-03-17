@@ -9,6 +9,17 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _current_version() -> str:
+    for line in (_repo_root() / "Cargo.toml").read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("version = "):
+            return line.split('"')[1]
+    raise AssertionError("missing workspace version")
+
+
+def _current_release_tag() -> str:
+    return f"v{_current_version()}"
+
+
 def test_release_surface_matrix_manifest_is_valid() -> None:
     manifest = load_manifest()
     validate_manifest(manifest)
@@ -23,6 +34,8 @@ def test_release_surface_matrix_manifest_is_valid() -> None:
         "simplified_likelihood_stable_surface",
         "simplified_likelihood_exporter_surface",
         "m15_reporting_stable_surface",
+        "histfactory_stable_surface",
+        "hepdata_import_stable_surface",
     }
 
 
@@ -34,7 +47,7 @@ def test_release_surface_matrix_report_includes_required_and_optional_surfaces()
             "crates/ns-inference/src/measurement_combine.rs",
             "scripts/benchmarks/bench_m15_reporting.py",
         ],
-        "v0.10.0",
+        _current_release_tag(),
     )
 
     required_ids = {surface["id"] for surface in report["required_release_surfaces"]}
@@ -64,6 +77,8 @@ def test_pre_release_gate_and_docs_reference_release_surface_outputs() -> None:
 
     assert "tmp/release_surface_matrix_report.json" in gate
     assert "tmp/release_surface_matrix_report.md" in gate
+    assert "tmp/apex2_pre_release_gate_summary.json" in gate
+    assert "tmp/apex2_pre_release_gate_summary.md" in gate
     assert "scripts.release_surface_matrix" in gate
     assert "tmp/release_manifest.json" in gate
     assert "tmp/release_manifest.md" in gate
@@ -73,9 +88,12 @@ def test_pre_release_gate_and_docs_reference_release_surface_outputs() -> None:
     assert "scripts.release_manifest" in gate
     assert "scripts.release_candidate_bundle" in gate
     assert "scripts.release_full_fidelity_simulation" in gate
+    assert "scripts.hep_validation_bundle" in gate
+    assert "scripts.apex2.pre_release_gate_summary" in gate
 
     assert "docs/releases/release-runbook.md" in contributing
     assert "docs/releases/benchmark-artifact-policy.md" in contributing
+    assert "tmp/apex2_pre_release_gate_summary.json" in contributing
     assert "tmp/release_surface_matrix_report.json" in contributing
     assert "tmp/release_manifest.json" in contributing
     assert "tmp/release_full_fidelity_simulation_report.json" in contributing
@@ -87,11 +105,16 @@ def test_pre_release_gate_and_docs_reference_release_surface_outputs() -> None:
 
     assert "tmp/release_surface_matrix_report.json" in runbook
     assert "tmp/release_surface_matrix_report.md" in runbook
+    assert "tmp/apex2_pre_release_gate_summary.json" in runbook
+    assert "tmp/apex2_pre_release_gate_summary.md" in runbook
     assert "tmp/release_manifest.json" in runbook
     assert "tmp/release_manifest.md" in runbook
     assert "tmp/release_full_fidelity_simulation_report.json" in runbook
     assert "tmp/release_full_fidelity_simulation_report.md" in runbook
     assert "scripts/release_full_fidelity_simulation.py" in runbook
+    assert "`20`" in runbook
+    assert "`21`" in runbook
+    assert "`22`" in runbook
     assert "release_candidate_bundle" in runbook
     assert "GitHub Release assets" in policy
     assert "Never commit `tmp` outputs" in policy

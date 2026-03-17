@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "nextstat"
-version = "0.10.0"
+version = "0.10.1"
 description = "High-performance statistical inference engine — MLE, Bayesian, survival, GLM, time series. Rust core with Python bindings."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -31,7 +31,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "nextstat-cli==0.10.0",
+    "nextstat-cli==0.10.1",
 ]
 
 [project.optional-dependencies]

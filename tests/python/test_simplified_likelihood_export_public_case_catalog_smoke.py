@@ -46,12 +46,13 @@ def test_simplified_likelihood_export_public_case_catalog_matches_schema_and_exa
 
     assert catalog["schema_version"] == "nextstat_simplified_likelihood_export_public_case_catalog_v0"
     assert catalog["stability"] == "apex2"
-    assert len(catalog["cases"]) == 8
+    assert len(catalog["cases"]) == 9
 
     case_ids = {case["case_id"] for case in catalog["cases"]}
     assert "atlas_public_sr_cr_gaussian_export_stable_example" in case_ids
     assert "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example" in case_ids
     assert "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example" in case_ids
+    assert "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example" in case_ids
     assert "cms_public_sr_cr_asymmetric_gaussian_export_stable_example" in case_ids
     assert "cms_public_sr_cr_export_stable_example" in case_ids
     assert "cms_public_dual_sr_cr_gaussian_export_stable_example" in case_ids

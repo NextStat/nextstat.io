@@ -66,7 +66,7 @@ This repo uses plain Markdown docs. Start here and then jump into the track that
 - Simplified likelihood exporter acceptance (narrow `stable` exporter subset + explicit boundary): `docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md`
 - Simplified likelihood exporter runtime gate (narrow `stable` subset + committed `nextstat-bench` evidence): `docs/benchmarks/simplified-likelihood-exporter-runtime-gate.md`
 - Simplified likelihood exporter promotion runbook (accepted bundle lifecycle for the promoted narrow subset): `docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md`
-- Simplified likelihood exporter stable evidence policy (release-facing admission policy + maintenance cadence for the accepted `7 public / 9 total` floor): `docs/benchmarks/simplified-likelihood-exporter-stable-evidence-policy-2026-03-09.md`
+- Simplified likelihood exporter stable evidence policy (release-facing admission policy + maintenance cadence for the accepted `9 public / 11 total` floor): `docs/benchmarks/simplified-likelihood-exporter-stable-evidence-policy-2026-03-09.md`
 - Simplified likelihood exporter stable evidence freshness (machine-readable 45-day freshness breach guard for the accepted exporter floor): `docs/benchmarks/simplified-likelihood-exporter-stable-evidence-freshness-2026-03-09.md`
 - Simplified likelihood exporter public validation surface (stable evidence for curated public exporter cases): `docs/benchmarks/simplified-likelihood-exporter-public-validation-surface-2026-03-09.md`
 - Simplified likelihood exporter stable-review checklist (historical review governance for the promoted narrow subset): `docs/benchmarks/simplified-likelihood-exporter-stable-review-checklist-2026-03-09.md`

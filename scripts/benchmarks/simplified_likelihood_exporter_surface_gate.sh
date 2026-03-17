@@ -256,7 +256,7 @@ if [[ "${skip_doc_checks}" != "1" ]]; then
   grep -qF "simplified_likelihood_exporter_stable_promotion_decision_v0" docs/references/simplified-likelihood-artifacts.md
   grep -qF "simplified_likelihood_export_public_case_catalog_v0" docs/references/simplified-likelihood-artifacts.md
   grep -qF "simplified_likelihood_export_public_validation_report_v0" docs/references/simplified-likelihood-artifacts.md
-  grep -qF 'export matrix public reinterpretation-style case count: `8`' docs/benchmarks/simplified-likelihood-benchmark-snapshot-2026-03-08.md
+  grep -qF 'export matrix public reinterpretation-style case count: `9`' docs/benchmarks/simplified-likelihood-benchmark-snapshot-2026-03-08.md
   grep -qF "export_public_validation_report.json" docs/benchmarks/simplified-likelihood-benchmark-snapshot-2026-03-08.md
   grep -qF "stable_evidence_policy.json" docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md
   grep -qF "stable_evidence_freshness_report.json" docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md
@@ -342,15 +342,15 @@ assert summary["all_schema_valid"] is True
 assert summary["all_fidelity_gates_pass"] is True
 assert summary["export_matrix_included"] is True
 assert summary["export_matrix_status"] == "ok"
-assert int(summary["export_matrix_case_count"]) >= 10
-assert int(summary["export_matrix_public_reinterpretation_style_case_count"]) >= 8
+assert int(summary["export_matrix_case_count"]) >= 11
+assert int(summary["export_matrix_public_reinterpretation_style_case_count"]) >= 9
 assert set(summary["export_matrix_case_kinds"]) == {"public_reinterpretation_style", "synthetic"}
 
 export_summary = artifact["export_matrix"]["summary"]
 assert export_summary["status"] == "ok"
 assert export_summary["all_schema_valid"] is True
 assert export_summary["all_fidelity_gates_pass"] is True
-assert int(export_summary["public_reinterpretation_style_case_count"]) >= 8
+assert int(export_summary["public_reinterpretation_style_case_count"]) >= 9
 assert int(export_summary["synthetic_case_count"]) >= 1
 assert set(export_summary["case_kinds"]) == {"public_reinterpretation_style", "synthetic"}
 assert float(export_summary["max_abs_q_mu_diff"]) <= 0.1
@@ -367,15 +367,15 @@ assert snapshot_report["status"] == "persisted"
 assert snapshot_report["persisted"] is True
 assert snapshot_report["source_summary"]["benchmark_host"] == "nextstat-bench"
 assert snapshot_report["source_summary"]["export_matrix_status"] == "ok"
-assert int(snapshot_report["source_summary"]["export_matrix_case_count"]) >= 10
-assert int(snapshot_report["source_summary"]["export_matrix_public_reinterpretation_style_case_count"]) >= 8
+assert int(snapshot_report["source_summary"]["export_matrix_case_count"]) >= 11
+assert int(snapshot_report["source_summary"]["export_matrix_public_reinterpretation_style_case_count"]) >= 9
 assert set(snapshot_report["source_summary"]["export_matrix_case_kinds"]) == {"public_reinterpretation_style", "synthetic"}
 assert float(snapshot_report["source_summary"]["export_matrix_synthetic_min_net_end_to_end_upper_limit_speedup"]) >= 1.25
 
 assert public_validation_report["schema_version"] == "nextstat_simplified_likelihood_export_public_validation_report_v0"
 assert public_validation_report["status"] == "ok"
 assert public_validation_report["summary"]["benchmark_host"] == "nextstat-bench"
-assert int(public_validation_report["summary"]["public_case_count"]) >= 8
+assert int(public_validation_report["summary"]["public_case_count"]) >= 9
 assert public_validation_report["summary"]["all_schema_valid"] is True
 assert public_validation_report["summary"]["all_fidelity_gates_pass"] is True
 assert public_validation_report["summary"]["all_performance_gates_pass"] is True
@@ -768,10 +768,10 @@ generated.pop("generated_at_utc", None)
 assert committed == generated
 assert committed["status"] == "accepted"
 assert committed["support_class"] == "stable"
-assert committed["stable_evidence_floor"]["min_total_export_matrix_case_count"] == 10
+assert committed["stable_evidence_floor"]["min_total_export_matrix_case_count"] == 11
 assert committed["stable_evidence_floor"]["min_public_reinterpretation_style_case_count"] == 8
 assert committed["maintenance_cadence"]["refresh_cadence"] == "on_every_exporter_release_pr_or_public_case_admission"
-assert committed["current_evidence_summary"]["export_matrix_case_count"] >= 10
+assert committed["current_evidence_summary"]["export_matrix_case_count"] >= 11
 assert committed["current_evidence_summary"]["public_case_count"] >= 8
 print(
     "validated",

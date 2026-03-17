@@ -250,10 +250,17 @@ After approval, a maintainer will merge your PR into `main`.
 - [ ] If the baseline is stale (expected perf change), re-record: `make apex2-baseline-record`
 - [ ] Review `tmp/baseline_compare_report.json` for any slowdowns/flags
 - [ ] Follow the canonical release runbook: `docs/releases/release-runbook.md`
+- [ ] Review `tmp/apex2_pre_release_gate_summary.json` and `tmp/apex2_pre_release_gate_summary.md`
 - [ ] Review `tmp/release_surface_matrix_report.json` and `tmp/release_surface_matrix_report.md`
 - [ ] Review `tmp/release_manifest.json` and `tmp/release_manifest.md`
 - [ ] Review `tmp/release_full_fidelity_simulation_report.json` and `tmp/release_full_fidelity_simulation_report.md`
 - [ ] Review `tmp/release_candidate_bundle/`
+- [ ] Distinguish governance vs performance results before acting:
+  - governance failure blocks the release
+  - local `make apex2-pre-release-gate` runs with `APEX2_PERF_POLICY=auto` by default
+  - under `auto`, performance is enforced only when `APEX2_CANONICAL_PERF_RUNNER=1`
+  - otherwise performance regressions are emitted as advisories in `tmp/apex2_pre_release_gate_summary.*`
+  - performance failure on the canonical runner requires review/re-run on the canonical host, not a blind rollback
 - [ ] Optional (cluster): run ROOT/TRExFitter parity and archive artifacts (see `docs/tutorials/root-trexfitter-parity.md`)
 - [ ] If the release includes M15 surface changes, run the M15 PR/release gates from `docs/references/m15-reporting.md` and verify M15 validation-pack assets are published (`m15_bundle_manifest.json`, schema, `.sha256`, `.sha256.bin`, `m15_snapshot_index.json`)
 - [ ] If the release includes Bayesian design stable-surface changes, run the Bayesian PR/release gates from `docs/references/bayesian-trial-design-artifacts.md` and verify the current `nextstat-bench` packaging artifact is linked when runtime-affecting packaging behavior changed

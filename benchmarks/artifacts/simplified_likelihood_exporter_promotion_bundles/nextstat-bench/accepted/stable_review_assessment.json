@@ -1,6 +1,6 @@
 {
   "automatic_stable_promotion": false,
-  "bundle_dir": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted",
+  "bundle_dir": "tmp/exporter_bundle_refresh/accepted",
   "evidence_validity": {
     "failures": [],
     "passed": true,
@@ -19,23 +19,23 @@
   "source_artifacts": {
     "promotion_evidence": {
       "exists": true,
-      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
+      "path": "tmp/exporter_bundle_refresh/accepted/promotion_evidence.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_bundle_v0",
-      "sha256": "fcffc0a6436d40c9f9015aba957fe849136b2c5944d61f7c8dc70042cedfb2d1",
+      "sha256": "9fc18e3e53af342bf7aaf420f42db6bbbd74bb6bae60b6606976f79a80078cfa",
       "status": null
     },
     "promotion_evidence_check": {
       "exists": true,
-      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence_check.json",
+      "path": "tmp/exporter_bundle_refresh/accepted/promotion_evidence_check.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_check_v0",
-      "sha256": "5e26d1116f734c548b1b31506696fa3528ec9348b525bc7a4504a21f5fe9671e",
+      "sha256": "49a243da3b54823f91f959523c3e2fc282593757d819d308119267ac951b6bc7",
       "status": "passed"
     },
     "promotion_report": {
       "exists": true,
-      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_bundle_promotion_report.json",
+      "path": "tmp/exporter_bundle_refresh/accepted/promotion_bundle_promotion_report.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_bundle_promotion_report_v0",
-      "sha256": "a80ac5f4e2de7766f61a093d3b1426d9e0793022718f0fd65ac78b0bb9fc99df",
+      "sha256": "ad08e3cb5f117b3f3e5637c76fffa35ee190fce0ee272aa7338a0f49ba3109eb",
       "status": "promoted"
     }
   },

@@ -63,9 +63,8 @@ def test_release_workflow_publishes_simplified_likelihood_promotion_artifacts() 
     publish_workflow = (_repo_root() / ".github" / "workflows" / "release.yml").read_text(
         encoding="utf-8"
     )
-    assert "dist/**/apex2_simplified_likelihood_report.json" in publish_workflow
-    assert "dist/**/promotion_evidence.json" in publish_workflow
-    assert "dist/**/promotion_evidence_check.json" in publish_workflow
+    assert "python3 -m scripts.release_stage_assets --dist-root dist --out-dir dist/release-assets" in publish_workflow
+    assert "files: dist/release-assets/*" in publish_workflow
 
 
 def test_simplified_likelihood_release_docs_reference_promotion_check() -> None:

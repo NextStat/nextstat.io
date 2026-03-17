@@ -140,7 +140,7 @@ The narrow exporter path is accepted as `stable` only if:
    `stable_promotion_decision.json` artifact, a versioned
    `stable_evidence_policy.json` artifact, a versioned
    `stable_evidence_freshness_report.json` artifact, and release-facing
-   workflow consumption for the accepted `8 public / 10 total` floor
+   workflow consumption for the accepted `9 public / 11 total` floor
 9. the accepted stable evidence stays inside the published freshness window:
    `max_snapshot_age_days = 45`, and any freshness breach is treated as a
    governance failure instead of a silent stale-evidence fallback

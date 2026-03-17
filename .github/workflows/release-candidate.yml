@@ -253,13 +253,88 @@ jobs:
             tmp/m15_reporting_stable_surface/m15_reporting_compare.json
           if-no-files-found: error
 
+  histfactory-stable-surface:
+    name: HistFactory Stable-Surface Gate
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93.0"
+          components: rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Create virtualenv
+        run: python -m venv .venv
+
+      - name: Install Python dependencies
+        run: |
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "pyarrow>=18.0"
+
+      - name: Shellcheck (bash -n) gate script
+        run: bash -n scripts/benchmarks/histfactory_stable_surface_gate.sh
+
+      - name: Run HistFactory stable-surface gate
+        run: make histfactory-stable-surface-gate
+
+  hepdata-import-stable-surface:
+    name: HEPData Import Stable-Surface Gate
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.93.0"
+          components: rustfmt
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Create virtualenv
+        run: python -m venv .venv
+
+      - name: Install Python dependencies
+        run: |
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install "pytest>=9.0" "numpy>=2.0" "jsonschema>=4.0"
+
+      - name: Run HEPData import CLI gate
+        run: cargo test -q -p ns-cli --test cli_import_hepdata
+
+      - name: Run HEPData schema smoke tests
+        run: |
+          PYTHONPATH=bindings/ns-py/python .venv/bin/python -m pytest -q \
+            tests/python/test_hepdata_schema_smoke.py \
+            tests/python/test_hepdata_import_benchmark_smoke.py
+
   # ── Python wheels (multi-arch) ───────────────────────────────
   # Builds wheels for every supported Python (3.11-3.14) on every platform.
   # Linux: manylinux_2_17 Docker container (has all interpreters pre-installed).
   # macOS/Windows: setup-python installs interpreters, --find-interpreter finds them.
   wheels:
     name: Wheel (${{ matrix.target }})
-    needs: [test, gvm-stable-first, simplified-likelihood-stable-surface, simplified-likelihood-exporter-surface, m15-reporting-stable-surface]
+    needs: [test, gvm-stable-first, simplified-likelihood-stable-surface, simplified-likelihood-exporter-surface, m15-reporting-stable-surface, histfactory-stable-surface, hepdata-import-stable-surface]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -307,7 +382,7 @@ jobs:
   # ── Source distribution ──────────────────────────────────────
   sdist:
     name: Source distribution
-    needs: [test, gvm-stable-first, simplified-likelihood-stable-surface, simplified-likelihood-exporter-surface, m15-reporting-stable-surface]
+    needs: [test, gvm-stable-first, simplified-likelihood-stable-surface, simplified-likelihood-exporter-surface, m15-reporting-stable-surface, histfactory-stable-surface, hepdata-import-stable-surface]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -330,7 +405,7 @@ jobs:
   # Produces py3-none-{platform} wheels — one per platform, no per-Python builds.
   cli-wheels:
     name: CLI wheel (${{ matrix.target }})
-    needs: [test, gvm-stable-first, simplified-likelihood-stable-surface, simplified-likelihood-exporter-surface, m15-reporting-stable-surface]
+    needs: [test, gvm-stable-first, simplified-likelihood-stable-surface, simplified-likelihood-exporter-surface, m15-reporting-stable-surface, histfactory-stable-surface, hepdata-import-stable-surface]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -372,7 +447,7 @@ jobs:
   # ── CLI source distribution ────────────────────────────────
   cli-sdist:
     name: CLI source distribution
-    needs: [test, gvm-stable-first, simplified-likelihood-stable-surface, simplified-likelihood-exporter-surface, m15-reporting-stable-surface]
+    needs: [test, gvm-stable-first, simplified-likelihood-stable-surface, simplified-likelihood-exporter-surface, m15-reporting-stable-surface, histfactory-stable-surface, hepdata-import-stable-surface]
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -394,7 +469,7 @@ jobs:
   # ── CLI binaries (standalone, for GitHub Release) ───────────
   cli:
     name: CLI (${{ matrix.target }})
-    needs: [test, gvm-stable-first, simplified-likelihood-stable-surface, simplified-likelihood-exporter-surface, m15-reporting-stable-surface]
+    needs: [test, gvm-stable-first, simplified-likelihood-stable-surface, simplified-likelihood-exporter-surface, m15-reporting-stable-surface, histfactory-stable-surface, hepdata-import-stable-surface]
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -443,7 +518,7 @@ jobs:
   # ── Whitepaper PDF ───────────────────────────────────────────
   whitepaper:
     name: Whitepaper PDF
-    needs: [test, gvm-stable-first, simplified-likelihood-stable-surface, m15-reporting-stable-surface]
+    needs: [test, gvm-stable-first, simplified-likelihood-stable-surface, m15-reporting-stable-surface, histfactory-stable-surface, hepdata-import-stable-surface]
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
@@ -708,6 +783,8 @@ jobs:
         simplified-likelihood-stable-surface,
         simplified-likelihood-exporter-surface,
         m15-reporting-stable-surface,
+        histfactory-stable-surface,
+        hepdata-import-stable-surface,
         wheels,
         cli,
         sdist,
@@ -739,6 +816,21 @@ jobs:
             --out-json tmp/release_manifest.json \
             --out-md tmp/release_manifest.md
 
+      - name: Validate HEP surface matrix (141/141 stable)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/hep_surface_matrix.py --check
+          python3 -m scripts.hep_validation_bundle --check
+
+      - name: Build HEP validation bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m scripts.hep_validation_bundle \
+            --out-json tmp/hep_validation_bundle.json \
+            --out-md tmp/hep_validation_bundle.md
+
       - name: Build release candidate bundle
         shell: bash
         run: |
@@ -760,3 +852,11 @@ jobs:
             tmp/release_candidate_bundle/*
             docs/schemas/releases/release_candidate_bundle_v1.schema.json
             docs/schemas/releases/release_manifest_v1.schema.json
+
+      - name: Upload HEP validation bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: hep-validation-bundle
+          path: |
+            tmp/hep_validation_bundle.json
+            tmp/hep_validation_bundle.md

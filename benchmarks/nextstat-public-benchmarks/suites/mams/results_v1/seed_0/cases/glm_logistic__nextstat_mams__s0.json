@@ -4,6 +4,8 @@
   "config": {
     "dataset_seed": 12345,
     "n_chains": 4,
+    "n_groups": null,
+    "n_per_group": null,
     "n_samples": 2000,
     "n_warmup": 3500,
     "seed": 0,
@@ -17,26 +19,26 @@
   "environment": {
     "cpu": "AMD EPYC 7502P 32-Core Processor",
     "machine": "x86_64",
-    "nextstat_version": "0.9.9",
+    "nextstat_version": "0.10.0",
     "node": "nextstat-bench",
     "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
-    "python_full": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "python_full": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
     "python_version": "3.12.3",
     "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
     "system": "Linux"
   },
   "meta": {
-    "nextstat_version": "0.9.9",
+    "nextstat_version": "0.10.0",
     "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
     "python": "3.12.3"
   },
   "metrics": {
     "accept_rate": 0.9818841515364708,
-    "cold_start_s": 1.5352201601490378,
+    "cold_start_s": 1.526023298036307,
     "ess_per_grad": 0.0843391611559169,
-    "ess_per_sec": 1318.4687905254605,
-    "ess_per_sec_warm": 1332.565455649784,
-    "jit_overhead_s": 0.016240466386079788,
+    "ess_per_sec": 1326.4147869476678,
+    "ess_per_sec_warm": 1375.4739749487167,
+    "jit_overhead_s": 0.05442884797230363,
     "max_r_hat": 1.0044387884110326,
     "min_ess_bulk": 2024.1398677420057,
     "min_ess_tail": 2563.3359867586114,
@@ -96,16 +98,16 @@
       ],
       "status": "ok"
     },
-    "wall_time_s": 1.5352201601490378,
-    "warm_start_s": 1.518979693762958
+    "wall_time_s": 1.526023298036307,
+    "warm_start_s": 1.4715944500640035
   },
   "schema_version": "nextstat.mams_benchmark_result.v1",
   "status": "ok",
   "suite": "mams",
   "timing": {
-    "cold_start_s": 1.5352201601490378,
-    "jit_overhead_s": 0.016240466386079788,
-    "wall_time_s": 1.5352201601490378,
-    "warm_start_s": 1.518979693762958
+    "cold_start_s": 1.526023298036307,
+    "jit_overhead_s": 0.05442884797230363,
+    "wall_time_s": 1.526023298036307,
+    "warm_start_s": 1.4715944500640035
   }
 }

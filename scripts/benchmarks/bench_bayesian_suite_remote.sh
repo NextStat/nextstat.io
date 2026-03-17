@@ -166,7 +166,7 @@ cd "$REPO/bindings/ns-py"
 export VIRTUAL_ENV="$VENV"
 export PATH="$VENV/bin:$PATH"
 export CARGO_TARGET_DIR="$TARGET"
-"$VENV/bin/python" -m maturin develop --release --pip-path "$VENV/bin/pip"
+bash "$REPO/benchmarks/nextstat-public-benchmarks/scripts/install_local_nextstat_python.sh" "$REPO" "$VENV" "$TARGET"
 EOS
 
 echo "[bayesian-suite-remote] provision optional backends..."

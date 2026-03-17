@@ -222,6 +222,14 @@ def stage_release_assets(dist_root: Path, out_dir: Path) -> list[Path]:
             "simplified-likelihood-exporter-surface-report/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json",
             "simplified-likelihood-exporter-surface-report/benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json",
         ]),
+        ("hep_validation_bundle.json", [
+            "hep-validation-bundle/hep_validation_bundle.json",
+            "hep-validation-bundle/tmp/hep_validation_bundle.json",
+        ]),
+        ("hep_validation_bundle.md", [
+            "hep-validation-bundle/hep_validation_bundle.md",
+            "hep-validation-bundle/tmp/hep_validation_bundle.md",
+        ]),
     ]
 
     for asset_name, patterns in canonical_assets:

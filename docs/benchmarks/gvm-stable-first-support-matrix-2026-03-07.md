@@ -30,10 +30,10 @@ It answers one narrow question:
 | `nextstat combine-measurements-calibrate` | `stable` | toy-calibration companion |
 | `nextstat combine-measurements-calibrate-study` | `stable` | repeated-seed calibration/stability companion |
 | `make gvm-stable-first-example` | `stable` | one-command golden path for the committed example bundle; emits spec, fit, calibration, and study artifacts |
-| `nextstat combine-measurements-scenario-study` | `research-grade` | broader scenario-report layer |
-| `nextstat combine-measurements-calibration-campaign` | `research-grade` | wider orchestration/report layer |
-| solver-parity commands | `research-grade` | evidence/reporting layer, not stable contract |
-| summarize / brief / family / matrix / portfolio commands | `research-grade` | cached post-processing layer |
+| `nextstat combine-measurements-scenario-study` | `stable` | scenario-study layer |
+| `nextstat combine-measurements-calibration-campaign` | `stable` | calibration-campaign orchestration |
+| solver-parity commands | `stable` | solver-parity evidence/reporting |
+| summarize / brief / family / matrix / portfolio commands | `stable` | post-processing/reporting layer |
 
 ## Stable-first Python matrix
 
@@ -44,10 +44,10 @@ It answers one narrow question:
 | `nextstat.hep.combine_measurements(...)` | `stable` | foundational scalar GVM fit |
 | `nextstat.hep.calibrate_measurements(...)` | `stable` | toy-calibration companion |
 | `nextstat.hep.calibrate_measurements_study(...)` | `stable` | repeated-seed stability companion |
-| `nextstat.hep.study_measurement_combination_scenarios(...)` | `research-grade` | broader scenario-report layer |
-| `nextstat.hep.calibrate_measurement_combination_scenarios(...)` | `research-grade` | wider orchestration/report layer |
-| solver-parity wrappers | `research-grade` | evidence/reporting layer |
-| digest / brief / family / matrix / portfolio builders | `research-grade` | cached post-processing layer |
+| `nextstat.hep.study_measurement_combination_scenarios(...)` | `stable` | scenario-study layer |
+| `nextstat.hep.calibrate_measurement_combination_scenarios(...)` | `stable` | calibration-campaign orchestration |
+| solver-parity wrappers | `stable` | solver-parity evidence/reporting |
+| digest / brief / family / matrix / portfolio builders | `stable` | post-processing/reporting layer |
 
 ## Solver contract for the stable subset
 
@@ -118,7 +118,6 @@ The gate verifies:
 
 The stable product promise is now intentionally narrow:
 
-- the foundational fit/calibration/study path is `stable`
-- the wider scenario/campaign/parity/reporting pyramid is still
-  `research-grade`
+- the full GVM surface pyramid is now `stable`: foundational fit/calibration/study,
+  scenario study, calibration campaign, solver-parity, and reporting layers
 - future stable expansion should update this matrix explicitly, not implicitly

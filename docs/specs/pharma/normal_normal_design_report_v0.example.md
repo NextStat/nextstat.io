@@ -3,7 +3,7 @@
 - Family: normal_normal
 - Design ID: continuous_superiority_demo
 - Stability: research-grade
-- Software: nextstat 0.9.9
+- Software: nextstat 0.10.1
 - Simulation: 32 replicates, seed 456
 
 ## Provenance
