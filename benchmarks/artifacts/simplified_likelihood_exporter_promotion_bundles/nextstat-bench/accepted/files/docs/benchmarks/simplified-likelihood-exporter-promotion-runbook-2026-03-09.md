@@ -75,7 +75,7 @@ The exporter bundle is promotion-ready for future stable review only if:
   `min_net_end_to_end_upper_limit_speedup >= 1.25x`
 - committed exporter snapshot status is `persisted`
 - committed exporter matrix case count is at least `10`
-- committed exporter matrix includes at least `8 public reinterpretation-style cases`
+- committed exporter matrix includes at least `9 public reinterpretation-style cases`
 
 The bundle also carries the overall public-case minimum separately:
 
@@ -201,7 +201,7 @@ python3 scripts/benchmarks/build_simplified_likelihood_exporter_stable_evidence_
 
 ## Maintenance cadence
 
-The accepted `8 public / 10 total` floor is refreshed:
+The accepted `9 public / 11 total` floor is refreshed:
 
 - on every exporter release PR touching runtime or governance surface
 - on every accepted public-case catalog change

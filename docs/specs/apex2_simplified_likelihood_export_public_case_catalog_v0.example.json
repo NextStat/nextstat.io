@@ -62,6 +62,38 @@
       "notes": "Curated ATLAS-style exporter evidence case with dual signal regions, a mixed-background validation region, and two dedicated control regions, restricted to Gaussian-constrained source nuisances so it adds topology coverage without widening the promoted stable exporter boundary."
     },
     {
+      "case_id": "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
+      "title": "ATLAS-style triple-SR plus validation-region and dual-control-region Gaussian export stable example",
+      "case_kind": "public_reinterpretation_style",
+      "experiment": "ATLAS",
+      "analysis_id": "atlas.public.triple_sr_vr_dual_cr_gaussian.export.stable.example",
+      "source_workspace_format": "pyhf",
+      "source_workspace_schema_version": "pyhf_workspace_v1",
+      "poi_name": "mu",
+      "workspace_json_path": "tests/fixtures/atlas_public_triple_sr_vr_dual_cr_gaussian_workspace.json",
+      "reference": "https://nextstat.io/examples/atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
+      "selection": {
+        "channels": ["SRLow", "SRMid", "SRHigh", "VRMix", "CRTop", "CRZ"],
+        "bins": [
+          "SRLow/bin0",
+          "SRLow/bin1",
+          "SRMid/bin0",
+          "SRMid/bin1",
+          "SRHigh/bin0",
+          "SRHigh/bin1",
+          "VRMix/bin0",
+          "CRTop/bin0",
+          "CRZ/bin0"
+        ]
+      },
+      "output_uncertainty_model": "basis",
+      "basis_method": "eigen",
+      "explained_variance_target": 1.0,
+      "constraint_covariance_source": "source_model_constraints",
+      "split_stat_covariance": true,
+      "notes": "Curated ATLAS-style exporter evidence case with three signal regions, a mixed-background validation region, and two dedicated control regions, restricted to Gaussian-constrained source nuisances so it extends public topology coverage without widening the promoted stable exporter boundary."
+    },
+    {
       "case_id": "atlas_public_sr_cr_gaussian_export_stable_example",
       "title": "ATLAS-style SR plus dual control-region Gaussian export stable example",
       "case_kind": "public_reinterpretation_style",

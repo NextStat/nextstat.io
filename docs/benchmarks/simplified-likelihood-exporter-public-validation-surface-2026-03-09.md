@@ -59,7 +59,7 @@ Supporting inputs:
 
 The public validation report is considered healthy only if:
 
-- `public_case_count >= 8`
+- `public_case_count >= 9`
 - `all_schema_valid = true`
 - `all_fidelity_gates_pass = true`
 - `all_performance_gates_pass = true`
@@ -75,7 +75,7 @@ The committed `nextstat-bench` report is green.
 
 Current public validation summary:
 
-- `public_case_count = 8`
+- `public_case_count = 9`
 - `public_case_names = ["atlas_public_dual_sr_dual_cr_gaussian_export_stable_example", "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example", "atlas_public_sr_cr_gaussian_export_stable_example", "cms_public_sr_cr_export_stable_example", "cms_public_sr_cr_asymmetric_gaussian_export_stable_example", "cms_public_dual_sr_cr_gaussian_export_stable_example", "cms_public_sr_dual_cr_gaussian_export_stable_example", "cms_public_sr_vr_dual_cr_gaussian_export_stable_example"]`
 - `cases_outside_promoted_stable_runtime_boundary = 0`
 - `observed_constraint_covariance_sources = ["source_model_constraints"]`

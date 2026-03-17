@@ -5,6 +5,14 @@ from pathlib import Path
 from scripts.release_stage_assets import stage_release_assets
 
 
+def _current_version() -> str:
+    cargo = Path(__file__).resolve().parents[2] / "Cargo.toml"
+    for line in cargo.read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("version = "):
+            return line.split('"')[1]
+    raise AssertionError("missing workspace version")
+
+
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
@@ -13,11 +21,12 @@ def _write(path: Path, content: str) -> None:
 def test_release_asset_staging_chooses_canonical_sources_for_duplicate_basenames(
     tmp_path: Path,
 ) -> None:
+    version = _current_version()
     dist = tmp_path / "dist"
     out = dist / "release-assets"
 
-    _write(dist / "wheels-x86_64-unknown-linux-gnu" / "nextstat-0.10.0-cp312.whl", "wheel")
-    _write(dist / "sdist" / "nextstat-0.10.0.tar.gz", "sdist")
+    _write(dist / "wheels-x86_64-unknown-linux-gnu" / f"nextstat-{version}-cp312.whl", "wheel")
+    _write(dist / "sdist" / f"nextstat-{version}.tar.gz", "sdist")
     _write(dist / "cli-x86_64-unknown-linux-gnu" / "nextstat-x86_64-unknown-linux-gnu", "bin")
 
     _write(
@@ -44,8 +53,8 @@ def test_release_asset_staging_chooses_canonical_sources_for_duplicate_basenames
         dist / "release-candidate-bundle" / "docs" / "schemas" / "releases" / "release_candidate_bundle_v1.schema.json",
         "bundle-schema",
     )
-    _write(dist / "whitepaper" / "nextstat-whitepaper-v0.10.0.pdf", "pdf")
-    _write(dist / "whitepaper" / "nextstat-whitepaper-v0.10.0.pdf.sha256", "sha")
+    _write(dist / "whitepaper" / f"nextstat-whitepaper-v{version}.pdf", "pdf")
+    _write(dist / "whitepaper" / f"nextstat-whitepaper-v{version}.pdf.sha256", "sha")
 
     _write(dist / "validation-pack" / "artifacts" / "validation_report.json", "base-report")
     _write(dist / "validation-pack" / "artifacts" / "validation_report.pdf", "base-pdf")
@@ -55,6 +64,8 @@ def test_release_asset_staging_chooses_canonical_sources_for_duplicate_basenames
     _write(dist / "validation-pack" / "artifacts" / "validation_pack_manifest.sha256.bin", "base-sha-bin")
     _write(dist / "validation-pack" / "artifacts" / "apex2_master_report.json", "base-master")
     _write(dist / "validation-pack" / "artifacts" / "snapshot_index.json", "base-snapshot")
+    _write(dist / "hep-validation-bundle" / "tmp" / "hep_validation_bundle.json", "hep-bundle-json")
+    _write(dist / "hep-validation-bundle" / "tmp" / "hep_validation_bundle.md", "hep-bundle-md")
 
     _write(dist / "validation-pack" / "artifacts_m15" / "validation_report.json", "m15-report")
     _write(dist / "validation-pack" / "artifacts_m15" / "validation_report.pdf", "m15-pdf")
@@ -140,6 +151,7 @@ def test_release_asset_staging_chooses_canonical_sources_for_duplicate_basenames
     assert (out / "snapshot_index.json").read_text(encoding="utf-8") == "base-snapshot"
     assert (out / "promotion_evidence.json").read_text(encoding="utf-8") == "promotion-accepted"
     assert (out / "m15_config.json").read_text(encoding="utf-8") == "m15-config"
-    assert (out / "nextstat-whitepaper-v0.10.0.pdf").read_text(encoding="utf-8") == "pdf"
+    assert (out / "hep_validation_bundle.json").read_text(encoding="utf-8") == "hep-bundle-json"
+    assert (out / f"nextstat-whitepaper-v{version}.pdf").read_text(encoding="utf-8") == "pdf"
     assert (out / "release_candidate_bundle_v1.schema.json").read_text(encoding="utf-8") == "bundle-schema"
     assert len(names) == len(staged)

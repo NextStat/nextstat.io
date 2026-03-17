@@ -28,6 +28,12 @@ def _make_fast_model():
     return nextstat.GaussianMeanModel([1.0, 2.0, 3.0, 4.0] * 5, sigma=1.0)
 
 
+def _make_linear_regression_model():
+    x = [[float(i), ((i * 7) % 5) * 0.25 - 0.5] for i in range(1, 25)]
+    y = [0.4 + 1.2 * row[0] - 0.7 * row[1] for row in x]
+    return nextstat.LinearRegressionModel(x, y, include_intercept=True)
+
+
 # ---------------------------------------------------------------------------
 # API shape
 # ---------------------------------------------------------------------------
@@ -224,6 +230,58 @@ class TestWalnutsSurface:
         )
         assert isinstance(result, dict)
         assert result["n_samples"] == 10
+
+    def test_walnuts_cuda_supported_linear_smoke(self):
+        if not getattr(nextstat, "has_cuda", lambda: False)():
+            pytest.skip("CUDA runtime not available")
+
+        model = _make_linear_regression_model()
+        result = nextstat.sample(
+            model,
+            method="walnuts",
+            device="cuda",
+            n_chains=1,
+            n_warmup=12,
+            n_samples=6,
+            seed=17,
+            metric="diagonal",
+        )
+        assert isinstance(result, dict)
+        assert result["n_chains"] == 1
+        assert result["sample_stats"]["metric_type"] == "diagonal"
+
+    def test_walnuts_cuda_rejects_dense_metric(self):
+        if not getattr(nextstat, "has_cuda", lambda: False)():
+            pytest.skip("CUDA runtime not available")
+
+        model = _make_linear_regression_model()
+        with pytest.raises(ValueError, match="supports only metric='diagonal'"):
+            nextstat.sample(
+                model,
+                method="walnuts",
+                device="cuda",
+                n_chains=1,
+                n_warmup=10,
+                n_samples=5,
+                seed=19,
+                metric="dense",
+            )
+
+    def test_walnuts_cuda_rejects_unsupported_model_family(self):
+        if not getattr(nextstat, "has_cuda", lambda: False)():
+            pytest.skip("CUDA runtime not available")
+
+        model = _make_fast_model()
+        with pytest.raises(ValueError, match="stable surface currently supports only"):
+            nextstat.sample(
+                model,
+                method="walnuts",
+                device="cuda",
+                n_chains=1,
+                n_warmup=10,
+                n_samples=5,
+                seed=23,
+            )
 
 
 # ---------------------------------------------------------------------------

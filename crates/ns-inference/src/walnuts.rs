@@ -7,12 +7,25 @@
 //!   the Bayesian surface
 
 use crate::adapt::{WindowedAdaptation, find_reasonable_step_size};
-use crate::hmc::{HamiltonianStepper, HmcState, LeapfrogIntegrator, Metric};
+use crate::hmc::{HamiltonianPotential, HamiltonianStepper, HmcState, LeapfrogIntegrator, Metric};
 use crate::nuts::{InitStrategy, MetricType};
 use crate::posterior::Posterior;
 use ns_core::Result;
 use ns_core::traits::LogDensityModel;
 use rand::Rng;
+
+/// Feature-gated contract for models that can build a CUDA-backed WALNUTS potential.
+#[cfg(feature = "cuda")]
+pub trait WalnutsCudaModel: LogDensityModel {
+    /// Build a CUDA-backed unconstrained-space potential on `device_id`.
+    fn build_cuda_walnuts_potential(
+        &self,
+        device_id: usize,
+    ) -> Result<Box<dyn HamiltonianPotential + Send>>;
+
+    /// Human-readable model name for validation messages.
+    fn cuda_walnuts_surface_name(&self) -> &'static str;
+}
 
 /// Low-level WALNUTS trajectory configuration.
 ///
@@ -1006,8 +1019,12 @@ fn recover_state_after_transition(
     (divergent, accept_prob, depth, energy)
 }
 
-fn collect_walnuts_samples_with_transition_counts<M: LogDensityModel + ?Sized>(
+fn collect_walnuts_samples_with_transition_counts<
+    M: LogDensityModel + ?Sized,
+    E: HamiltonianPotential + ?Sized,
+>(
     posterior: &Posterior<'_, M>,
+    evaluator: &E,
     mut state: HmcState,
     rng: &mut impl Rng,
     n_samples: usize,
@@ -1023,7 +1040,7 @@ fn collect_walnuts_samples_with_transition_counts<M: LogDensityModel + ?Sized>(
         WalnutsConfig { min_micro_steps: tuning.min_micro_steps, ..kernel_config.clone() };
     let final_metric = tuning.metric.clone();
     let fixed_integrator = if !use_jitter {
-        Some(LeapfrogIntegrator::new(posterior, tuning.step_size, final_metric.clone()))
+        Some(LeapfrogIntegrator::new(evaluator, tuning.step_size, final_metric.clone()))
     } else {
         None
     };
@@ -1047,7 +1064,7 @@ fn collect_walnuts_samples_with_transition_counts<M: LogDensityModel + ?Sized>(
         } else {
             let u: f64 = rng.random::<f64>() * 2.0 - 1.0;
             let eps = tuning.step_size * (1.0 + jitter * u);
-            jittered_integrator = LeapfrogIntegrator::new(posterior, eps, final_metric.clone());
+            jittered_integrator = LeapfrogIntegrator::new(evaluator, eps, final_metric.clone());
             &jittered_integrator
         };
 
@@ -1112,15 +1129,16 @@ fn collect_walnuts_samples_with_transition_counts<M: LogDensityModel + ?Sized>(
     })
 }
 
-fn adaptive_walnuts_warmup<M: LogDensityModel>(
+fn adaptive_walnuts_warmup<M: LogDensityModel, E: HamiltonianPotential + ?Sized>(
     model: &M,
     posterior: &Posterior<'_, M>,
+    evaluator: &E,
     n_warmup: usize,
     rng: &mut impl Rng,
     config: &AdaptiveWalnutsConfig,
 ) -> Result<(HmcState, RuntimeWalnutsTuning, usize)> {
     let (z_init, metric) = initialize_walnuts_position(model, posterior, rng, config)?;
-    let init_eps = find_reasonable_step_size(posterior, &z_init, &metric, rng);
+    let init_eps = find_reasonable_step_size(evaluator, &z_init, &metric, rng);
     let mut adaptation = WindowedAdaptation::new(
         posterior.dim(),
         n_warmup,
@@ -1129,7 +1147,7 @@ fn adaptive_walnuts_warmup<M: LogDensityModel>(
         config.metric_type,
     );
     adaptation.set_metric(metric.clone());
-    let init_integrator = LeapfrogIntegrator::new(posterior, init_eps, metric);
+    let init_integrator = LeapfrogIntegrator::new(evaluator, init_eps, metric);
 
     let mut state = init_integrator
         .init_state(z_init)
@@ -1149,7 +1167,7 @@ fn adaptive_walnuts_warmup<M: LogDensityModel>(
             metric: current_metric.clone(),
             min_micro_steps: min_micro_adapter.min_micro_steps(),
         };
-        let integrator = LeapfrogIntegrator::new(posterior, tuning.step_size, current_metric);
+        let integrator = LeapfrogIntegrator::new(evaluator, tuning.step_size, current_metric);
         let transition_config =
             WalnutsConfig { min_micro_steps: tuning.min_micro_steps, ..config.kernel.clone() };
 
@@ -1168,7 +1186,7 @@ fn adaptive_walnuts_warmup<M: LogDensityModel>(
             min_micro_adapter.observe(depth);
         }
         if mass_updated {
-            let new_eps = find_reasonable_step_size(posterior, &state.q, adaptation.metric(), rng);
+            let new_eps = find_reasonable_step_size(evaluator, &state.q, adaptation.metric(), rng);
             adaptation.reinit_stepsize(new_eps);
             // A new mass matrix defines a new local integration regime; discard
             // tree-depth history collected under the old metric so warmup does
@@ -1215,6 +1233,7 @@ pub fn sample_walnuts_fixed<M: LogDensityModel>(
 
     collect_walnuts_samples_with_transition_counts(
         &posterior,
+        &posterior,
         state,
         &mut rng,
         n_samples,
@@ -1240,9 +1259,10 @@ pub fn sample_walnuts<M: LogDensityModel>(
     let posterior = Posterior::new(model);
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     let (state, tuning, n_leapfrog_warmup_total) =
-        adaptive_walnuts_warmup(model, &posterior, n_warmup, &mut rng, &config)?;
+        adaptive_walnuts_warmup(model, &posterior, &posterior, n_warmup, &mut rng, &config)?;
     tuning.validate(posterior.dim())?;
     collect_walnuts_samples_with_transition_counts(
+        &posterior,
         &posterior,
         state,
         &mut rng,
@@ -1283,10 +1303,92 @@ pub fn sample_walnuts_multichain(
     })
 }
 
+#[cfg(feature = "cuda")]
+fn sample_walnuts_cuda<M: WalnutsCudaModel>(
+    model: &M,
+    n_warmup: usize,
+    n_samples: usize,
+    seed: u64,
+    config: AdaptiveWalnutsConfig,
+    device_id: usize,
+) -> Result<crate::chain::Chain> {
+    use rand::SeedableRng;
+
+    config.validate()?;
+    if config.metric_type != MetricType::Diagonal {
+        return Err(ns_core::Error::Validation(
+            "WALNUTS device='cuda' currently supports only metric='diagonal'".to_string(),
+        ));
+    }
+
+    let posterior = Posterior::new(model);
+    let potential = model.build_cuda_walnuts_potential(device_id)?;
+    let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
+    let (state, tuning, n_leapfrog_warmup_total) = adaptive_walnuts_warmup(
+        model,
+        &posterior,
+        potential.as_ref(),
+        n_warmup,
+        &mut rng,
+        &config,
+    )?;
+    tuning.validate(posterior.dim())?;
+    collect_walnuts_samples_with_transition_counts(
+        &posterior,
+        potential.as_ref(),
+        state,
+        &mut rng,
+        n_samples,
+        &config.kernel,
+        &tuning,
+        config.stepsize_jitter,
+        n_leapfrog_warmup_total,
+    )
+}
+
+/// Run adaptive WALNUTS sampling on a single CUDA device for supported model families.
+#[cfg(feature = "cuda")]
+pub fn sample_walnuts_multichain_cuda<M: WalnutsCudaModel>(
+    model: &M,
+    n_chains: usize,
+    n_warmup: usize,
+    n_samples: usize,
+    seed: u64,
+    config: AdaptiveWalnutsConfig,
+    device_id: usize,
+) -> Result<crate::chain::SamplerResult> {
+    if n_chains == 0 {
+        return Err(ns_core::Error::Validation("n_chains must be >= 1".to_string()));
+    }
+    let mut chains = Vec::with_capacity(n_chains);
+    for chain_id in 0..n_chains {
+        let chain_seed = seed.wrapping_add(chain_id as u64);
+        chains.push(sample_walnuts_cuda(
+            model,
+            n_warmup,
+            n_samples,
+            chain_seed,
+            config.clone(),
+            device_id,
+        )?);
+    }
+    Ok(crate::chain::SamplerResult {
+        chains,
+        param_names: model.parameter_names(),
+        n_warmup,
+        n_samples,
+        diagnostics: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "cuda")]
+    use crate::cuda_hmc_potential::CudaStdNormalPriorGlmPotential;
     use crate::diagnostics::compute_diagnostics;
+    #[cfg(feature = "cuda")]
+    use crate::regression::LinearRegressionModel;
     use ns_core::traits::{LogDensityModel, PreparedModelRef};
     use rand::SeedableRng;
 
@@ -1294,6 +1396,26 @@ mod tests {
     struct NarrowNormal1D;
     #[derive(Clone, Copy)]
     struct Correlated2D;
+
+    #[cfg(feature = "cuda")]
+    fn linear_regression_model(
+        n: usize,
+        p: usize,
+        include_intercept: bool,
+    ) -> LinearRegressionModel {
+        let mut x = vec![vec![0.0; p]; n];
+        let mut y = vec![0.0; n];
+        for i in 0..n {
+            let mut eta = if include_intercept { 0.2 } else { 0.0 };
+            for j in 0..p {
+                let value = (((i + 1) * 17 + (j + 2) * 11) as f64 * 0.017).sin();
+                x[i][j] = value;
+                eta += value * (((j + 1) as f64) * 0.09).cos();
+            }
+            y[i] = eta + (((i + 3) as f64) * 0.05).sin() * 0.1;
+        }
+        LinearRegressionModel::new(x, y, include_intercept).unwrap()
+    }
 
     impl LogDensityModel for StdNormal1D {
         type Prepared<'a>
@@ -1707,5 +1829,44 @@ mod tests {
         assert_eq!(result.chains.len(), 2);
         assert_eq!(result.n_warmup, 20);
         assert_eq!(result.n_samples, 15);
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_sample_walnuts_multichain_cuda_rejects_dense_metric() {
+        let model = linear_regression_model(24, 2, true);
+        let config = AdaptiveWalnutsConfig { metric_type: MetricType::Dense, ..Default::default() };
+
+        let err = sample_walnuts_multichain_cuda(&model, 1, 10, 5, 123, config, 0).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("WALNUTS device='cuda' currently supports only metric='diagonal'")
+        );
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_sample_walnuts_multichain_cuda_linear_smoke() {
+        if !CudaStdNormalPriorGlmPotential::is_available() {
+            return;
+        }
+
+        let model = linear_regression_model(64, 3, true);
+        let result = sample_walnuts_multichain_cuda(
+            &model,
+            1,
+            12,
+            6,
+            777,
+            AdaptiveWalnutsConfig::default(),
+            0,
+        )
+        .unwrap();
+
+        assert_eq!(result.chains.len(), 1);
+        assert_eq!(result.n_warmup, 12);
+        assert_eq!(result.n_samples, 6);
+        assert_eq!(result.param_names, model.parameter_names());
+        assert_eq!(result.chains[0].draws_constrained.len(), 6);
     }
 }

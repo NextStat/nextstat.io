@@ -21,8 +21,8 @@
         "value": 0.9725724476343856
       },
       "worst_ess_per_sec": {
-        "case": "neal_funnel_2d",
-        "value": 1098.464168758134
+        "case": "glm_logistic",
+        "value": 1080.231273452322
       },
       "worst_max_r_hat": {
         "case": "neal_funnel_2d",
@@ -52,7 +52,7 @@
           "ok"
         ],
         "worst_accept_rate": 0.9788431958861676,
-        "worst_ess_per_sec": 24649.208831450156,
+        "worst_ess_per_sec": 26636.801588641705,
         "worst_max_r_hat": 1.008335229673906,
         "worst_min_ess_bulk": 4116.015401388176,
         "worst_min_ess_tail": 1769.9857546680487
@@ -67,7 +67,7 @@
           "ok"
         ],
         "worst_accept_rate": 0.9818841515364708,
-        "worst_ess_per_sec": 1117.7823969906428,
+        "worst_ess_per_sec": 1080.231273452322,
         "worst_max_r_hat": 1.0061242007284081,
         "worst_min_ess_bulk": 1714.9372501500136,
         "worst_min_ess_tail": 2355.206187421539
@@ -82,7 +82,7 @@
           "ok"
         ],
         "worst_accept_rate": 0.9725724476343856,
-        "worst_ess_per_sec": 1098.464168758134,
+        "worst_ess_per_sec": 1117.8345340973333,
         "worst_max_r_hat": 1.0087217815047962,
         "worst_min_ess_bulk": 1092.5183505785126,
         "worst_min_ess_tail": 491.4354189667535
@@ -97,7 +97,7 @@
           "ok"
         ],
         "worst_accept_rate": 0.9818813741746254,
-        "worst_ess_per_sec": 50029.28787725271,
+        "worst_ess_per_sec": 49205.5230886148,
         "worst_max_r_hat": 1.0085782729615687,
         "worst_min_ess_bulk": 6384.055867328123,
         "worst_min_ess_tail": 6020.715059051951
@@ -150,6 +150,6 @@
   },
   "schema_version": "nextstat.mams_multiseed_assessment.v1",
   "source_summary_path": "mams_multiseed_summary.json",
-  "source_summary_sha256": "1c673eca3ee0a946dcdd25e3dd2baf395fe3daf96ab6146f51452d3e18d4ec13",
+  "source_summary_sha256": "de524fb953941148f1781936f8b9713a0a63685817f9bc4f2d87fe82adcb7211",
   "suite": "mams"
 }

@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Iterable
@@ -25,6 +26,25 @@ import yaml
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
+
+
+def _resolve_nextstat_binary(explicit: str | None) -> str:
+    if explicit:
+        return explicit
+
+    repo = _repo_root()
+    candidates = [
+        repo / ".venv" / "bin" / "nextstat",
+        repo / "target" / "release" / "nextstat",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    discovered = shutil.which("nextstat")
+    if discovered:
+        return discovered
+    return "nextstat"
 
 
 def _load_yaml(path: Path) -> Any:
@@ -210,10 +230,7 @@ def main() -> int:
     schema = _load_json(args.schema)
     _validate(spec, schema)
 
-    nextstat = args.nextstat
-    if nextstat is None:
-        local = _repo_root() / "target" / "release" / "nextstat"
-        nextstat = str(local) if local.exists() else "nextstat"
+    nextstat = _resolve_nextstat_binary(args.nextstat)
 
     cmd = [nextstat, "run", "--config", str(args.spec)]
     _run(cmd, dry_run=args.dry_run)

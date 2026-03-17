@@ -46,7 +46,13 @@ Pharma release evidence policy:
    ```bash
    make apex2-pre-release-gate
    ```
+   Notes:
+   - local/dev runs use `APEX2_PERF_POLICY=auto` by default
+   - `auto` enforces performance only when `APEX2_CANONICAL_PERF_RUNNER=1`
+   - otherwise perf drift is reported as an advisory while governance remains hard-gated
 4. Review:
+   - `tmp/apex2_pre_release_gate_summary.json`
+   - `tmp/apex2_pre_release_gate_summary.md`
    - `tmp/baseline_compare_report.json`
    - `tmp/trex_analysis_spec_compare_report.json` when applicable
    - `tmp/root_suite_compare_report.json` when applicable
@@ -59,7 +65,11 @@ Pharma release evidence policy:
    - `tmp/release_candidate_bundle/`
    - canonical Linux pharma evidence and any downstream reuse of `pharma_validation.json`
 5. Confirm that every required stable-surface gate listed in the release surface report is green.
-6. Use tag push as the canonical publish path:
+6. Interpret the pre-release exit code before taking action:
+   - `20`: governance / correctness failure; release is blocked
+   - `21`: performance / baseline failure on an enforced/canonical perf runner; review before changing contracts
+   - `22`: infrastructure / baseline-state failure; fix the prerelease environment first
+7. Use tag push as the canonical publish path:
    - `git tag vX.Y.Z`
    - `git push origin vX.Y.Z`
 
@@ -73,6 +83,8 @@ The release surface matrix is the machine-readable source of truth for:
 - which docs are canonical for each stable surface
 
 The pre-release gate emits:
+- `tmp/apex2_pre_release_gate_summary.json`
+- `tmp/apex2_pre_release_gate_summary.md`
 - `tmp/release_surface_matrix_report.json`
 - `tmp/release_surface_matrix_report.md`
 - `tmp/release_full_fidelity_simulation_report.json`
@@ -89,6 +101,8 @@ Interpretation:
 - `simplified_likelihood_stable_surface`
 - `simplified_likelihood_exporter_surface`
 - `m15_reporting_stable_surface`
+- `hepdata_import_stable_surface`
+- `histfactory_stable_surface`
 
 Current optional manual surface:
 - `root_trexfitter_parity`

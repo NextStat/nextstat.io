@@ -105,6 +105,54 @@
       "within_promoted_stable_runtime_boundary": true
     },
     {
+      "analysis_id": "atlas.public.triple_sr_vr_dual_cr_gaussian.export.stable.example",
+      "case_id": "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
+      "constraint_covariance_source": "source_model_constraints",
+      "experiment": "ATLAS",
+      "fidelity": {
+        "delta_mu_hat_over_sigma_full": 0.000538324596421961,
+        "max_abs_q_mu_diff": 0.07209092928133032,
+        "passes": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "upper_limit_ratio": 0.9976996718649572
+      },
+      "gaussian_constrained_source_workspace": true,
+      "name": "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
+      "output": {
+        "full_nuisance_count": 6,
+        "reduced_nuisance_count": 5,
+        "reduction_ratio": 0.8333333333333334,
+        "uncertainty_model_kind": "basis"
+      },
+      "outside_promoted_stable_runtime_boundary_reason": null,
+      "performance": {
+        "net_end_to_end_upper_limit_speedup": 1.9063922871235959,
+        "passes": {
+          "net_end_to_end_upper_limit_speedup": true
+        }
+      },
+      "reference": "https://nextstat.io/examples/atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
+      "source_workspace_modifier_types": [
+        "histosys",
+        "lumi",
+        "normfactor",
+        "normsys"
+      ],
+      "source_workspace_path": "tests/fixtures/atlas_public_triple_sr_vr_dual_cr_gaussian_workspace.json",
+      "title": "ATLAS-style triple-SR plus validation-region and dual-control-region Gaussian export stable example",
+      "validation": {
+        "audit_schema_valid": true,
+        "export_report_schema_valid": true,
+        "input_schema_valid": true,
+        "runtime_export_ok": true,
+        "schema_valid": true
+      },
+      "within_promoted_stable_runtime_boundary": true
+    },
+    {
       "analysis_id": "atlas.public.sr_cr_gaussian.export.stable.example",
       "case_id": "atlas_public_sr_cr_gaussian_export_stable_example",
       "constraint_covariance_source": "source_model_constraints",
@@ -395,7 +443,7 @@
   ],
   "catalog_path": "docs/specs/apex2_simplified_likelihood_export_public_case_catalog_v0.example.json",
   "catalog_schema_version": "nextstat_simplified_likelihood_export_public_case_catalog_v0",
-  "generated_at_utc": "2026-03-11T21:15:18Z",
+  "generated_at_utc": "1970-01-01T00:00:00Z",
   "schema_version": "nextstat_simplified_likelihood_export_public_validation_report_v0",
   "status": "ok",
   "summary": {
@@ -407,8 +455,8 @@
     "benchmark_host": "nextstat-bench",
     "benchmark_status": "ok",
     "cases_outside_promoted_stable_runtime_boundary": 0,
-    "cases_within_promoted_stable_runtime_boundary": 8,
-    "catalog_case_count": 8,
+    "cases_within_promoted_stable_runtime_boundary": 9,
+    "catalog_case_count": 9,
     "export_matrix_status": "ok",
     "fidelity_thresholds": {
       "max_abs_q_mu_diff": 0.1,
@@ -430,10 +478,11 @@
     "performance_thresholds": {
       "min_net_end_to_end_upper_limit_speedup": 0.75
     },
-    "public_case_count": 8,
+    "public_case_count": 9,
     "public_case_names": [
       "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
       "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+      "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
       "atlas_public_sr_cr_gaussian_export_stable_example",
       "cms_public_sr_cr_export_stable_example",
       "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",

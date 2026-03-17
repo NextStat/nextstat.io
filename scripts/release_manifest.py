@@ -131,6 +131,7 @@ def build_manifest(release_tag: str, mode: str) -> dict[str, Any]:
                 "simplified-likelihood-stable-surface-report",
                 "simplified-likelihood-exporter-surface-report",
                 "m15-reporting-stable-surface-report",
+                "hep-validation-bundle",
                 "wheels-*",
                 "sdist",
                 "cli-wheels-*",

@@ -23,16 +23,17 @@
   "benchmark_host": "nextstat-bench",
   "current_evidence_summary": {
     "cases_outside_promoted_stable_runtime_boundary": 0,
-    "export_matrix_case_count": 10,
+    "export_matrix_case_count": 11,
     "max_abs_q_mu_diff": 0.09618848026584459,
     "max_upper_limit_ratio_deviation": 0.011190668120821257,
     "observed_constraint_covariance_sources": [
       "source_model_constraints"
     ],
-    "public_case_count": 8,
+    "public_case_count": 9,
     "public_case_names": [
       "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
       "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+      "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
       "atlas_public_sr_cr_gaussian_export_stable_example",
       "cms_public_sr_cr_export_stable_example",
       "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
@@ -91,13 +92,13 @@
   "source_artifacts": {
     "benchmark_artifact_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
     "public_validation_report_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_public_validation_report.json",
-    "stable_promotion_decision_path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json"
+    "stable_promotion_decision_path": "tmp/exporter_bundle_refresh/accepted/stable_promotion_decision.json"
   },
   "stable_evidence_floor": {
-    "min_public_reinterpretation_style_case_count": 8,
+    "min_public_reinterpretation_style_case_count": 9,
     "min_public_validation_net_end_to_end_upper_limit_speedup": 0.75,
     "min_synthetic_control_net_end_to_end_upper_limit_speedup": 1.25,
-    "min_total_export_matrix_case_count": 10
+    "min_total_export_matrix_case_count": 11
   },
   "status": "accepted",
   "support_class": "stable"

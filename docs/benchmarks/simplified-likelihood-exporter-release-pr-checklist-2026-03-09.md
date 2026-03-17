@@ -29,7 +29,7 @@ Use this checklist when a release PR includes exporter-facing changes.
 - keep broader exporter modes marked as `research-grade fallback`
 - keep `aligned_fit_covariance` and source-level nuisance identity claims out of
   the `stable` subset
-- keep the accepted stable-evidence floor explicit as `8 public / 10 total`
+- keep the accepted stable-evidence floor explicit as `9 public / 11 total`
 - keep exporter public-case admission policy explicit instead of silently
   counting broader cases toward the accepted floor
 - keep maintenance cadence explicit for exporter release PRs and public-case

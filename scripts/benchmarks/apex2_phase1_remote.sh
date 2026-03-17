@@ -114,7 +114,8 @@ rm -rf "$REPO/.venv" "$REPO/.venv_epyc" "$REPO/.venv_v100" >/dev/null 2>&1 || tr
 export VIRTUAL_ENV="$VENV"
 export PATH="$VENV/bin:$PATH"
 
-"$VENV/bin/python" -m maturin develop --release --pip-path "$VENV/bin/pip"
+bash "$APEX2_REMOTE_REPO/benchmarks/nextstat-public-benchmarks/scripts/install_local_nextstat_python.sh" \
+  "$APEX2_REMOTE_REPO" "$VENV" "$CARGO_TARGET_DIR"
 EOS
 
 echo "[apex2-remote] run apex2 phase1..."

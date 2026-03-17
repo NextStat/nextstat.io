@@ -1,0 +1,84 @@
+{
+  "schema_version": "nextstat_simplified_likelihood_export_report_v0",
+  "status": "ok",
+  "support_class": "research-grade",
+  "source": {
+    "workspace_format": "pyhf",
+    "workspace_schema_version": "pyhf_workspace_v1",
+    "fit_result_schema_version": "nextstat_fit_result_v0",
+    "poi_name": "mu"
+  },
+  "metadata": {
+    "experiment": "ATLAS",
+    "analysis_id": "atlas.sl.example.export.v0",
+    "source_format": "derived_from_workspace",
+    "reference": "internal-note-2026-03",
+    "description": "Example export report for a derived simplified-likelihood artifact."
+  },
+  "selection": {
+    "channels": ["singlechannel"],
+    "bins": ["singlechannel/bin0", "singlechannel/bin1"]
+  },
+  "reduction": {
+    "output_uncertainty_model": "basis",
+    "basis_method": "eigen",
+    "explained_variance_target": 0.95,
+    "constraint_covariance_source": "source_model_constraints",
+    "max_components": 1,
+    "split_stat_covariance": true
+  },
+  "jacobian": {
+    "method": "finite_difference",
+    "relative_step": 0.01,
+    "absolute_step_floor": 1e-06
+  },
+  "fidelity_smoke": {
+    "random_draws": 8,
+    "qmu_test_mu": 1.0,
+    "upper_limit_cl": 0.95
+  },
+  "output": {
+    "schema_version": "nextstat_simplified_likelihood_v0",
+    "uncertainty_model_kind": "basis",
+    "bins_count": 2,
+    "full_nuisance_count": 2,
+    "reduced_nuisance_count": 1,
+    "reduction_ratio": 0.5,
+    "json_bytes": 2048,
+    "json_sha256": "6b5b8a20dc6f1e661b2ce6d2050d81a39f442b803dc253f60df5d8f551f3e5db"
+  },
+  "diagnostics": {
+    "factorization": {
+      "method": "symmetric_eigendecomposition",
+      "original_rank": 2,
+      "retained_rank": 1,
+      "explained_variance_fraction": 0.96,
+      "frobenius_residual": 0.012,
+      "clipped_negative_eigenvalues": 0,
+      "max_clipped_negative_eigenvalue_magnitude": 0.0,
+      "input_trace": 7.25,
+      "retained_trace": 6.96,
+      "stat_covariance_trace": 3.14,
+      "shared_systematic_trace": 4.11
+    },
+    "fidelity": {
+      "nuisance_count_full": 2,
+      "nuisance_count_reduced": 1,
+      "bins_count": 2,
+      "relative_background_cov_residual": 0.012,
+      "max_abs_expected_delta_at_nominal": 0.08,
+      "max_abs_expected_delta_random_draws": 0.17,
+      "qmu_delta_smoke": 0.03,
+      "upper_limit_ratio_smoke": 1.01,
+      "max_abs_yield_delta": 0.22,
+      "max_rel_yield_delta": 0.009
+    }
+  },
+  "unsupported_semantics": [],
+  "explicit_boundaries": [
+    "source_workspace.format=pyhf only",
+    "partial per-channel bin selection unsupported",
+    "derived_from_workspace preserves reduced nuisance coordinates, not source-level nuisance identities",
+    "constraint_covariance_source=source_model_constraints currently supports Gaussian-constrained nuisances only"
+  ]
+}

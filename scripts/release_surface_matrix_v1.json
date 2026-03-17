@@ -92,6 +92,49 @@
       ]
     },
     {
+      "id": "hepdata_import_stable_surface",
+      "name": "HEPData Import Stable Surface",
+      "required_for_release": true,
+      "make_target": "hepdata-import-stable-surface-gate",
+      "workflow_job": "hepdata-import-stable-surface",
+      "docs": [
+        "docs/benchmarks/hepdata-import-support-matrix-2026-03-08.md",
+        "docs/benchmarks/hepdata-import-runtime-gate.md",
+        "docs/benchmarks/hepdata-import-release-pr-checklist-2026-03-08.md"
+      ],
+      "path_globs": [
+        "scripts/benchmarks/run_hepdata_import_benchmark_gate.py",
+        "scripts/benchmarks/bench_hepdata_import.py",
+        "scripts/benchmarks/compare_hepdata_import_benchmark.py",
+        "scripts/benchmarks/promote_hepdata_import_benchmark_baseline.py",
+        "docs/benchmarks/hepdata-*",
+        "docs/schemas/io/hepdata_*",
+        "docs/schemas/benchmarks/hepdata_*",
+        "crates/ns-cli/tests/cli_import_hepdata.rs",
+        "tests/python/test_hepdata_*"
+      ]
+    },
+    {
+      "id": "histfactory_stable_surface",
+      "name": "HistFactory Core Stable Surface",
+      "required_for_release": true,
+      "make_target": "histfactory-stable-surface-gate",
+      "workflow_job": "histfactory-stable-surface",
+      "docs": [
+        "docs/benchmarks/histfactory-support-matrix-2026-03-17.md",
+        "docs/benchmarks/histfactory-stable-surface-acceptance-2026-03-17.md"
+      ],
+      "path_globs": [
+        "scripts/benchmarks/histfactory_stable_surface_gate.sh",
+        "docs/benchmarks/histfactory-*",
+        "crates/ns-cli/tests/cli_run_histfactory_smoke.rs",
+        "crates/ns-cli/tests/cli_import_histfactory.rs",
+        "crates/ns-cli/tests/cli_export_histfactory.rs",
+        "tests/python/test_pyhf_generated_workspaces.py",
+        "tests/python/test_histfactory_*"
+      ]
+    },
+    {
       "id": "root_trexfitter_parity",
       "name": "ROOT / TRExFitter parity",
       "required_for_release": false,

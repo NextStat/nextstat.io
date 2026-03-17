@@ -2010,7 +2010,7 @@ dependencies = [
 
 [[package]]
 name = "ns-ad"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "criterion",
@@ -2025,7 +2025,7 @@ dependencies = [
 
 [[package]]
 name = "ns-calc-wasm"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",
@@ -2038,7 +2038,7 @@ dependencies = [
 
 [[package]]
 name = "ns-cli"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -2072,7 +2072,7 @@ dependencies = [
 
 [[package]]
 name = "ns-compute"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "block",
@@ -2095,7 +2095,7 @@ dependencies = [
 
 [[package]]
 name = "ns-core"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "criterion",
@@ -2109,7 +2109,7 @@ dependencies = [
 
 [[package]]
 name = "ns-inference"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "argmin",
@@ -2138,7 +2138,7 @@ dependencies = [
 
 [[package]]
 name = "ns-prob"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "criterion",
@@ -2149,7 +2149,7 @@ dependencies = [
 
 [[package]]
 name = "ns-py"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "nalgebra",
  "ns-ad",
@@ -2168,7 +2168,7 @@ dependencies = [
 
 [[package]]
 name = "ns-root"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "criterion",
@@ -2187,7 +2187,7 @@ dependencies = [
 
 [[package]]
 name = "ns-server"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -2215,7 +2215,7 @@ dependencies = [
 
 [[package]]
 name = "ns-translate"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "arrow",
@@ -2244,7 +2244,7 @@ dependencies = [
 
 [[package]]
 name = "ns-unbinned"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "anyhow",
  "approx",
@@ -2270,7 +2270,7 @@ dependencies = [
 
 [[package]]
 name = "ns-viz"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "ns-core",
@@ -2284,7 +2284,7 @@ dependencies = [
 
 [[package]]
 name = "ns-viz-render"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "ab_glyph",
  "approx",
@@ -2303,7 +2303,7 @@ dependencies = [
 
 [[package]]
 name = "ns-wasm"
-version = "0.10.0"
+version = "0.10.1"
 dependencies = [
  "console_error_panic_hook",
  "js-sys",

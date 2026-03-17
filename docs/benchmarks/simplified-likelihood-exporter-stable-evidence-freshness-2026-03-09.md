@@ -10,7 +10,7 @@ The exporter stable subset already has a published admission policy in
 `stable_evidence_policy.json`.
 
 This note adds the missing operational guard: a machine-readable freshness
-report so the accepted `8 public / 10 total` floor cannot silently age past the
+report so the accepted `9 public / 11 total` floor cannot silently age past the
 review window.
 
 ## Contract

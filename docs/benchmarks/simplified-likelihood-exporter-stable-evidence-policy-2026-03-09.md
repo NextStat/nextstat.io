@@ -16,7 +16,7 @@ This policy covers the separate question that release governance must answer:
 
 - when a public exporter case is admissible into the accepted stable-evidence matrix
 - when the committed current snapshot and accepted bundle must be refreshed
-- which docs/workflows must move in lockstep when the `8 public / 10 total`
+- which docs/workflows must move in lockstep when the `9 public / 11 total`
   floor changes
 
 ## Machine-readable policy artifact
@@ -66,7 +66,7 @@ only if all of the following hold:
 - the case does not force silent widening of the promoted runtime/source-semantics boundary
 
 If any one of these fails, the case can still exist as research-grade evidence,
-but it must not be counted toward the accepted `8 public / 10 total` stable floor.
+but it must not be counted toward the accepted `9 public / 11 total` stable floor.
 
 ## Maintenance cadence
 
@@ -117,7 +117,7 @@ Required uploaded artifacts now explicitly include:
 The committed accepted policy reflects the current `nextstat-bench` evidence:
 
 - `export_matrix_case_count = 10`
-- `public_case_count = 8`
+- `public_case_count = 9`
 - `public_case_names = ["atlas_public_dual_sr_dual_cr_gaussian_export_stable_example", "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example", "atlas_public_sr_cr_gaussian_export_stable_example", "cms_public_sr_cr_export_stable_example", "cms_public_sr_cr_asymmetric_gaussian_export_stable_example", "cms_public_dual_sr_cr_gaussian_export_stable_example", "cms_public_sr_dual_cr_gaussian_export_stable_example", "cms_public_sr_vr_dual_cr_gaussian_export_stable_example"]`
 - `synthetic_min_net_end_to_end_upper_limit_speedup = 2.1792428549098894x`
 - `public_min_net_end_to_end_upper_limit_speedup = 0.8777103422927768x`
@@ -135,5 +135,5 @@ This policy makes the stable evidence floor explicit too:
 - when the accepted evidence must be refreshed
 - which release surfaces must stay aligned
 
-That keeps the accepted `8 public / 10 total` floor governable as a stable
+That keeps the accepted `9 public / 11 total` floor governable as a stable
 product surface instead of a one-off benchmark snapshot.

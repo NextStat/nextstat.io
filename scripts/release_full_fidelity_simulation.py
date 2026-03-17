@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from scripts.release_manifest import build_manifest
+from scripts.release_manifest import build_manifest, validate_release_tag
 from scripts.release_stage_assets import stage_release_assets
 
 
@@ -156,24 +156,24 @@ def _validation_pack_m15_seed_paths() -> list[str]:
     ]
 
 
-def seed_paths_for_pattern(pattern: str) -> list[str]:
+def seed_paths_for_pattern(pattern: str, version: str) -> list[str]:
     if "*" not in pattern:
         return [_replace_matrix_placeholder(pattern)]
     normalized = _replace_matrix_placeholder(pattern)
     if normalized == "bindings/ns-py/dist/*.whl":
-        return ["bindings/ns-py/dist/nextstat-0.10.0-cp313-cp313-sample.whl"]
+        return [f"bindings/ns-py/dist/nextstat-{version}-cp313-cp313-sample.whl"]
     if normalized == "bindings/ns-py/dist/*.tar.gz":
-        return ["bindings/ns-py/dist/nextstat-0.10.0.tar.gz"]
+        return [f"bindings/ns-py/dist/nextstat-{version}.tar.gz"]
     if normalized == "bindings/ns-cli-py/dist/*.whl":
-        return ["bindings/ns-cli-py/dist/nextstat_cli-0.10.0-py3-none-sample.whl"]
+        return [f"bindings/ns-cli-py/dist/nextstat_cli-{version}-py3-none-sample.whl"]
     if normalized == "bindings/ns-cli-py/dist/*.tar.gz":
-        return ["bindings/ns-cli-py/dist/nextstat_cli-0.10.0.tar.gz"]
+        return [f"bindings/ns-cli-py/dist/nextstat_cli-{version}.tar.gz"]
     if normalized == "dist/nextstat-*":
         return ["dist/nextstat-sample-target"]
     if normalized == "dist/whitepaper/*":
         return [
-            "dist/whitepaper/nextstat-whitepaper-v0.10.0.pdf",
-            "dist/whitepaper/nextstat-whitepaper-v0.10.0.pdf.sha256",
+            f"dist/whitepaper/nextstat-whitepaper-v{version}.pdf",
+            f"dist/whitepaper/nextstat-whitepaper-v{version}.pdf.sha256",
         ]
     if normalized == "artifacts/*":
         return _validation_pack_seed_paths()
@@ -184,11 +184,11 @@ def seed_paths_for_pattern(pattern: str) -> list[str]:
     return [normalized.replace("*", "sample")]
 
 
-def seed_placeholder_sources(source_root: Path, upload_steps: list[UploadArtifactStep]) -> list[Path]:
+def seed_placeholder_sources(source_root: Path, upload_steps: list[UploadArtifactStep], version: str) -> list[Path]:
     created: list[Path] = []
     for step in upload_steps:
         for pattern in step.paths:
-            for rel_path in seed_paths_for_pattern(pattern):
+            for rel_path in seed_paths_for_pattern(pattern, version):
                 path = source_root / rel_path
                 if path.exists():
                     continue
@@ -291,12 +291,13 @@ def render_report_markdown(report: dict[str, Any]) -> str:
 
 
 def run_simulation(release_tag: str, mode: str, out_dir: Path) -> tuple[dict[str, Any], Path]:
+    version = validate_release_tag(release_tag)
     workflow_text = _workflow_path().read_text(encoding="utf-8")
     upload_steps = parse_upload_artifact_steps(workflow_text)
     source_root = out_dir / "source"
     dist_root = out_dir / "dist"
     staged_root = out_dir / "release-assets"
-    seed_placeholder_sources(source_root, upload_steps)
+    seed_placeholder_sources(source_root, upload_steps, version)
     artifact_inventory = simulate_downloaded_artifacts(source_root, dist_root, upload_steps)
     staged_assets = stage_release_assets(dist_root, staged_root)
     report = build_simulation_report(release_tag, mode, artifact_inventory, staged_assets)

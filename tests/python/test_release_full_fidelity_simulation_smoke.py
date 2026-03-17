@@ -13,6 +13,17 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _current_version() -> str:
+    for line in (_repo_root() / "Cargo.toml").read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("version = "):
+            return line.split('"')[1]
+    raise AssertionError("missing workspace version")
+
+
+def _current_release_tag() -> str:
+    return f"v{_current_version()}"
+
+
 def test_release_candidate_workflow_uploads_are_parsed() -> None:
     workflow = (_repo_root() / ".github" / "workflows" / "release-candidate.yml").read_text(
         encoding="utf-8"
@@ -27,7 +38,7 @@ def test_release_candidate_workflow_uploads_are_parsed() -> None:
 
 
 def test_release_full_fidelity_simulation_stages_canonical_release_assets(tmp_path: Path) -> None:
-    report, staged_root = run_simulation("v0.10.0", "publish", tmp_path / "simulation")
+    report, staged_root = run_simulation(_current_release_tag(), "publish", tmp_path / "simulation")
 
     staged_names = set(report["staged_assets"])
     assert report["schema_version"] == "nextstat.release_full_fidelity_simulation.v1"
@@ -59,6 +70,6 @@ def test_release_full_fidelity_simulation_stages_canonical_release_assets(tmp_pa
 
 
 def test_release_full_fidelity_simulation_report_is_json_serializable(tmp_path: Path) -> None:
-    report, _ = run_simulation("v0.10.0", "prepare", tmp_path / "simulation")
+    report, _ = run_simulation(_current_release_tag(), "prepare", tmp_path / "simulation")
     payload = json.dumps(report, indent=2, sort_keys=True)
     assert '"schema_version": "nextstat.release_full_fidelity_simulation.v1"' in payload

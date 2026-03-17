@@ -2,20 +2,20 @@
   "artifacts": [
     {
       "bundle_path": "files/benchmark/apex2_simplified_likelihood_report.json",
-      "bytes": 57072,
+      "bytes": 61464,
       "kind": "benchmark_artifact",
       "required": true,
       "role": "benchmark_artifact",
-      "sha256": "1de25d52bbda6b6c856b14b70d64debc5a7f8c2fd44f3e5ec4c1ac12b28d72f1",
+      "sha256": "2ad2e9cf55ce55a81ea4465ebd389182bad64fbd464aef829f62d1a6006eb7cf",
       "source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json"
     },
     {
       "bundle_path": "files/benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_benchmark_snapshot_report.json",
-      "bytes": 3214,
+      "bytes": 3216,
       "kind": "benchmark_snapshot_report",
       "required": true,
       "role": "current_snapshot_report",
-      "sha256": "e60a89d9cfb4046b2e68ec6cd9e323af72039c28990d6a8cb9542e2b12430150",
+      "sha256": "0a10e94b97d702200ed2e6dc77e0017d0957955f566a384237ef25b3b984853d",
       "source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_benchmark_snapshot_report.json"
     },
     {
@@ -24,16 +24,16 @@
       "kind": "benchmark_snapshot_index",
       "required": true,
       "role": "current_snapshot_index",
-      "sha256": "d72212e25e3f08c7ca338aa09dc5a28a82156df99bc55eba70be44f8d6b238e7",
+      "sha256": "bbf516d010dce6b8cb3b2850a1b9bee964d9a897d72b38b586e1511d6e8171de",
       "source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/snapshot_index.json"
     },
     {
       "bundle_path": "files/docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md",
-      "bytes": 11231,
+      "bytes": 11235,
       "kind": "doc",
       "required": true,
       "role": "exporter_acceptance_doc",
-      "sha256": "3e03c408348c16f64d872bfe2f795e04b0c8182aeaf544cb0dee93bde1860842",
+      "sha256": "cbdd6a9554acec928bb0be0d5ff6e9a0880db655d268e20bbaa17cee5427a97f",
       "source_path": "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md"
     },
     {
@@ -47,29 +47,29 @@
     },
     {
       "bundle_path": "files/docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md",
-      "bytes": 12029,
+      "bytes": 12032,
       "kind": "doc",
       "required": true,
       "role": "exporter_promotion_runbook_doc",
-      "sha256": "61850eac523513d448f57e0c8666b018ef3499c5d41a66e5d114b58288c2b956",
+      "sha256": "03c7aad33eeaa8254f14594cb793f4a3f357a484a59a0652e56b3d9edb5c1da3",
       "source_path": "docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md"
     },
     {
       "bundle_path": "files/docs/benchmarks/simplified-likelihood-exporter-stable-evidence-policy-2026-03-09.md",
-      "bytes": 5810,
+      "bytes": 5932,
       "kind": "doc",
       "required": true,
       "role": "exporter_stable_evidence_policy_doc",
-      "sha256": "d8e99276d5faff88dc53a80f60dbfb2477e7b496f2f0be7b0c9a679fafb8ed43",
+      "sha256": "1f43b7d231bf386114f4da3e393d2598eece4404f2ac1b8fa6962fa7c1b98003",
       "source_path": "docs/benchmarks/simplified-likelihood-exporter-stable-evidence-policy-2026-03-09.md"
     },
     {
       "bundle_path": "files/docs/benchmarks/simplified-likelihood-exporter-stable-evidence-freshness-2026-03-09.md",
-      "bytes": 2336,
+      "bytes": 2338,
       "kind": "doc",
       "required": true,
       "role": "exporter_stable_evidence_freshness_doc",
-      "sha256": "2c19434a5e58cc64c27546aaf7b12657297da00391e571d59c992e7643dce033",
+      "sha256": "234f55c6e41f9c4602fd171daa047776d3163422adf740e8a254ed880f7f849d",
       "source_path": "docs/benchmarks/simplified-likelihood-exporter-stable-evidence-freshness-2026-03-09.md"
     },
     {
@@ -83,38 +83,38 @@
     },
     {
       "bundle_path": "files/docs/benchmarks/simplified-likelihood-benchmark-snapshot-2026-03-08.md",
-      "bytes": 17257,
+      "bytes": 17260,
       "kind": "doc",
       "required": true,
       "role": "benchmark_snapshot_doc",
-      "sha256": "ead42c803cd628a38d2fcd17c08ff877d401b4d32b459f27136570b4e4172111",
+      "sha256": "6299fce985ad48b6660a43d198586877ff04217c7ce976cc215553045b3588c8",
       "source_path": "docs/benchmarks/simplified-likelihood-benchmark-snapshot-2026-03-08.md"
     },
     {
       "bundle_path": "files/docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08.md",
-      "bytes": 15265,
+      "bytes": 15266,
       "kind": "doc",
       "required": true,
       "role": "support_matrix_doc",
-      "sha256": "54a3357be4d3acf00c2ead4bc188f35dd4b722039eda4223bf4602ff164e131b",
+      "sha256": "15d2d5140ddbb35e5525e1191d059b01891f29525a4a6f0c83c5bb99d94e1584",
       "source_path": "docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08.md"
     },
     {
       "bundle_path": "files/docs/benchmarks/simplified-likelihood-release-notes-2026-03-08.md",
-      "bytes": 9812,
+      "bytes": 9813,
       "kind": "doc",
       "required": true,
       "role": "release_notes_doc",
-      "sha256": "eb2a75770cb52d60a676dedf61ef7803ffdc4e412598dacc9df81911a399f200",
+      "sha256": "dab2397b4703d1ea56323d52062404c1178eb5d91c03e75595c20588e5b26058",
       "source_path": "docs/benchmarks/simplified-likelihood-release-notes-2026-03-08.md"
     },
     {
       "bundle_path": "files/docs/references/simplified-likelihood-artifacts.md",
-      "bytes": 34309,
+      "bytes": 34310,
       "kind": "doc",
       "required": true,
       "role": "artifact_reference_doc",
-      "sha256": "2d7eea881a439cf2b2cb78346b272cbe3666a241dfbd97e5c2cc73ead752c2c6",
+      "sha256": "71ec5f7e592517a2512bcca2c4cb76573ffa765a02d8895a82382a9d603eeedd",
       "source_path": "docs/references/simplified-likelihood-artifacts.md"
     },
     {
@@ -209,20 +209,20 @@
     },
     {
       "bundle_path": "files/docs/specs/benchmarks/simplified_likelihood_export_benchmark_snapshot_report_v0.example.json",
-      "bytes": 2944,
+      "bytes": 3216,
       "kind": "example",
       "required": true,
       "role": "export_snapshot_report_example",
-      "sha256": "08381059a74dab0463a5bc5dbe860f51423e75bc5c94a45653a28d7b1600f4d7",
+      "sha256": "0a10e94b97d702200ed2e6dc77e0017d0957955f566a384237ef25b3b984853d",
       "source_path": "docs/specs/benchmarks/simplified_likelihood_export_benchmark_snapshot_report_v0.example.json"
     },
     {
       "bundle_path": "files/docs/specs/apex2_simplified_likelihood_export_public_case_catalog_v0.example.json",
-      "bytes": 9471,
+      "bytes": 10902,
       "kind": "example",
       "required": true,
       "role": "export_public_case_catalog_example",
-      "sha256": "af7bb26afe73f88d693a0e1bea6c6956a91074f1f3e31facfcd799eca57c850e",
+      "sha256": "e5b591b3a789ace027b144bc0e8bc28427033c1f8527defa789cf534c7d11646",
       "source_path": "docs/specs/apex2_simplified_likelihood_export_public_case_catalog_v0.example.json"
     },
     {
@@ -236,20 +236,20 @@
     },
     {
       "bundle_path": "files/docs/specs/benchmarks/simplified_likelihood_exporter_stable_evidence_policy_v0.example.json",
-      "bytes": 4637,
+      "bytes": 4768,
       "kind": "example",
       "required": true,
       "role": "exporter_stable_evidence_policy_example",
-      "sha256": "50b8c98ab5d5c2df224673d42341b08d6d35719125feea7a63f3128233c9e1e7",
+      "sha256": "af9c77017075dac5dd1a669b92a79d3dab99595b6924bd3b3a84c68c8078f45e",
       "source_path": "docs/specs/benchmarks/simplified_likelihood_exporter_stable_evidence_policy_v0.example.json"
     },
     {
       "bundle_path": "files/docs/specs/benchmarks/simplified_likelihood_exporter_stable_evidence_freshness_report_v0.example.json",
-      "bytes": 2856,
+      "bytes": 2794,
       "kind": "example",
       "required": true,
       "role": "exporter_stable_evidence_freshness_example",
-      "sha256": "be63c149329f148e869b4b8166160b7b9394ca1620385bff08da474f36badc95",
+      "sha256": "918b0988a44cee539dbd20993976bcfafc9ec8190a5313e01014eec3ddc4de1f",
       "source_path": "docs/specs/benchmarks/simplified_likelihood_exporter_stable_evidence_freshness_report_v0.example.json"
     }
   ],
@@ -278,7 +278,7 @@
       "future stable review only"
     ]
   },
-  "generated_at_utc": "2026-03-11T19:28:25Z",
+  "generated_at_utc": "1970-01-01T00:00:00Z",
   "promotion_claims": {
     "committed_snapshot_supported": true,
     "future_stable_review_ready": true,
@@ -288,23 +288,23 @@
   "source_snapshot": {
     "benchmark_artifact": {
       "bundle_path": "files/benchmark/apex2_simplified_likelihood_report.json",
-      "bytes": 57072,
+      "bytes": 61464,
       "schema_version": "nextstat_apex2_simplified_likelihood_report_v0",
-      "sha256": "1de25d52bbda6b6c856b14b70d64debc5a7f8c2fd44f3e5ec4c1ac12b28d72f1",
+      "sha256": "2ad2e9cf55ce55a81ea4465ebd389182bad64fbd464aef829f62d1a6006eb7cf",
       "source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json"
     },
     "snapshot_index": {
       "bundle_path": "files/benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/snapshot_index.json",
       "bytes": 833,
-      "sha256": "d72212e25e3f08c7ca338aa09dc5a28a82156df99bc55eba70be44f8d6b238e7",
+      "sha256": "bbf516d010dce6b8cb3b2850a1b9bee964d9a897d72b38b586e1511d6e8171de",
       "source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/snapshot_index.json",
       "suite": "simplified_likelihood_export_benchmark_snapshot"
     },
     "snapshot_report": {
       "bundle_path": "files/benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_benchmark_snapshot_report.json",
-      "bytes": 3214,
+      "bytes": 3216,
       "schema_version": "nextstat_simplified_likelihood_export_benchmark_snapshot_report_v0",
-      "sha256": "e60a89d9cfb4046b2e68ec6cd9e323af72039c28990d6a8cb9542e2b12430150",
+      "sha256": "0a10e94b97d702200ed2e6dc77e0017d0957955f566a384237ef25b3b984853d",
       "source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_benchmark_snapshot_report.json"
     },
     "summary": {
@@ -312,14 +312,14 @@
       "all_performance_gates_pass": true,
       "all_schema_valid": true,
       "benchmark_host": "nextstat-bench",
-      "export_matrix_case_count": 9,
-      "max_abs_q_mu_diff": 0.09089073579143658,
-      "max_upper_limit_ratio_deviation": 0.0093663653819136,
-      "min_net_end_to_end_upper_limit_speedup": 2.019831571730792,
-      "overall_min_net_end_to_end_upper_limit_speedup": 0.8810048879955428,
+      "export_matrix_case_count": 10,
+      "max_abs_q_mu_diff": 0.09618848026584459,
+      "max_upper_limit_ratio_deviation": 0.011190668120821257,
+      "min_net_end_to_end_upper_limit_speedup": 2.1792428549098894,
+      "overall_min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
       "persisted_snapshot": true,
-      "public_reinterpretation_style_case_count": 7,
-      "public_reinterpretation_style_min_net_end_to_end_upper_limit_speedup": 0.8810048879955428,
+      "public_reinterpretation_style_case_count": 8,
+      "public_reinterpretation_style_min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
       "status": "ok",
       "synthetic_case_count": 2
     }

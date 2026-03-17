@@ -181,6 +181,6 @@
   "prior_sensitivity_report_schema_version": "nextstat_beta_binomial_prior_sensitivity_report_v0",
   "simulation_seed": 123,
   "software_name": "nextstat",
-  "software_version": "0.9.9"
+  "software_version": "0.10.1"
 }
 ```

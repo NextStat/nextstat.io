@@ -90,7 +90,7 @@
     }
   },
   "decision_date": "2026-03-09",
-  "generated_at_utc": "2026-03-11T19:28:41Z",
+  "generated_at_utc": "1970-01-01T00:00:00Z",
   "release_consumption": {
     "release_artifact_filenames": [
       "apex2_simplified_likelihood_report.json",
@@ -122,56 +122,56 @@
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
       "schema_version": "nextstat_apex2_simplified_likelihood_report_v0",
-      "sha256": "1de25d52bbda6b6c856b14b70d64debc5a7f8c2fd44f3e5ec4c1ac12b28d72f1",
+      "sha256": "2ad2e9cf55ce55a81ea4465ebd389182bad64fbd464aef829f62d1a6006eb7cf",
       "status": null
     },
     "promotion_evidence": {
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_bundle_v0",
-      "sha256": "9ac5c36caed84bf3f247e1dc8ad92158d9c25db8cfe1d1a86667caebc69657be",
+      "sha256": "f7ed1d472dec77c5adc6142dc141165d217af5390bad46b850fbac8bbd3b2479",
       "status": null
     },
     "promotion_evidence_check": {
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence_check.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_check_v0",
-      "sha256": "48c535f6ee694be23d8e3a3d89a9e3e79652641a33dba460bc10fab267125898",
+      "sha256": "5e26d1116f734c548b1b31506696fa3528ec9348b525bc7a4504a21f5fe9671e",
       "status": "passed"
     },
     "promotion_report": {
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_bundle_promotion_report.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_bundle_promotion_report_v0",
-      "sha256": "fe81ef886c2eab6f2e272768975a16b035d18a78d943d8b7c42bd00ff52f678d",
+      "sha256": "a80ac5f4e2de7766f61a093d3b1426d9e0793022718f0fd65ac78b0bb9fc99df",
       "status": "promoted"
     },
     "stable_candidate_blocker_matrix": {
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_candidate_blocker_matrix.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0",
-      "sha256": "c23ca527ce0ab2d9cdab58370d93203119a20cad56fad8984605782559a50e59",
+      "sha256": "dce9748a39daf8ec4b57ace6bf4532cafeadd20ca861a76d134c9b1e093e1180",
       "status": null
     },
     "stable_candidate_review_packet": {
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_candidate_review_packet.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_candidate_review_packet_v0",
-      "sha256": "c04e3d52325e723385e58109951c05bfe399e2c106471989717e70b99d8e8ddf",
+      "sha256": "69f1a281628a775e9196b3a9bf6574e6bac11e93c41c993b2919220c01bc7dee",
       "status": null
     },
     "stable_review_assessment": {
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_review_assessment.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_review_assessment_v0",
-      "sha256": "10584cd7dd3d6c82f60378986149501d5c7c22ca03f031610e367ac5f9722b60",
+      "sha256": "64d3d65d5b56eb4a8467453ea3c5914ec145ba7ea0cb5e849f5e084fcd72ccdd",
       "status": null
     },
     "stable_source_semantics_boundary": {
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_source_semantics_boundary.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_source_semantics_boundary_v0",
-      "sha256": "b66a9423f913d4494b7edc61021e7e494ec47c805ae2b68a2cb2cff200bd5391",
+      "sha256": "294d8a6a08148eedf582ddd9a6f0c54c29869f4f428347fea016fb4b5ddedeaa",
       "status": "published"
     }
   },

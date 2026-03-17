@@ -2,7 +2,7 @@
 title: "Benchmark Suite: Bayesian (ESS/sec)"
 description: "Bayesian inference benchmark suite for NextStat: ESS/sec (bulk + tail), wall-time per effective draw, warmup/adaptation behavior, and SBC calibration — with honest comparisons vs Stan and PyMC under fully specified settings."
 status: draft
-last_updated: 2026-03-09
+last_updated: 2026-03-12
 keywords:
   - NUTS sampler benchmark
   - ESS per second
@@ -54,7 +54,7 @@ compiled Rust test harness on `v100`, and executes it there via `memfd`, while
 still requiring CUDA 12.6 userland on the V100 host because the accepted Volta
 path depends on `compute_70`.
 
-The current internal CUDA certification surfaces are split explicitly:
+The current CUDA certification surfaces are split explicitly:
 
 - the HTCondor `nextstat-bench -> gex44` lane validates the narrow batched
   step-sequence seam plus probe-only log-joint replay for WALNUTS
@@ -63,12 +63,30 @@ The current internal CUDA certification surfaces are split explicitly:
   evaluator-backed prototype slices for linear, logistic, Poisson with
   offsets, Negative Binomial with offsets, and interval-censored Weibull AFT
 
-These artifacts remain internal certification evidence, not a shipped public
-GPU WALNUTS surface.
+Those artifacts now serve two different roles:
 
-That direct V100 lane now also carries an explicit internal promotion boundary;
-artifact metadata and reviewer docs treat it as internal evidence only, not as
-an automatic public GPU promotion.
+- the narrow StdNormal seam remains internal certification evidence only
+- the evaluator-backed direct-V100 lane is the certification source for the
+  shipped narrow public CUDA WALNUTS subset
+
+The latest accepted direct-V100 refresh on March 12, 2026 kept that boundary
+honest: the narrow StdNormal seam remains cert-only, while the evaluator-backed
+linear, logistic, Poisson-with-offset, Negative Binomial-with-offset, and
+interval-censored Weibull AFT slices now provide the positive GPU throughput
+evidence for the first shipped public CUDA WALNUTS stable surface.
+
+That same March 12, 2026 refresh also closed the first honest public-surface
+acceptance loop for CUDA WALNUTS itself: `ns-py` built on V100 with CUDA 12.6,
+`nextstat.has_cuda()` returned `true`, `pytest -k "walnuts and cuda"` passed,
+and a representative public `PoissonRegressionModel(..., offset=...)` run via
+`nextstat.sample(..., method="walnuts", device="cuda")` delivered about
+`1.88x` GPU/CPU wall-time speedup at `n=12000`, `p=8`, `n_warmup=80`,
+`n_samples=32`. That acceptance probe is a shipped-surface check, not a
+replacement for the broader internal promotion matrix.
+
+That direct V100 lane still carries an explicit promotion boundary. Artifact
+metadata and reviewer docs distinguish the shipped narrow CUDA stable surface
+from broader future GPU claims.
 
 That harness records both:
 

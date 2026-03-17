@@ -129,9 +129,11 @@ export VIRTUAL_ENV="$VENV"
 export PATH="$VENV/bin:$PATH"
 
 if [[ -n "$FEATURES" ]]; then
-  "$VENV/bin/python" -m maturin develop --release $FEATURES --pip-path "$VENV/bin/pip"
+  bash "$APEX2_REMOTE_REPO/benchmarks/nextstat-public-benchmarks/scripts/install_local_nextstat_python.sh" \
+    "$APEX2_REMOTE_REPO" "$VENV" "$CARGO_TARGET_DIR" $FEATURES
 else
-  "$VENV/bin/python" -m maturin develop --release --pip-path "$VENV/bin/pip"
+  bash "$APEX2_REMOTE_REPO/benchmarks/nextstat-public-benchmarks/scripts/install_local_nextstat_python.sh" \
+    "$APEX2_REMOTE_REPO" "$VENV" "$CARGO_TARGET_DIR"
 fi
 EOS
 

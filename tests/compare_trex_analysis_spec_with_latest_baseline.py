@@ -23,6 +23,7 @@ import hashlib
 import json
 import os
 import platform
+import shutil
 import socket
 import subprocess
 import sys
@@ -175,7 +176,9 @@ def _validate_spec(spec: Any, schema: Any) -> None:
         raise SystemExit("\n".join(lines))
 
 
-def _materialize_spec(spec: dict[str, Any], *, spec_dir: Path, work_dir: Path) -> dict[str, Any]:
+def _materialize_spec(
+    spec: dict[str, Any], *, spec_dir: Path, work_dir: Path, baseline_manifest_dir: Path | None = None
+) -> dict[str, Any]:
     out = json.loads(json.dumps(spec))
     spec_base = spec_dir.resolve()
 
@@ -234,15 +237,32 @@ def _materialize_spec(spec: dict[str, Any], *, spec_dir: Path, work_dir: Path) -
     if isinstance(rep, dict):
         rep["histfactory_xml"] = resolve(rep.get("histfactory_xml"))
 
+    gates = out.get("gates") or {}
+    if isinstance(gates, dict):
+        baseline_compare = gates.get("baseline_compare") or {}
+        if isinstance(baseline_compare, dict):
+            baseline_compare["enabled"] = False
+            if baseline_manifest_dir is not None:
+                baseline_compare["baseline_dir"] = str(baseline_manifest_dir.resolve())
+            else:
+                baseline_compare["baseline_dir"] = resolve(baseline_compare.get("baseline_dir"))
+
     return out
 
 
 def _resolve_nextstat(nextstat_arg: Optional[str]) -> str:
     if nextstat_arg:
         return nextstat_arg
-    local = _repo_root() / "target" / "release" / "nextstat"
-    if local.exists():
-        return str(local)
+    repo = _repo_root()
+    for candidate in (
+        repo / ".venv" / "bin" / "nextstat",
+        repo / "target" / "release" / "nextstat",
+    ):
+        if candidate.exists():
+            return str(candidate)
+    discovered = shutil.which("nextstat")
+    if discovered:
+        return discovered
     return "nextstat"
 
 
@@ -364,7 +384,12 @@ def main() -> int:
     work_dir = repo / "tmp" / "trex_analysis_spec_compare" / stamp
     work_dir.mkdir(parents=True, exist_ok=True)
 
-    effective = _materialize_spec(spec0, spec_dir=spec_effective_path.parent, work_dir=work_dir)
+    effective = _materialize_spec(
+        spec0,
+        spec_dir=spec_effective_path.parent,
+        work_dir=work_dir,
+        baseline_manifest_dir=args.manifest.parent,
+    )
     eff_path = work_dir / "analysis_spec_effective.yaml"
     eff_path.write_text(yaml.safe_dump(effective, sort_keys=False))
 

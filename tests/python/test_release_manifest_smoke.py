@@ -11,6 +11,17 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _current_version() -> str:
+    for line in (_repo_root() / "Cargo.toml").read_text(encoding="utf-8").splitlines():
+        if line.strip().startswith("version = "):
+            return line.split('"')[1]
+    raise AssertionError("missing workspace version")
+
+
+def _current_release_tag() -> str:
+    return f"v{_current_version()}"
+
+
 def _release_candidate_workflow() -> str:
     return (_repo_root() / ".github" / "workflows" / "release-candidate.yml").read_text(
         encoding="utf-8"
@@ -55,13 +66,15 @@ def _github_release_asset_globs(workflow: str) -> set[str]:
 
 
 def test_release_manifest_builds_prepare_contract() -> None:
-    manifest = build_manifest("v0.10.0", "prepare")
+    version = _current_version()
+    release_tag = _current_release_tag()
+    manifest = build_manifest(release_tag, "prepare")
 
     assert manifest["schema_version"] == "nextstat.release_manifest.v1"
-    assert manifest["release_tag"] == "v0.10.0"
-    assert manifest["version"] == "0.10.0"
+    assert manifest["release_tag"] == release_tag
+    assert manifest["version"] == version
     assert manifest["mode"] == "prepare"
-    assert manifest["version_alignment"]["cargo_toml"] == "0.10.0"
+    assert manifest["version_alignment"]["cargo_toml"] == version
     assert "release-candidate-bundle" in manifest["candidate_artifacts"]["workflow_artifacts"]
     assert manifest["candidate_artifacts"]["github_release_asset_globs"] == ["dist/release-assets/*"]
     assert manifest["pharma_release_policy"] == {
@@ -91,7 +104,7 @@ def test_release_manifest_schema_contains_release_candidate_fields() -> None:
 
 
 def test_release_manifest_workflow_artifacts_match_release_candidate_uploads() -> None:
-    manifest = build_manifest("v0.10.0", "prepare")
+    manifest = build_manifest(_current_release_tag(), "prepare")
     workflow = _release_candidate_workflow()
 
     assert "crates-io-publish:" not in workflow
@@ -102,7 +115,7 @@ def test_release_manifest_workflow_artifacts_match_release_candidate_uploads() -
 
 
 def test_release_manifest_release_asset_globs_match_publish_workflow() -> None:
-    manifest = build_manifest("v0.10.0", "publish")
+    manifest = build_manifest(_current_release_tag(), "publish")
     workflow = _release_publish_workflow()
 
     expected = set(manifest["candidate_artifacts"]["github_release_asset_globs"])
@@ -113,7 +126,7 @@ def test_release_manifest_release_asset_globs_match_publish_workflow() -> None:
 
 
 def test_release_manifest_publish_targets_match_publish_workflow() -> None:
-    manifest = build_manifest("v0.10.0", "publish")
+    manifest = build_manifest(_current_release_tag(), "publish")
     workflow = _release_publish_workflow()
 
     crates = re.findall(r"^\s+publish\s+([A-Za-z0-9_-]+)$", workflow, flags=re.MULTILINE)
@@ -125,7 +138,7 @@ def test_release_manifest_publish_targets_match_publish_workflow() -> None:
 
 
 def test_release_manifest_pharma_policy_matches_workflow_and_docs() -> None:
-    manifest = build_manifest("v0.10.0", "prepare")
+    manifest = build_manifest(_current_release_tag(), "prepare")
     workflow = _release_candidate_workflow()
     runbook = (_repo_root() / "docs" / "releases" / "release-runbook.md").read_text(
         encoding="utf-8"

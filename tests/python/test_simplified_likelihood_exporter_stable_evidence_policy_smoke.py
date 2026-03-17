@@ -95,10 +95,10 @@ def test_simplified_likelihood_exporter_stable_evidence_policy_schema_example_an
     assert generated["status"] == "accepted"
     assert generated["support_class"] == "stable"
     assert generated["benchmark_host"] == "nextstat-bench"
-    assert generated["stable_evidence_floor"]["min_total_export_matrix_case_count"] == 10
+    assert generated["stable_evidence_floor"]["min_total_export_matrix_case_count"] == 11
     assert (
         generated["stable_evidence_floor"]["min_public_reinterpretation_style_case_count"]
-        == 8
+        == 9
     )
     assert (
         generated["maintenance_cadence"]["refresh_cadence"]
@@ -136,7 +136,7 @@ def test_simplified_likelihood_exporter_stable_evidence_policy_docs_and_committe
         repo / "docs" / "benchmarks" / "simplified-likelihood-exporter-release-pr-checklist-2026-03-09.md",
         [
             "stable_evidence_policy.json",
-            "8 public / 10 total",
+            "9 public / 11 total",
             "admission policy",
             "maintenance cadence",
         ],
@@ -146,7 +146,7 @@ def test_simplified_likelihood_exporter_stable_evidence_policy_docs_and_committe
         [
             "stable_evidence_policy.json",
             "build_simplified_likelihood_exporter_stable_evidence_policy.py",
-            "8 public reinterpretation-style cases",
+            "9 public reinterpretation-style cases",
         ],
     )
 

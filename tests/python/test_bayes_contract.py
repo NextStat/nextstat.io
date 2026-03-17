@@ -71,6 +71,29 @@ def test_bayes_sample_accepts_walnuts_method():
     assert raw["sample_stats"]["metric_type"] == "dense"
 
 
+def test_bayes_sample_accepts_walnuts_cuda_on_supported_model():
+    if not getattr(nextstat, "has_cuda", lambda: False)():
+        pytest.skip("CUDA runtime not available")
+
+    x = [[float(i), ((i * 5) % 7) * 0.2 - 0.4] for i in range(1, 25)]
+    y = [0.25 + 0.9 * row[0] - 0.5 * row[1] for row in x]
+    model = nextstat.LinearRegressionModel(x, y, include_intercept=True)
+
+    raw = nextstat.bayes.sample(
+        model,
+        method="walnuts",
+        device="cuda",
+        n_chains=1,
+        n_warmup=12,
+        n_samples=6,
+        seed=29,
+        metric="diagonal",
+        return_idata=False,
+    )
+    assert isinstance(raw, dict)
+    assert raw["sample_stats"]["metric_type"] == "diagonal"
+
+
 def test_bayes_sample_multichain_uses_distinct_seeds_by_default():
     ws = load_fixture("simple_workspace.json")
     model = nextstat.HistFactoryModel.from_workspace(json.dumps(ws))

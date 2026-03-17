@@ -2,20 +2,20 @@
   "artifacts": [
     {
       "bundle_path": "files/benchmark/apex2_simplified_likelihood_report.json",
-      "bytes": 61464,
+      "bytes": 65889,
       "kind": "benchmark_artifact",
       "required": true,
       "role": "benchmark_artifact",
-      "sha256": "2ad2e9cf55ce55a81ea4465ebd389182bad64fbd464aef829f62d1a6006eb7cf",
+      "sha256": "7c6ee0a78709a0094a1f3e5935d7aee31c51558dd63f6f904778b7cb1a8ae2b7",
       "source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json"
     },
     {
       "bundle_path": "files/benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_benchmark_snapshot_report.json",
-      "bytes": 3216,
+      "bytes": 2834,
       "kind": "benchmark_snapshot_report",
       "required": true,
       "role": "current_snapshot_report",
-      "sha256": "0a10e94b97d702200ed2e6dc77e0017d0957955f566a384237ef25b3b984853d",
+      "sha256": "befccc06a478722c65432ae3587f60afed035b9f200a1fc443f7693b1cda7fc8",
       "source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_benchmark_snapshot_report.json"
     },
     {
@@ -24,7 +24,7 @@
       "kind": "benchmark_snapshot_index",
       "required": true,
       "role": "current_snapshot_index",
-      "sha256": "bbf516d010dce6b8cb3b2850a1b9bee964d9a897d72b38b586e1511d6e8171de",
+      "sha256": "b31e67ac6b108f90ba728ef89f12ab94d53cb6de4a7416fb0412f2433509d517",
       "source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/snapshot_index.json"
     },
     {
@@ -33,7 +33,7 @@
       "kind": "doc",
       "required": true,
       "role": "exporter_acceptance_doc",
-      "sha256": "cbdd6a9554acec928bb0be0d5ff6e9a0880db655d268e20bbaa17cee5427a97f",
+      "sha256": "80c8240352be14cc389dc71ddd069da6850def13d7a686f4b9af69052b9bd59f",
       "source_path": "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md"
     },
     {
@@ -51,7 +51,7 @@
       "kind": "doc",
       "required": true,
       "role": "exporter_promotion_runbook_doc",
-      "sha256": "03c7aad33eeaa8254f14594cb793f4a3f357a484a59a0652e56b3d9edb5c1da3",
+      "sha256": "188e76b8cadf7baff82529eaa5e791fec98508d4d95ac6aca70c125fe27ce935",
       "source_path": "docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md"
     },
     {
@@ -60,7 +60,7 @@
       "kind": "doc",
       "required": true,
       "role": "exporter_stable_evidence_policy_doc",
-      "sha256": "1f43b7d231bf386114f4da3e393d2598eece4404f2ac1b8fa6962fa7c1b98003",
+      "sha256": "2ad8a9f72e686ddca7679431e9e63b8c9ec43a2afc2a98de16bd11bee791dd98",
       "source_path": "docs/benchmarks/simplified-likelihood-exporter-stable-evidence-policy-2026-03-09.md"
     },
     {
@@ -69,7 +69,7 @@
       "kind": "doc",
       "required": true,
       "role": "exporter_stable_evidence_freshness_doc",
-      "sha256": "234f55c6e41f9c4602fd171daa047776d3163422adf740e8a254ed880f7f849d",
+      "sha256": "a1eeb6381fcea503ab71ddc50ab3a934feeccad97e6ac24ec3ef4c46b367325c",
       "source_path": "docs/benchmarks/simplified-likelihood-exporter-stable-evidence-freshness-2026-03-09.md"
     },
     {
@@ -92,11 +92,11 @@
     },
     {
       "bundle_path": "files/docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08.md",
-      "bytes": 15266,
+      "bytes": 15062,
       "kind": "doc",
       "required": true,
       "role": "support_matrix_doc",
-      "sha256": "15d2d5140ddbb35e5525e1191d059b01891f29525a4a6f0c83c5bb99d94e1584",
+      "sha256": "62dec48960ea538189f1adca7ec5b25cb126550b0941c0fd8dc0a2d230acfb4f",
       "source_path": "docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08.md"
     },
     {
@@ -105,7 +105,7 @@
       "kind": "doc",
       "required": true,
       "role": "release_notes_doc",
-      "sha256": "dab2397b4703d1ea56323d52062404c1178eb5d91c03e75595c20588e5b26058",
+      "sha256": "a981621feba5ab9220a13e4a3a9348832a1d69e9d0667c92292c8671ec6cecda",
       "source_path": "docs/benchmarks/simplified-likelihood-release-notes-2026-03-08.md"
     },
     {
@@ -218,11 +218,11 @@
     },
     {
       "bundle_path": "files/docs/specs/apex2_simplified_likelihood_export_public_case_catalog_v0.example.json",
-      "bytes": 10902,
+      "bytes": 12508,
       "kind": "example",
       "required": true,
       "role": "export_public_case_catalog_example",
-      "sha256": "e5b591b3a789ace027b144bc0e8bc28427033c1f8527defa789cf534c7d11646",
+      "sha256": "4c4fd550eeb5a17111538644e06bc962e0999adeef73320f70c352cd4fadfa4d",
       "source_path": "docs/specs/apex2_simplified_likelihood_export_public_case_catalog_v0.example.json"
     },
     {
@@ -288,23 +288,23 @@
   "source_snapshot": {
     "benchmark_artifact": {
       "bundle_path": "files/benchmark/apex2_simplified_likelihood_report.json",
-      "bytes": 61464,
+      "bytes": 65889,
       "schema_version": "nextstat_apex2_simplified_likelihood_report_v0",
-      "sha256": "2ad2e9cf55ce55a81ea4465ebd389182bad64fbd464aef829f62d1a6006eb7cf",
+      "sha256": "7c6ee0a78709a0094a1f3e5935d7aee31c51558dd63f6f904778b7cb1a8ae2b7",
       "source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json"
     },
     "snapshot_index": {
       "bundle_path": "files/benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/snapshot_index.json",
       "bytes": 833,
-      "sha256": "bbf516d010dce6b8cb3b2850a1b9bee964d9a897d72b38b586e1511d6e8171de",
+      "sha256": "b31e67ac6b108f90ba728ef89f12ab94d53cb6de4a7416fb0412f2433509d517",
       "source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/snapshot_index.json",
       "suite": "simplified_likelihood_export_benchmark_snapshot"
     },
     "snapshot_report": {
       "bundle_path": "files/benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_benchmark_snapshot_report.json",
-      "bytes": 3216,
+      "bytes": 2834,
       "schema_version": "nextstat_simplified_likelihood_export_benchmark_snapshot_report_v0",
-      "sha256": "0a10e94b97d702200ed2e6dc77e0017d0957955f566a384237ef25b3b984853d",
+      "sha256": "befccc06a478722c65432ae3587f60afed035b9f200a1fc443f7693b1cda7fc8",
       "source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_benchmark_snapshot_report.json"
     },
     "summary": {
@@ -312,13 +312,13 @@
       "all_performance_gates_pass": true,
       "all_schema_valid": true,
       "benchmark_host": "nextstat-bench",
-      "export_matrix_case_count": 10,
+      "export_matrix_case_count": 11,
       "max_abs_q_mu_diff": 0.09618848026584459,
       "max_upper_limit_ratio_deviation": 0.011190668120821257,
       "min_net_end_to_end_upper_limit_speedup": 2.1792428549098894,
       "overall_min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
       "persisted_snapshot": true,
-      "public_reinterpretation_style_case_count": 8,
+      "public_reinterpretation_style_case_count": 9,
       "public_reinterpretation_style_min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
       "status": "ok",
       "synthetic_case_count": 2

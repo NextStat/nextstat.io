@@ -102,6 +102,7 @@ scripts/benchmarks/bench_mams_multiseed_remote.sh
 That repeatability runner:
 
 - runs `suites/mams/multiseed.py` on `nextstat-bench`,
+- installs the synchronized local `nextstat-*.whl` with `pip install --no-deps`, so host-backed verification does not depend on a matching published `nextstat-cli` version being present on PyPI,
 - keeps `dataset_seed=12345` fixed across sampler seeds so `glm_logistic` measures sampler variance instead of regenerated-data variance,
 - uses the same stabilized CPU MAMS regime (`warmup=3500`, `target_accept=0.985`, `max_leapfrog=1024`, `eps_jitter=0.0`) as the canonical stable-surface lane,
 - writes `mams_multiseed_summary.json` / `mams_multiseed_summary.md` with aggregate health and parity tables,
@@ -140,11 +141,11 @@ That publisher runner:
 - renders a health-complete top-level `README_snippet_mams.md` from `mams_assessment.json`,
 - keeps human-facing snapshot review and machine-readable stable-surface verdicts in the same publish bundle.
 
-The committed public snapshot set now includes a refreshed health-complete MAMS publish bundle at `benchmarks/nextstat-public-benchmarks/manifests/snapshots/mams-publisher-20260309T173500Z/`. Its `README_snippet_mams.md` now surfaces the same `core_quality=passed` / `promotion_gate=passed` verdict and worst reviewed-case metrics that appear in `mams/mams_assessment.json`, and the committed `snapshot_registry.json` lifts that same row directly for registry consumers.
+The committed public snapshot set now includes a refreshed health-complete MAMS publish bundle at `benchmarks/nextstat-public-benchmarks/manifests/snapshots/mams-publisher-20260312T003824Z/`. It is sourced from `benchmarks/artifacts/mams_publisher_validation_20260312T003824Z/nextstat-bench/mams-publisher-20260312T003824Z/`, so the tracked published snapshot now matches the packaging-hardened `nextstat-bench` publisher lane. Its `README_snippet_mams.md` surfaces the same `core_quality=passed` / `promotion_gate=passed` verdict and worst reviewed-case metrics that appear in `mams/mams_assessment.json`, and the committed `snapshot_registry.json` lifts that same row directly for registry consumers.
 
 The stable public surface now also reports divergent MAMS transitions honestly in `sample_stats["diverging"]` and `diagnostics["divergence_rate"]`: early-terminated non-finite energy-error transitions are no longer silently counted as clean rejects.
 
-The committed host-backed repeatability bundle now lives at `benchmarks/nextstat-public-benchmarks/suites/mams/results_v1/`. It is sourced from `benchmarks/artifacts/mams_multiseed_validation_20260309T164500Z/nextstat-bench/`, keeps `dataset_seed=12345` fixed across canonical seeds, and now includes `mams_multiseed_assessment.json` / `mams_multiseed_assessment.md` beside the raw summary. In the refreshed tracked bundle the repeatability gate is `passed`; worst reviewed `max_r_hat` is `1.0087` on `neal_funnel_2d`, while all parity rows remain `ok`. It can be regenerated in place via:
+The committed host-backed repeatability bundle now lives at `benchmarks/nextstat-public-benchmarks/suites/mams/results_v1/`. It is sourced from `benchmarks/artifacts/mams_multiseed_validation_20260312T001153Z/nextstat-bench/`, keeps `dataset_seed=12345` fixed across canonical seeds, and now includes `mams_multiseed_assessment.json` / `mams_multiseed_assessment.md` beside the raw summary. This tracked bundle is aligned with the packaging-hardened `nextstat-bench` lane that installs a locally built `nextstat-*.whl` with `pip install --no-deps`. In the refreshed tracked bundle the repeatability gate is `passed`; worst reviewed `max_r_hat` is `1.0087` on `neal_funnel_2d`, while all parity rows remain `ok`. It can be regenerated in place via:
 
 ```bash
 python3 benchmarks/nextstat-public-benchmarks/suites/mams/multiseed.py \

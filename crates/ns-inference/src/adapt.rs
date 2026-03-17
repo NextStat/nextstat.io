@@ -3,6 +3,7 @@
 //! Implements the Stan warmup schedule: windowed adaptation with step size
 //! tuning and diagonal mass matrix estimation.
 
+use crate::hmc::{HamiltonianPotential, Metric};
 use nalgebra::DMatrix;
 
 /// Dual averaging for step size adaptation (Nesterov 2009, Stan variant).
@@ -428,12 +429,12 @@ fn compute_windows(n_warmup: usize) -> Vec<(usize, usize)> {
 /// Follows Stan's algorithm (Hoffman & Gelman 2014, Algorithm 4).
 /// Uses a random momentum draw from N(0, M) instead of unit momentum.
 pub fn find_reasonable_step_size(
-    posterior: &crate::posterior::Posterior<'_, impl ns_core::traits::LogDensityModel + ?Sized>,
+    evaluator: &(impl HamiltonianPotential + ?Sized),
     q: &[f64],
-    metric: &crate::hmc::Metric,
+    metric: &Metric,
     rng: &mut impl rand::Rng,
 ) -> f64 {
-    let integrator = crate::hmc::LeapfrogIntegrator::new(posterior, 1.0, metric.clone());
+    let integrator = crate::hmc::LeapfrogIntegrator::new(evaluator, 1.0, metric.clone());
 
     let mut state = match integrator.init_state(q.to_vec()) {
         Ok(s) => s,
@@ -446,7 +447,7 @@ pub fn find_reasonable_step_size(
 
     // Test a single leapfrog step at given eps
     let test_accept = |eps_test: f64| -> Option<f64> {
-        let int_test = crate::hmc::LeapfrogIntegrator::new(posterior, eps_test, metric.clone());
+        let int_test = crate::hmc::LeapfrogIntegrator::new(evaluator, eps_test, metric.clone());
         let mut s = state.clone();
         int_test.step(&mut s).ok()?;
         let h1 = s.hamiltonian(metric);
@@ -542,6 +543,19 @@ pub(crate) fn estimate_ess_simple(draws: &[f64]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
+
+    struct QuadraticPotential;
+
+    impl HamiltonianPotential for QuadraticPotential {
+        fn dim(&self) -> usize {
+            2
+        }
+
+        fn potential_grad(&self, q: &[f64]) -> ns_core::Result<(f64, Vec<f64>)> {
+            Ok((0.5 * q.iter().map(|v| v * v).sum::<f64>(), q.to_vec()))
+        }
+    }
 
     #[test]
     fn test_dual_averaging_converges() {
@@ -648,5 +662,15 @@ mod tests {
         let windows = compute_windows(10);
         assert!(!windows.is_empty());
         assert_eq!(windows.last().unwrap().1, 10);
+    }
+
+    #[test]
+    fn test_find_reasonable_step_size_accepts_custom_potential() {
+        let evaluator = QuadraticPotential;
+        let metric = Metric::identity(2);
+        let q = [0.25, -0.15];
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let eps = find_reasonable_step_size(&evaluator, &q, &metric, &mut rng);
+        assert!(eps.is_finite() && eps > 0.0, "step size must be positive and finite: {eps}");
     }
 }

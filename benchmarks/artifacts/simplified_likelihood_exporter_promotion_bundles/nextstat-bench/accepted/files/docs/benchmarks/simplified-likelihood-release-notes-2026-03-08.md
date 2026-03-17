@@ -134,7 +134,7 @@ The same accepted path now also carries a validator-facing
 `stable_candidate_review_packet.json`, so maintainers have one committed review
 input instead of stitching evidence together manually.
 The same accepted path now also carries `stable_evidence_policy.json`, so the
-release-facing `8 public / 10 total` admission policy and maintenance cadence
+release-facing `9 public / 11 total` admission policy and maintenance cadence
 are machine-readable instead of living only in prose.
 The same accepted path now also carries `stable_evidence_freshness_report.json`,
 so the `45-day` freshness window and any freshness breach are machine-readable
