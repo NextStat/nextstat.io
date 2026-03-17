@@ -13,6 +13,7 @@ def test_release_grade_python_gates_use_local_wheelhouse_and_prefer_installed_bi
         repo / "scripts" / "gvm" / "stable_first_gate.sh",
         repo / "scripts" / "benchmarks" / "simplified_likelihood_stable_surface_gate.sh",
         repo / "scripts" / "benchmarks" / "simplified_likelihood_exporter_surface_gate.sh",
+        repo / "scripts" / "benchmarks" / "histfactory_stable_surface_gate.sh",
     ]
 
     for path in scripts:

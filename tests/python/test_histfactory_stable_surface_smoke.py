@@ -102,6 +102,19 @@ def test_gate_script_is_executable():
     )
 
 
+def test_gate_script_builds_local_wheelhouse_with_the_gate_python():
+    """HistFactory gate must validate the installed wheel, not source-shadowed bindings."""
+    if not GATE_SCRIPT.exists():
+        pytest.skip("Gate script not yet created")
+    text = GATE_SCRIPT.read_text(encoding="utf-8")
+    assert 'run_maturin()' in text
+    assert '"-m" "maturin"' in text
+    assert 'maturin build --release --interpreter "${py}" -o "${wheelhouse}"' in text
+    assert 'NEXTSTAT_PREFER_INSTALLED=1 PYTHONPATH="" "${py}" - <<\'PY\'' in text
+    assert 'assert callable(nextstat.set_threads)' in text
+    assert 'PYTHONPATH="${py_path}" "${py}" -m pytest' in text
+
+
 def test_release_surface_matrix_has_histfactory(release_matrix):
     """release_surface_matrix_v1.json must contain a histfactory entry."""
     ids = {s["id"] for s in release_matrix["surfaces"]}
