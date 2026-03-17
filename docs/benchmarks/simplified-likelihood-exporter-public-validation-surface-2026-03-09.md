@@ -76,7 +76,7 @@ The committed `nextstat-bench` report is green.
 Current public validation summary:
 
 - `public_case_count = 9`
-- `public_case_names = ["atlas_public_dual_sr_dual_cr_gaussian_export_stable_example", "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example", "atlas_public_sr_cr_gaussian_export_stable_example", "cms_public_sr_cr_export_stable_example", "cms_public_sr_cr_asymmetric_gaussian_export_stable_example", "cms_public_dual_sr_cr_gaussian_export_stable_example", "cms_public_sr_dual_cr_gaussian_export_stable_example", "cms_public_sr_vr_dual_cr_gaussian_export_stable_example"]`
+- `public_case_names = ["atlas_public_dual_sr_dual_cr_gaussian_export_stable_example", "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example", "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example", "atlas_public_sr_cr_gaussian_export_stable_example", "cms_public_sr_cr_export_stable_example", "cms_public_sr_cr_asymmetric_gaussian_export_stable_example", "cms_public_dual_sr_cr_gaussian_export_stable_example", "cms_public_sr_dual_cr_gaussian_export_stable_example", "cms_public_sr_vr_dual_cr_gaussian_export_stable_example"]`
 - `cases_outside_promoted_stable_runtime_boundary = 0`
 - `observed_constraint_covariance_sources = ["source_model_constraints"]`
 - `max_abs_q_mu_diff = 0.09618848026584459`

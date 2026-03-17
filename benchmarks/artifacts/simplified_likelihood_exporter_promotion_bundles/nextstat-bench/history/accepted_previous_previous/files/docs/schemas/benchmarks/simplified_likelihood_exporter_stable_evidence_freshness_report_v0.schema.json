@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nextstat.io/schemas/benchmarks/simplified_likelihood_exporter_stable_evidence_freshness_report_v0.schema.json",
+  "title": "Simplified Likelihood Exporter Stable Evidence Freshness Report v0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "surface",
+    "report_kind",
+    "status",
+    "support_class",
+    "generated_at_utc",
+    "reference_date",
+    "benchmark_host",
+    "freshness_policy",
+    "source_artifacts",
+    "freshness_observation",
+    "validity",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "nextstat_simplified_likelihood_exporter_stable_evidence_freshness_report_v0"
+    },
+    "surface": {
+      "const": "simplified_likelihood_exporter"
+    },
+    "report_kind": {
+      "const": "stable_evidence_freshness"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["fresh", "breached"]
+    },
+    "support_class": {
+      "const": "stable"
+    },
+    "generated_at_utc": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "reference_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "benchmark_host": {
+      "const": "nextstat-bench"
+    },
+    "freshness_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_snapshot_age_days",
+        "require_snapshot_status",
+        "require_public_validation_status",
+        "require_policy_status",
+        "require_stable_promotion_status",
+        "require_stable_promotion_support_class",
+        "require_policy_case_floors",
+        "require_cases_inside_promoted_stable_runtime_boundary"
+      ],
+      "properties": {
+        "max_snapshot_age_days": {
+          "type": "integer",
+          "const": 45
+        },
+        "require_snapshot_status": {
+          "const": "persisted"
+        },
+        "require_public_validation_status": {
+          "const": "ok"
+        },
+        "require_policy_status": {
+          "const": "accepted"
+        },
+        "require_stable_promotion_status": {
+          "const": "accepted"
+        },
+        "require_stable_promotion_support_class": {
+          "const": "stable"
+        },
+        "require_policy_case_floors": {
+          "const": true
+        },
+        "require_cases_inside_promoted_stable_runtime_boundary": {
+          "const": true
+        }
+      }
+    },
+    "source_artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshot_report_path",
+        "public_validation_report_path",
+        "stable_evidence_policy_path",
+        "stable_promotion_decision_path",
+        "policy_doc_path",
+        "policy_schema_path",
+        "policy_example_path"
+      ],
+      "properties": {
+        "snapshot_report_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "public_validation_report_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stable_evidence_policy_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stable_promotion_decision_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_doc_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_schema_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_example_path": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "freshness_observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "snapshot_id",
+        "snapshot_date",
+        "reference_date",
+        "snapshot_age_days",
+        "snapshot_status",
+        "public_validation_status",
+        "policy_status",
+        "stable_promotion_status",
+        "stable_promotion_support_class",
+        "export_matrix_case_count",
+        "public_case_count",
+        "synthetic_min_net_end_to_end_upper_limit_speedup",
+        "public_min_net_end_to_end_upper_limit_speedup",
+        "cases_outside_promoted_stable_runtime_boundary"
+      ],
+      "properties": {
+        "snapshot_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "snapshot_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "reference_date": {
+          "type": "string",
+          "format": "date"
+        },
+        "snapshot_age_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "snapshot_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "public_validation_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stable_promotion_status": {
+          "type": "string",
+          "minLength": 1
+        },
+        "stable_promotion_support_class": {
+          "type": "string",
+          "minLength": 1
+        },
+        "export_matrix_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "public_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "synthetic_min_net_end_to_end_upper_limit_speedup": {
+          "type": "number"
+        },
+        "public_min_net_end_to_end_upper_limit_speedup": {
+          "type": "number"
+        },
+        "cases_outside_promoted_stable_runtime_boundary": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "validity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["passed", "status", "failures", "warnings"],
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed"]
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reasonObject"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/reasonObject"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "benchmark_host",
+        "snapshot_id",
+        "snapshot_age_days",
+        "max_snapshot_age_days",
+        "export_matrix_case_count",
+        "public_case_count",
+        "top_level_failures"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["fresh", "breached"]
+        },
+        "benchmark_host": {
+          "const": "nextstat-bench"
+        },
+        "snapshot_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "snapshot_age_days": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_snapshot_age_days": {
+          "type": "integer",
+          "const": 45
+        },
+        "export_matrix_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "public_case_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "top_level_failures": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "reasonObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "detail"],
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

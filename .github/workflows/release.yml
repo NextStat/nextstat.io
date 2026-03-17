@@ -116,6 +116,8 @@ jobs:
     permissions:
       id-token: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Download CLI release assets
         env:
           GH_TOKEN: ${{ github.token }}
@@ -147,6 +149,8 @@ jobs:
     permissions:
       id-token: write
     steps:
+      - uses: actions/checkout@v4
+
       - name: Wait for nextstat-cli to propagate on PyPI
         shell: bash
         run: |

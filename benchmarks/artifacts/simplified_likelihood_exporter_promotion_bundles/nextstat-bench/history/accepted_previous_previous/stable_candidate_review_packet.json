@@ -7,7 +7,7 @@
     "max_abs_q_mu_diff": 0.09618848026584459,
     "max_upper_limit_ratio_deviation": 0.011190668120821257,
     "min_net_end_to_end_upper_limit_speedup": 2.1792428549098894,
-    "public_reinterpretation_style_case_count": 8,
+    "public_reinterpretation_style_case_count": 9,
     "stable_candidate_status": "ready",
     "stable_review_status": "review_ready"
   },
@@ -48,14 +48,14 @@
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
       "schema_version": "nextstat_apex2_simplified_likelihood_report_v0",
-      "sha256": "2ad2e9cf55ce55a81ea4465ebd389182bad64fbd464aef829f62d1a6006eb7cf",
+      "sha256": "7c6ee0a78709a0094a1f3e5935d7aee31c51558dd63f6f904778b7cb1a8ae2b7",
       "status": null
     },
     "promotion_evidence": {
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_bundle_v0",
-      "sha256": "f7ed1d472dec77c5adc6142dc141165d217af5390bad46b850fbac8bbd3b2479",
+      "sha256": "074a29f3d42182bec3158e223c569508924b5618d5836aac81a2f18f2bd3cd2f",
       "status": null
     },
     "promotion_evidence_check": {
@@ -69,14 +69,14 @@
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_bundle_promotion_report.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_bundle_promotion_report_v0",
-      "sha256": "a80ac5f4e2de7766f61a093d3b1426d9e0793022718f0fd65ac78b0bb9fc99df",
+      "sha256": "17bd8c5373b089bd7ac2dd686b7daa27c7a1783545bbd3de92e72851b9e6e774",
       "status": "promoted"
     },
     "stable_candidate_blocker_matrix": {
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_candidate_blocker_matrix.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_candidate_blocker_matrix_v0",
-      "sha256": "dce9748a39daf8ec4b57ace6bf4532cafeadd20ca861a76d134c9b1e093e1180",
+      "sha256": "386012bdf79f4a7996e797972eaf0cbcff22b53888fe276e174dec3c64c40734",
       "status": null
     },
     "stable_promotion_decision": {
@@ -90,7 +90,7 @@
       "exists": true,
       "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_review_assessment.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_review_assessment_v0",
-      "sha256": "64d3d65d5b56eb4a8467453ea3c5914ec145ba7ea0cb5e849f5e084fcd72ccdd",
+      "sha256": "07c86ced07b03a314dcf43017f7bc1a5b62737f8bce100f6546a7cd8c22d6fbb",
       "status": null
     },
     "stable_source_semantics_boundary": {

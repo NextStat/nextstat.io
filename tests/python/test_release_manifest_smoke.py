@@ -135,6 +135,8 @@ def test_release_manifest_publish_targets_match_publish_workflow() -> None:
     assert "name: Publish nextstat-cli to PyPI" in workflow
     assert "name: Publish nextstat to PyPI" in workflow
     assert 'gh release download "${GITHUB_REF_NAME}" \\' in workflow
+    assert '--repo "${GH_REPO}" \\' in workflow
+    assert "GH_REPO: NextStat/nextstat.io" in workflow
     assert "--pattern 'nextstat_cli-*.whl'" in workflow
     assert "--pattern 'nextstat-*.whl'" in workflow
     assert "python3 -m scripts.validate_release_publish_artifacts" in workflow

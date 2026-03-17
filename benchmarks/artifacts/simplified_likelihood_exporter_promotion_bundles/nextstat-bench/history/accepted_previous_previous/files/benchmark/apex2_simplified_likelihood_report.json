@@ -1,0 +1,1898 @@
+{
+  "cases": [
+    {
+      "bench": {
+        "build_wall_s": {
+          "full": 0.003612021915614605,
+          "simplified": 0.0004499410279095173
+        },
+        "end_to_end_upper_limit_wall_s": {
+          "full": 0.818526339251548,
+          "simplified": 0.04574791993945837
+        },
+        "fit_wall_s": {
+          "full": 0.059702021069824696,
+          "simplified": 0.0002495031803846359
+        },
+        "speedup": {
+          "build": 8.027767399644603,
+          "end_to_end_upper_limit": 17.89209958255512,
+          "fit": 239.28360743854097,
+          "upper_limit": 17.83658542803582
+        },
+        "upper_limit_wall_s": {
+          "full": 0.8112066900357604,
+          "simplified": 0.045479931868612766
+        }
+      },
+      "factorization": {
+        "clipped_negative_eigenvalues": 7,
+        "explained_variance_fraction": 0.9999999999999996,
+        "frobenius_residual": 1.0099600587228903e-12,
+        "input_trace": 1367.5771532329868,
+        "max_clipped_negative_eigenvalue_magnitude": 9.754773878138805e-14,
+        "method": "symmetric_eigendecomposition",
+        "original_rank": 8,
+        "retained_rank": 8,
+        "retained_trace": 1367.5771532329861,
+        "shared_systematic_trace": null,
+        "stat_covariance_trace": null
+      },
+      "fidelity": {
+        "delta_mu_hat": 0.0,
+        "delta_mu_hat_over_sigma_full": 0.0,
+        "max_abs_q_mu_diff": 6.294365562098392e-08,
+        "mu_hat_full": 1.0,
+        "mu_hat_simplified": 1.0,
+        "passes": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "q_mu_full": [
+          0.0,
+          0.0,
+          3.611444299167488e-08,
+          0.1523337098122397,
+          0.6059511569512779,
+          1.355855219899638,
+          2.397152422887075
+        ],
+        "q_mu_simplified": [
+          0.0,
+          0.0,
+          3.611472720876918e-08,
+          0.15233370559340642,
+          0.6059511404685338,
+          1.3558551836662502,
+          2.3971523599434192
+        ],
+        "scan_mu_values": [
+          0.0,
+          0.5,
+          1.0,
+          1.5,
+          2.0,
+          2.5,
+          3.0
+        ],
+        "sigma_mu_full": 1.2774927933257822,
+        "upper_limit_full": 3.278350830078125,
+        "upper_limit_ratio": 1.0,
+        "upper_limit_simplified": 3.278350830078125
+      },
+      "full": {
+        "channel_count": 4,
+        "json_bytes": 108556,
+        "measurement_name": "m",
+        "nuisance_count": 128,
+        "parameter_count": 129,
+        "total_bins": 24
+      },
+      "gates": {
+        "fidelity": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "performance": {
+          "end_to_end_upper_limit_speedup": true,
+          "json_size_fraction": true,
+          "reduced_nuisance_fraction": true
+        }
+      },
+      "name": "synthetic_covariance_large",
+      "simplified": {
+        "channel_count": 4,
+        "json_bytes": 13154,
+        "json_size_fraction": 0.12117248240539445,
+        "latent_rank_target": 8,
+        "parameter_count": 9,
+        "reduced_nuisance_count": 8,
+        "reduced_nuisance_fraction": 0.0625,
+        "schema_version": "nextstat_simplified_likelihood_v0",
+        "total_bins": 24
+      },
+      "status": "ok",
+      "validation": {
+        "audit_schema_valid": true,
+        "input_schema_valid": true,
+        "jsonschema_available": true,
+        "runtime_audit_ok": true,
+        "schema_valid": true
+      }
+    },
+    {
+      "bench": {
+        "build_wall_s": {
+          "full": 0.0013111080043017864,
+          "simplified": 0.0001817820593714714
+        },
+        "end_to_end_upper_limit_wall_s": {
+          "full": 0.16574660316109657,
+          "simplified": 0.015195883810520172
+        },
+        "fit_wall_s": {
+          "full": 0.01177547313272953,
+          "simplified": 0.00011553429067134857
+        },
+        "speedup": {
+          "build": 7.212526961324269,
+          "end_to_end_upper_limit": 10.907335514525949,
+          "fit": 101.92188885485353,
+          "upper_limit": 11.500057507997205
+        },
+        "upper_limit_wall_s": {
+          "full": 0.17134038032963872,
+          "simplified": 0.014899089001119137
+        }
+      },
+      "factorization": {
+        "clipped_negative_eigenvalues": 4,
+        "explained_variance_fraction": 1.0000000000000007,
+        "frobenius_residual": 3.190228928039932e-13,
+        "input_trace": 271.6812840548818,
+        "max_clipped_negative_eigenvalue_magnitude": 2.221802938438541e-14,
+        "method": "symmetric_eigendecomposition",
+        "original_rank": 6,
+        "retained_rank": 6,
+        "retained_trace": 271.681284054882,
+        "shared_systematic_trace": null,
+        "stat_covariance_trace": null
+      },
+      "fidelity": {
+        "delta_mu_hat": 0.0,
+        "delta_mu_hat_over_sigma_full": 0.0,
+        "max_abs_q_mu_diff": 2.393811229239873e-07,
+        "mu_hat_full": 1.0,
+        "mu_hat_simplified": 1.0,
+        "passes": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "q_mu_full": [
+          0.0,
+          0.0,
+          7.38737071515061e-10,
+          0.16382858224369556,
+          0.6506552167048767,
+          1.4536625268148953,
+          2.5662550126606334
+        ],
+        "q_mu_simplified": [
+          0.0,
+          0.0,
+          7.38666017241485e-10,
+          0.16382859815345796,
+          0.6506552790399951,
+          1.4536626642252344,
+          2.5662552520417563
+        ],
+        "scan_mu_values": [
+          0.0,
+          0.5,
+          1.0,
+          1.5,
+          2.0,
+          2.5,
+          3.0
+        ],
+        "sigma_mu_full": 1.230870562779337,
+        "upper_limit_full": 3.195343017578125,
+        "upper_limit_ratio": 1.0,
+        "upper_limit_simplified": 3.195343017578125
+      },
+      "full": {
+        "channel_count": 3,
+        "json_bytes": 36775,
+        "measurement_name": "m",
+        "nuisance_count": 72,
+        "parameter_count": 73,
+        "total_bins": 12
+      },
+      "gates": {
+        "fidelity": {
+          "mu_hat": true,
+          "q_mu": true,
+          "upper_limit": true
+        },
+        "performance": {
+          "end_to_end_upper_limit_speedup": true,
+          "json_size_fraction": true,
+          "reduced_nuisance_fraction": true
+        }
+      },
+      "name": "synthetic_covariance_medium",
+      "simplified": {
+        "channel_count": 3,
+        "json_bytes": 4037,
+        "json_size_fraction": 0.10977566281441196,
+        "latent_rank_target": 6,
+        "parameter_count": 7,
+        "reduced_nuisance_count": 6,
+        "reduced_nuisance_fraction": 0.08333333333333333,
+        "schema_version": "nextstat_simplified_likelihood_v0",
+        "total_bins": 12
+      },
+      "status": "ok",
+      "validation": {
+        "audit_schema_valid": true,
+        "input_schema_valid": true,
+        "jsonschema_available": true,
+        "runtime_audit_ok": true,
+        "schema_valid": true
+      }
+    }
+  ],
+  "environment": {
+    "cwd": "/tmp/apex2_simplified_likelihood_repo_20260311T204927Z",
+    "hostname": "nextstat-bench",
+    "nextstat_version": "0.10.1",
+    "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3",
+    "timestamp": 1773263602
+  },
+  "export_matrix": {
+    "cases": [
+      {
+        "analysis_id": "atlas.public.dual_sr_dual_cr_gaussian.export.stable.example",
+        "bench": {
+          "export_wall_s": 0.04301696503534913,
+          "exported_end_to_end_upper_limit_wall_s": 0.011799389030784369,
+          "net_end_to_end_upper_limit_wall_s": 0.0548163540661335,
+          "speedup": {
+            "net_end_to_end_upper_limit": 1.9266417121762913
+          }
+        },
+        "case_kind": "public_reinterpretation_style",
+        "experiment": "ATLAS",
+        "export_report_schema_version": "nextstat_simplified_likelihood_export_report_v0",
+        "factorization": {
+          "clipped_negative_eigenvalues": 0,
+          "explained_variance_fraction": 0.9999909235498234,
+          "frobenius_residual": 0.007768755463521709,
+          "input_trace": 855.9244321318595,
+          "max_clipped_negative_eigenvalue_magnitude": 0.0,
+          "method": "symmetric_eigendecomposition",
+          "original_rank": 5,
+          "retained_rank": 4,
+          "retained_trace": 855.9166633763963,
+          "shared_systematic_trace": null,
+          "stat_covariance_trace": null
+        },
+        "fidelity": {
+          "delta_mu_hat": 0.004307384558210003,
+          "delta_mu_hat_over_sigma_full": 0.005404086416542543,
+          "max_abs_q_mu_diff": 0.02608528596566373,
+          "mu_hat_exported": 1.1760590010149032,
+          "mu_hat_full": 1.1717516164566932,
+          "passes": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "q_mu_exported": [
+            0.0,
+            0.0,
+            0.0,
+            0.16435226789720048,
+            1.0486347332410446,
+            2.670227177192203,
+            4.998142292979779
+          ],
+          "q_mu_full": [
+            0.0,
+            0.0,
+            0.0,
+            0.1678237812170238,
+            1.0518547665288338,
+            2.6640212689855645,
+            4.972057007014115
+          ],
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "sigma_mu_full": 0.7970606363777961,
+          "upper_limit_exported": 2.5379180908203125,
+          "upper_limit_full": 2.5400543212890625,
+          "upper_limit_ratio": 0.9991589823686661
+        },
+        "gates": {
+          "fidelity": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "performance": {
+            "net_end_to_end_upper_limit_speedup": true
+          }
+        },
+        "name": "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
+        "output": {
+          "bins_count": 6,
+          "full_nuisance_count": 6,
+          "json_bytes": 4748,
+          "json_sha256": "1d4ba7965244541637990d8caae400efe582cb79a200cf17460730f097aa4c57",
+          "reduced_nuisance_count": 4,
+          "reduction_ratio": 0.6666666666666666,
+          "schema_version": "nextstat_simplified_likelihood_v0",
+          "uncertainty_model_kind": "basis"
+        },
+        "reference": "https://nextstat.io/examples/atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
+        "report_fidelity": {
+          "bins_count": 6,
+          "max_abs_expected_delta_at_nominal": 117.64899251597433,
+          "max_abs_expected_delta_random_draws": 0.13441969180218472,
+          "max_abs_yield_delta": 117.64899251597433,
+          "max_rel_yield_delta": 0.5337340649387072,
+          "nuisance_count_full": 6,
+          "nuisance_count_reduced": 4,
+          "qmu_delta_smoke": 0.0,
+          "relative_background_cov_residual": 1.2769734928302262e-05,
+          "upper_limit_ratio_smoke": 0.9990389235944258
+        },
+        "source_fit_schema_version": "nextstat_fit_result_v0",
+        "source_workspace_format": "pyhf",
+        "source_workspace_path": "tests/fixtures/atlas_public_dual_sr_dual_cr_gaussian_workspace.json",
+        "source_workspace_schema_version": "pyhf_workspace_v1",
+        "status": "ok",
+        "validation": {
+          "audit_schema_valid": true,
+          "export_report_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_export_ok": true,
+          "schema_valid": true
+        }
+      },
+      {
+        "analysis_id": "atlas.public.dual_sr_vr_dual_cr_gaussian.export.stable.example",
+        "bench": {
+          "export_wall_s": 0.04648030921816826,
+          "exported_end_to_end_upper_limit_wall_s": 0.01476057106629014,
+          "net_end_to_end_upper_limit_wall_s": 0.0612408802844584,
+          "speedup": {
+            "net_end_to_end_upper_limit": 1.9063922871235959
+          }
+        },
+        "case_kind": "public_reinterpretation_style",
+        "experiment": "ATLAS",
+        "export_report_schema_version": "nextstat_simplified_likelihood_export_report_v0",
+        "factorization": {
+          "clipped_negative_eigenvalues": 1,
+          "explained_variance_fraction": 1.0,
+          "frobenius_residual": 7.7979981973059e-13,
+          "input_trace": 968.1324664926728,
+          "max_clipped_negative_eigenvalue_magnitude": 4.375254550173893e-14,
+          "method": "symmetric_eigendecomposition",
+          "original_rank": 5,
+          "retained_rank": 5,
+          "retained_trace": 968.1324664926728,
+          "shared_systematic_trace": null,
+          "stat_covariance_trace": null
+        },
+        "fidelity": {
+          "delta_mu_hat": -0.0027570880898504235,
+          "delta_mu_hat_over_sigma_full": 0.0035290771019297735,
+          "max_abs_q_mu_diff": 0.05788020569147534,
+          "mu_hat_exported": 1.1417212410687596,
+          "mu_hat_full": 1.14447832915861,
+          "passes": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "q_mu_exported": [
+            0.0,
+            0.0,
+            0.0,
+            0.20866119301366837,
+            1.1791724390040912,
+            2.908310969293403,
+            5.361116315031893
+          ],
+          "q_mu_full": [
+            0.0,
+            0.0,
+            0.0,
+            0.2045992923087283,
+            1.165026637684548,
+            2.8768075364064885,
+            5.303236109340418
+          ],
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "sigma_mu_full": 0.7812490376996268,
+          "upper_limit_exported": 2.4802398681640625,
+          "upper_limit_full": 2.4875640869140625,
+          "upper_limit_ratio": 0.9970556663088483
+        },
+        "gates": {
+          "fidelity": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "performance": {
+            "net_end_to_end_upper_limit_speedup": true
+          }
+        },
+        "name": "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+        "output": {
+          "bins_count": 7,
+          "full_nuisance_count": 6,
+          "json_bytes": 5633,
+          "json_sha256": "dd311dffa53de7e19adc46ffaa0470e883a256a24c9411eba59924b02a6ad2f0",
+          "reduced_nuisance_count": 5,
+          "reduction_ratio": 0.8333333333333334,
+          "schema_version": "nextstat_simplified_likelihood_v0",
+          "uncertainty_model_kind": "basis"
+        },
+        "reference": "https://nextstat.io/examples/atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+        "report_fidelity": {
+          "bins_count": 7,
+          "max_abs_expected_delta_at_nominal": 141.34549849627751,
+          "max_abs_expected_delta_random_draws": 7.549516567451064e-14,
+          "max_abs_yield_delta": 141.34549849627751,
+          "max_rel_yield_delta": 0.6387163175837732,
+          "nuisance_count_full": 6,
+          "nuisance_count_reduced": 5,
+          "qmu_delta_smoke": 0.0,
+          "relative_background_cov_residual": 1.1027502745450187e-15,
+          "upper_limit_ratio_smoke": 0.9970544918998527
+        },
+        "source_fit_schema_version": "nextstat_fit_result_v0",
+        "source_workspace_format": "pyhf",
+        "source_workspace_path": "tests/fixtures/atlas_public_dual_sr_vr_dual_cr_gaussian_workspace.json",
+        "source_workspace_schema_version": "pyhf_workspace_v1",
+        "status": "ok",
+        "validation": {
+          "audit_schema_valid": true,
+          "export_report_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_export_ok": true,
+          "schema_valid": true
+        }
+      },
+      {
+        "analysis_id": "atlas.public.sr_cr_gaussian.export.stable.example",
+        "bench": {
+          "export_wall_s": 0.022638710215687752,
+          "exported_end_to_end_upper_limit_wall_s": 0.007523453328758478,
+          "net_end_to_end_upper_limit_wall_s": 0.03016216354444623,
+          "speedup": {
+            "net_end_to_end_upper_limit": 1.2558515460968596
+          }
+        },
+        "case_kind": "public_reinterpretation_style",
+        "experiment": "ATLAS",
+        "export_report_schema_version": "nextstat_simplified_likelihood_export_report_v0",
+        "factorization": {
+          "clipped_negative_eigenvalues": 0,
+          "explained_variance_fraction": 0.9999986929044397,
+          "frobenius_residual": 0.0006337232037410811,
+          "input_trace": 484.8331086327672,
+          "max_clipped_negative_eigenvalue_magnitude": 0.0,
+          "method": "symmetric_eigendecomposition",
+          "original_rank": 4,
+          "retained_rank": 3,
+          "retained_trace": 484.8324749095634,
+          "shared_systematic_trace": null,
+          "stat_covariance_trace": null
+        },
+        "fidelity": {
+          "delta_mu_hat": -0.018180070089983458,
+          "delta_mu_hat_over_sigma_full": 0.016863095357083455,
+          "max_abs_q_mu_diff": 0.07062630565858541,
+          "mu_hat_exported": 0.8602334060337219,
+          "mu_hat_full": 0.8784134761237054,
+          "passes": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "q_mu_exported": [
+            0.0,
+            0.0,
+            0.01671370224041624,
+            0.3446002560864727,
+            1.0764341835878284,
+            2.1932467298490224,
+            3.6771297578568465
+          ],
+          "q_mu_full": [
+            0.0,
+            0.0,
+            0.012709772999798474,
+            0.3256085140335685,
+            1.0420086537101056,
+            2.1418785381853453,
+            3.606503452198261
+          ],
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "sigma_mu_full": 1.0780980422047366,
+          "upper_limit_exported": 2.8183746337890625,
+          "upper_limit_full": 2.8362274169921875,
+          "upper_limit_ratio": 0.9937054472091459
+        },
+        "gates": {
+          "fidelity": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "performance": {
+            "net_end_to_end_upper_limit_speedup": true
+          }
+        },
+        "name": "atlas_public_sr_cr_gaussian_export_stable_example",
+        "output": {
+          "bins_count": 4,
+          "full_nuisance_count": 4,
+          "json_bytes": 3627,
+          "json_sha256": "52250ec348b2b9ea64a055088121d73456206ce6ae085bd520dedc67e8ee3a51",
+          "reduced_nuisance_count": 3,
+          "reduction_ratio": 0.75,
+          "schema_version": "nextstat_simplified_likelihood_v0",
+          "uncertainty_model_kind": "basis"
+        },
+        "reference": "https://nextstat.io/examples/atlas_public_sr_cr_gaussian_export_stable_example",
+        "report_fidelity": {
+          "bins_count": 4,
+          "max_abs_expected_delta_at_nominal": 139.04017139897363,
+          "max_abs_expected_delta_random_draws": 0.018159034261667095,
+          "max_abs_yield_delta": 139.04017139897363,
+          "max_rel_yield_delta": 0.6383025732317764,
+          "nuisance_count_full": 4,
+          "nuisance_count_reduced": 3,
+          "qmu_delta_smoke": 0.0039973440496368084,
+          "relative_background_cov_residual": 2.00391273892895e-06,
+          "upper_limit_ratio_smoke": 0.9939733103745158
+        },
+        "source_fit_schema_version": "nextstat_fit_result_v0",
+        "source_workspace_format": "pyhf",
+        "source_workspace_path": "tests/fixtures/atlas_public_sr_cr_gaussian_workspace.json",
+        "source_workspace_schema_version": "pyhf_workspace_v1",
+        "status": "ok",
+        "validation": {
+          "audit_schema_valid": true,
+          "export_report_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_export_ok": true,
+          "schema_valid": true
+        }
+      },
+      {
+        "analysis_id": "atlas.public.triple_sr_vr_dual_cr_gaussian.export.stable.example",
+        "bench": {
+          "export_wall_s": 0.04648030921816826,
+          "exported_end_to_end_upper_limit_wall_s": 0.01476057106629014,
+          "net_end_to_end_upper_limit_wall_s": 0.0612408802844584,
+          "speedup": {
+            "net_end_to_end_upper_limit": 1.9063922871235959
+          }
+        },
+        "case_kind": "public_reinterpretation_style",
+        "experiment": "ATLAS",
+        "export_report_schema_version": "nextstat_simplified_likelihood_export_report_v0",
+        "factorization": {
+          "clipped_negative_eigenvalues": 2,
+          "explained_variance_fraction": 1.0000000000000002,
+          "frobenius_residual": 1.1449011959546867e-12,
+          "input_trace": 1018.9262026471597,
+          "max_clipped_negative_eigenvalue_magnitude": 1.0549517711944108e-13,
+          "method": "symmetric_eigendecomposition",
+          "original_rank": 5,
+          "retained_rank": 5,
+          "retained_trace": 1018.9262026471599,
+          "shared_systematic_trace": null,
+          "stat_covariance_trace": null
+        },
+        "fidelity": {
+          "delta_mu_hat": 0.0003542635508217984,
+          "delta_mu_hat_over_sigma_full": 0.000538324596421961,
+          "max_abs_q_mu_diff": 0.07209092928133032,
+          "mu_hat_exported": 1.1416632095341246,
+          "mu_hat_full": 1.1413089459833028,
+          "passes": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "q_mu_exported": [
+            0.0,
+            0.0,
+            0.0,
+            0.2952052089161441,
+            1.6730554681626018,
+            4.138334324357231,
+            7.649701665208738
+          ],
+          "q_mu_full": [
+            0.0,
+            0.0,
+            0.0,
+            0.2922882972966221,
+            1.6580692633161505,
+            4.1001955032214426,
+            7.577610735927408
+          ],
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "sigma_mu_full": 0.6580853878430477,
+          "upper_limit_exported": 2.2501373291015625,
+          "upper_limit_full": 2.2553253173828125,
+          "upper_limit_ratio": 0.9976996718649572
+        },
+        "gates": {
+          "fidelity": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "performance": {
+            "net_end_to_end_upper_limit_speedup": true
+          }
+        },
+        "name": "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
+        "output": {
+          "bins_count": 9,
+          "full_nuisance_count": 6,
+          "json_bytes": 6516,
+          "json_sha256": "975d192945d60caebf5a53b8b1a985124065ab2173083f525685a0e5b5bf8ddc",
+          "reduced_nuisance_count": 5,
+          "reduction_ratio": 0.8333333333333334,
+          "schema_version": "nextstat_simplified_likelihood_v0",
+          "uncertainty_model_kind": "basis"
+        },
+        "reference": "https://nextstat.io/examples/atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
+        "report_fidelity": {
+          "bins_count": 9,
+          "max_abs_expected_delta_at_nominal": 165.9238044485884,
+          "max_abs_expected_delta_random_draws": 1.2434497875801753e-13,
+          "max_abs_yield_delta": 165.9238044485884,
+          "max_rel_yield_delta": 0.7495870420178452,
+          "nuisance_count_full": 6,
+          "nuisance_count_reduced": 5,
+          "qmu_delta_smoke": 0.0,
+          "relative_background_cov_residual": 1.5447594255011406e-15,
+          "upper_limit_ratio_smoke": 0.9978349120433018
+        },
+        "source_fit_schema_version": "nextstat_fit_result_v0",
+        "source_workspace_format": "pyhf",
+        "source_workspace_path": "tests/fixtures/atlas_public_triple_sr_vr_dual_cr_gaussian_workspace.json",
+        "source_workspace_schema_version": "pyhf_workspace_v1",
+        "status": "ok",
+        "validation": {
+          "audit_schema_valid": true,
+          "export_report_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_export_ok": true,
+          "schema_valid": true
+        }
+      },
+      {
+        "analysis_id": "cms.public.dual_sr_cr_gaussian.export.stable.example",
+        "bench": {
+          "export_wall_s": 0.03608323307707906,
+          "exported_end_to_end_upper_limit_wall_s": 0.009829516056925058,
+          "net_end_to_end_upper_limit_wall_s": 0.045912749134004116,
+          "speedup": {
+            "net_end_to_end_upper_limit": 1.6702208664254055
+          }
+        },
+        "case_kind": "public_reinterpretation_style",
+        "experiment": "CMS",
+        "export_report_schema_version": "nextstat_simplified_likelihood_export_report_v0",
+        "factorization": {
+          "clipped_negative_eigenvalues": 0,
+          "explained_variance_fraction": 0.999945325039381,
+          "frobenius_residual": 0.029645718222201092,
+          "input_trace": 607.4825513965335,
+          "max_clipped_negative_eigenvalue_magnitude": 0.0,
+          "method": "symmetric_eigendecomposition",
+          "original_rank": 5,
+          "retained_rank": 3,
+          "retained_trace": 607.4493373119592,
+          "shared_systematic_trace": null,
+          "stat_covariance_trace": null
+        },
+        "fidelity": {
+          "delta_mu_hat": -0.01760593181362946,
+          "delta_mu_hat_over_sigma_full": 0.017119700454164694,
+          "max_abs_q_mu_diff": 0.07556543092300672,
+          "mu_hat_exported": 1.2144770952197537,
+          "mu_hat_full": 1.2320830270333831,
+          "passes": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "q_mu_exported": [
+            0.0,
+            0.0,
+            0.0,
+            0.07701916691309663,
+            0.5774841277755627,
+            1.5321144315969946,
+            2.9280727021954362
+          ],
+          "q_mu_full": [
+            0.0,
+            0.0,
+            0.0,
+            0.06750304029343113,
+            0.5489840008518172,
+            1.4817077061566835,
+            2.8525072712724295
+          ],
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "sigma_mu_full": 1.0284018613974337,
+          "upper_limit_exported": 2.9941558837890625,
+          "upper_limit_full": 3.0162811279296875,
+          "upper_limit_ratio": 0.992664727456684
+        },
+        "gates": {
+          "fidelity": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "performance": {
+            "net_end_to_end_upper_limit_speedup": true
+          }
+        },
+        "name": "cms_public_dual_sr_cr_gaussian_export_stable_example",
+        "output": {
+          "bins_count": 5,
+          "full_nuisance_count": 6,
+          "json_bytes": 3963,
+          "json_sha256": "d9a9f7b0cf97c1bd5f75948326e75ad1310690fc3fed3b509c496af7b0de3750",
+          "reduced_nuisance_count": 3,
+          "reduction_ratio": 0.5,
+          "schema_version": "nextstat_simplified_likelihood_v0",
+          "uncertainty_model_kind": "basis"
+        },
+        "reference": "https://nextstat.io/examples/cms_public_dual_sr_cr_gaussian_export_stable_example",
+        "report_fidelity": {
+          "bins_count": 5,
+          "max_abs_expected_delta_at_nominal": 140.0117753543176,
+          "max_abs_expected_delta_random_draws": 0.12898874141810612,
+          "max_abs_yield_delta": 140.0117753543176,
+          "max_rel_yield_delta": 0.6084170731086442,
+          "nuisance_count_full": 6,
+          "nuisance_count_reduced": 3,
+          "qmu_delta_smoke": 0.0,
+          "relative_background_cov_residual": 5.657866033419936e-05,
+          "upper_limit_ratio_smoke": 0.9927154997976527
+        },
+        "source_fit_schema_version": "nextstat_fit_result_v0",
+        "source_workspace_format": "pyhf",
+        "source_workspace_path": "tests/fixtures/cms_public_dual_sr_cr_gaussian_workspace.json",
+        "source_workspace_schema_version": "pyhf_workspace_v1",
+        "status": "ok",
+        "validation": {
+          "audit_schema_valid": true,
+          "export_report_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_export_ok": true,
+          "schema_valid": true
+        }
+      },
+      {
+        "analysis_id": "cms.public.sr_cr_asymmetric_gaussian.export.stable.example",
+        "bench": {
+          "export_wall_s": 0.02204764587804675,
+          "exported_end_to_end_upper_limit_wall_s": 0.005820015445351601,
+          "net_end_to_end_upper_limit_wall_s": 0.02786766132339835,
+          "speedup": {
+            "net_end_to_end_upper_limit": 0.8777103422927768
+          }
+        },
+        "case_kind": "public_reinterpretation_style",
+        "experiment": "CMS",
+        "export_report_schema_version": "nextstat_simplified_likelihood_export_report_v0",
+        "factorization": {
+          "clipped_negative_eigenvalues": 1,
+          "explained_variance_fraction": 1.0000000000000002,
+          "frobenius_residual": 1.4792946876324441e-12,
+          "input_trace": 1230.5082942954555,
+          "max_clipped_negative_eigenvalue_magnitude": 9.27844687260982e-14,
+          "method": "symmetric_eigendecomposition",
+          "original_rank": 2,
+          "retained_rank": 2,
+          "retained_trace": 1230.5082942954557,
+          "shared_systematic_trace": null,
+          "stat_covariance_trace": null
+        },
+        "fidelity": {
+          "delta_mu_hat": -0.040546788233700504,
+          "delta_mu_hat_over_sigma_full": 0.03077025341790298,
+          "max_abs_q_mu_diff": 0.09089073579143658,
+          "mu_hat_exported": 0.8367655095663783,
+          "mu_hat_full": 0.8773122978000788,
+          "passes": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "q_mu_exported": [
+            0.0,
+            0.0,
+            0.01534161443382942,
+            0.2516975804905499,
+            0.7694055712433041,
+            1.5631106533971746,
+            2.627478495939947
+          ],
+          "q_mu_full": [
+            0.0,
+            0.0,
+            0.008803085687024037,
+            0.22256576991681243,
+            0.7184581551642957,
+            1.4915277422172295,
+            2.5365877601485103
+          ],
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "sigma_mu_full": 1.3177268215187745,
+          "upper_limit_exported": 3.227691650390625,
+          "upper_limit_full": 3.258209228515625,
+          "upper_limit_ratio": 0.9906336346180864
+        },
+        "gates": {
+          "fidelity": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "performance": {
+            "net_end_to_end_upper_limit_speedup": true
+          }
+        },
+        "name": "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+        "output": {
+          "bins_count": 4,
+          "full_nuisance_count": 3,
+          "json_bytes": 3312,
+          "json_sha256": "8843ef147b5ec8c90f68413aec633d31fd51941db3b4d4490ccddac1ca4fc012",
+          "reduced_nuisance_count": 2,
+          "reduction_ratio": 0.6666666666666666,
+          "schema_version": "nextstat_simplified_likelihood_v0",
+          "uncertainty_model_kind": "basis"
+        },
+        "reference": "https://nextstat.io/examples/cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+        "report_fidelity": {
+          "bins_count": 4,
+          "max_abs_expected_delta_at_nominal": 448.33754725937564,
+          "max_abs_expected_delta_random_draws": 4.973799150320701e-14,
+          "max_abs_yield_delta": 448.33754725937564,
+          "max_rel_yield_delta": 0.7722670580806399,
+          "nuisance_count_full": 3,
+          "nuisance_count_reduced": 2,
+          "qmu_delta_smoke": 0.0065393392750046075,
+          "relative_background_cov_residual": 1.3009526417667756e-15,
+          "upper_limit_ratio_smoke": 0.991007868115399
+        },
+        "source_fit_schema_version": "nextstat_fit_result_v0",
+        "source_workspace_format": "pyhf",
+        "source_workspace_path": "tests/fixtures/cms_public_sr_cr_asymmetric_gaussian_workspace.json",
+        "source_workspace_schema_version": "pyhf_workspace_v1",
+        "status": "ok",
+        "validation": {
+          "audit_schema_valid": true,
+          "export_report_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_export_ok": true,
+          "schema_valid": true
+        }
+      },
+      {
+        "analysis_id": "cms.public.sr_cr.export.stable.example",
+        "bench": {
+          "export_wall_s": 0.022479441948235035,
+          "exported_end_to_end_upper_limit_wall_s": 0.006001055706292391,
+          "net_end_to_end_upper_limit_wall_s": 0.028480497654527426,
+          "speedup": {
+            "net_end_to_end_upper_limit": 0.9147416386115276
+          }
+        },
+        "case_kind": "public_reinterpretation_style",
+        "experiment": "CMS",
+        "export_report_schema_version": "nextstat_simplified_likelihood_export_report_v0",
+        "factorization": {
+          "clipped_negative_eigenvalues": 0,
+          "explained_variance_fraction": 1.0000000000000002,
+          "frobenius_residual": 4.261076859697833e-12,
+          "input_trace": 1736.9707711182996,
+          "max_clipped_negative_eigenvalue_magnitude": 0.0,
+          "method": "symmetric_eigendecomposition",
+          "original_rank": 2,
+          "retained_rank": 2,
+          "retained_trace": 1736.9707711183,
+          "shared_systematic_trace": null,
+          "stat_covariance_trace": null
+        },
+        "fidelity": {
+          "delta_mu_hat": -0.014425322713116362,
+          "delta_mu_hat_over_sigma_full": 0.01296020407101485,
+          "max_abs_q_mu_diff": 0.027635576167714504,
+          "mu_hat_exported": 0.8034295734950033,
+          "mu_hat_full": 0.8178548962081197,
+          "passes": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "q_mu_exported": [
+            0.0,
+            0.0,
+            0.031168827673589306,
+            0.3898772743331662,
+            1.1456994638276043,
+            2.293524178403878,
+            3.828176686235601
+          ],
+          "q_mu_full": [
+            0.0,
+            0.0,
+            0.026759553449522855,
+            0.3745399987091922,
+            1.1221125390224174,
+            2.2658886022361635,
+            3.801591698770391
+          ],
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "sigma_mu_full": 1.1130474978691278,
+          "upper_limit_exported": 2.7907562255859375,
+          "upper_limit_full": 2.7976226806640625,
+          "upper_limit_ratio": 0.9975456107338624
+        },
+        "gates": {
+          "fidelity": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "performance": {
+            "net_end_to_end_upper_limit_speedup": true
+          }
+        },
+        "name": "cms_public_sr_cr_export_stable_example",
+        "output": {
+          "bins_count": 4,
+          "full_nuisance_count": 3,
+          "json_bytes": 3248,
+          "json_sha256": "ac7c0fa018ab63f34aa277db5f799aead1270dbfda92f59b0b08d1b062ea7aa5",
+          "reduced_nuisance_count": 2,
+          "reduction_ratio": 0.6666666666666666,
+          "schema_version": "nextstat_simplified_likelihood_v0",
+          "uncertainty_model_kind": "basis"
+        },
+        "reference": "https://nextstat.io/examples/cms_public_sr_cr_export_stable_example",
+        "report_fidelity": {
+          "bins_count": 4,
+          "max_abs_expected_delta_at_nominal": 396.0642220197021,
+          "max_abs_expected_delta_random_draws": 18.40248910373673,
+          "max_abs_yield_delta": 396.0642220197021,
+          "max_rel_yield_delta": 0.7725845393909543,
+          "nuisance_count_full": 3,
+          "nuisance_count_reduced": 2,
+          "qmu_delta_smoke": 0.004409274167340271,
+          "relative_background_cov_residual": 2.7404117368874692e-15,
+          "upper_limit_ratio_smoke": 0.998254037538193
+        },
+        "source_fit_schema_version": "nextstat_fit_result_v0",
+        "source_workspace_format": "pyhf",
+        "source_workspace_path": "tests/fixtures/cms_public_sr_cr_gaussian_workspace.json",
+        "source_workspace_schema_version": "pyhf_workspace_v1",
+        "status": "ok",
+        "validation": {
+          "audit_schema_valid": true,
+          "export_report_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_export_ok": true,
+          "schema_valid": true
+        }
+      },
+      {
+        "analysis_id": "cms.public.sr_dual_cr_gaussian.export.stable.example",
+        "bench": {
+          "export_wall_s": 0.03461181512102485,
+          "exported_end_to_end_upper_limit_wall_s": 0.009611473884433508,
+          "net_end_to_end_upper_limit_wall_s": 0.044223289005458355,
+          "speedup": {
+            "net_end_to_end_upper_limit": 1.5808319659542889
+          }
+        },
+        "case_kind": "public_reinterpretation_style",
+        "experiment": "CMS",
+        "export_report_schema_version": "nextstat_simplified_likelihood_export_report_v0",
+        "factorization": {
+          "clipped_negative_eigenvalues": 0,
+          "explained_variance_fraction": 0.9995581398958111,
+          "frobenius_residual": 0.34136874214695184,
+          "input_trace": 772.571994870145,
+          "max_clipped_negative_eigenvalue_magnitude": 0.0,
+          "method": "symmetric_eigendecomposition",
+          "original_rank": 4,
+          "retained_rank": 3,
+          "retained_trace": 772.2306261279982,
+          "shared_systematic_trace": null,
+          "stat_covariance_trace": null
+        },
+        "fidelity": {
+          "delta_mu_hat": -0.015975743314073143,
+          "delta_mu_hat_over_sigma_full": 0.011976456822630422,
+          "max_abs_q_mu_diff": 0.0699530228330083,
+          "mu_hat_exported": 0.7987165145572767,
+          "mu_hat_full": 0.8146922578713498,
+          "passes": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "q_mu_exported": [
+            0.0,
+            0.0,
+            0.02277876086055386,
+            0.27328278364116443,
+            0.7925931995884525,
+            1.5713515982080324,
+            2.6005234030579487
+          ],
+          "q_mu_full": [
+            0.0,
+            0.0,
+            0.01915213693493456,
+            0.2588749837613449,
+            0.7642969351230207,
+            1.5248664505324498,
+            2.5305703802249404
+          ],
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "sigma_mu_full": 1.333929020132713,
+          "upper_limit_exported": 3.258819580078125,
+          "upper_limit_full": 3.289031982421875,
+          "upper_limit_ratio": 0.9908141962421712
+        },
+        "gates": {
+          "fidelity": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "performance": {
+            "net_end_to_end_upper_limit_speedup": true
+          }
+        },
+        "name": "cms_public_sr_dual_cr_gaussian_export_stable_example",
+        "output": {
+          "bins_count": 4,
+          "full_nuisance_count": 6,
+          "json_bytes": 3633,
+          "json_sha256": "2103ea3819e64a255d1fc6d52f2dbc5f05d3c3ed2af2b27ea7cd614f42bf7ae2",
+          "reduced_nuisance_count": 3,
+          "reduction_ratio": 0.5,
+          "schema_version": "nextstat_simplified_likelihood_v0",
+          "uncertainty_model_kind": "basis"
+        },
+        "reference": "https://nextstat.io/examples/cms_public_sr_dual_cr_gaussian_export_stable_example",
+        "report_fidelity": {
+          "bins_count": 4,
+          "max_abs_expected_delta_at_nominal": 111.23627626806027,
+          "max_abs_expected_delta_random_draws": 0.41466271540456034,
+          "max_abs_yield_delta": 111.23627626806027,
+          "max_rel_yield_delta": 0.5085623688106994,
+          "nuisance_count_full": 6,
+          "nuisance_count_reduced": 3,
+          "qmu_delta_smoke": 0.003628560137119763,
+          "relative_background_cov_residual": 0.0006293525262510284,
+          "upper_limit_ratio_smoke": 0.9903525046382189
+        },
+        "source_fit_schema_version": "nextstat_fit_result_v0",
+        "source_workspace_format": "pyhf",
+        "source_workspace_path": "tests/fixtures/cms_public_sr_dual_cr_gaussian_workspace.json",
+        "source_workspace_schema_version": "pyhf_workspace_v1",
+        "status": "ok",
+        "validation": {
+          "audit_schema_valid": true,
+          "export_report_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_export_ok": true,
+          "schema_valid": true
+        }
+      },
+      {
+        "analysis_id": "cms.public.sr_vr_dual_cr_gaussian.export.stable.example",
+        "bench": {
+          "export_wall_s": 0.03474442195147276,
+          "exported_end_to_end_upper_limit_wall_s": 0.010097745340317488,
+          "net_end_to_end_upper_limit_wall_s": 0.04484216729179025,
+          "speedup": {
+            "net_end_to_end_upper_limit": 1.9760145143886485
+          }
+        },
+        "case_kind": "public_reinterpretation_style",
+        "experiment": "CMS",
+        "export_report_schema_version": "nextstat_simplified_likelihood_export_report_v0",
+        "factorization": {
+          "clipped_negative_eigenvalues": 0,
+          "explained_variance_fraction": 0.9990865228127266,
+          "frobenius_residual": 0.7865386159508938,
+          "input_trace": 865.0487285911219,
+          "max_clipped_negative_eigenvalue_magnitude": 0.0,
+          "method": "symmetric_eigendecomposition",
+          "original_rank": 5,
+          "retained_rank": 3,
+          "retained_trace": 864.258526311674,
+          "shared_systematic_trace": null,
+          "stat_covariance_trace": null
+        },
+        "fidelity": {
+          "delta_mu_hat": -0.027709445399795807,
+          "delta_mu_hat_over_sigma_full": 0.021120606697488276,
+          "max_abs_q_mu_diff": 0.09618848026584459,
+          "mu_hat_exported": 0.7478792708869308,
+          "mu_hat_full": 0.7755887162867267,
+          "passes": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "q_mu_exported": [
+            0.0,
+            0.0,
+            0.036831736866396625,
+            0.32366227060256847,
+            0.8858497525068145,
+            1.713122566215901,
+            2.7956301790710825
+          ],
+          "q_mu_full": [
+            0.0,
+            0.0,
+            0.029095749448359243,
+            0.2986807096608288,
+            0.8411498612505213,
+            1.645033239209532,
+            2.699441698805238
+          ],
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "sigma_mu_full": 1.3119625679640678,
+          "upper_limit_exported": 3.181915283203125,
+          "upper_limit_full": 3.217926025390625,
+          "upper_limit_ratio": 0.9888093318791787
+        },
+        "gates": {
+          "fidelity": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "performance": {
+            "net_end_to_end_upper_limit_speedup": true
+          }
+        },
+        "name": "cms_public_sr_vr_dual_cr_gaussian_export_stable_example",
+        "output": {
+          "bins_count": 5,
+          "full_nuisance_count": 6,
+          "json_bytes": 3957,
+          "json_sha256": "b5ff45d27a0654c5d10d247f1abfbc1b6fac34b17f3d9d0377adf77a5be36c28",
+          "reduced_nuisance_count": 3,
+          "reduction_ratio": 0.5,
+          "schema_version": "nextstat_simplified_likelihood_v0",
+          "uncertainty_model_kind": "basis"
+        },
+        "reference": "https://nextstat.io/examples/cms_public_sr_vr_dual_cr_gaussian_export_stable_example",
+        "report_fidelity": {
+          "bins_count": 5,
+          "max_abs_expected_delta_at_nominal": 136.07237754450753,
+          "max_abs_expected_delta_random_draws": 0.6861884526378927,
+          "max_abs_yield_delta": 136.07237754450753,
+          "max_rel_yield_delta": 0.6199666350509617,
+          "nuisance_count_full": 6,
+          "nuisance_count_reduced": 3,
+          "qmu_delta_smoke": 0.007733131640463853,
+          "relative_background_cov_residual": 0.0012632762622113746,
+          "upper_limit_ratio_smoke": 0.9886234357224118
+        },
+        "source_fit_schema_version": "nextstat_fit_result_v0",
+        "source_workspace_format": "pyhf",
+        "source_workspace_path": "tests/fixtures/cms_public_sr_vr_dual_cr_gaussian_workspace.json",
+        "source_workspace_schema_version": "pyhf_workspace_v1",
+        "status": "ok",
+        "validation": {
+          "audit_schema_valid": true,
+          "export_report_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_export_ok": true,
+          "schema_valid": true
+        }
+      },
+      {
+        "analysis_id": "synthetic_covariance_large.export_matrix",
+        "bench": {
+          "export_wall_s": 0.26378157176077366,
+          "exported_end_to_end_upper_limit_wall_s": 0.04559595603495836,
+          "net_end_to_end_upper_limit_wall_s": 0.309377527795732,
+          "speedup": {
+            "net_end_to_end_upper_limit": 2.6158195091097296
+          }
+        },
+        "case_kind": "synthetic",
+        "experiment": "Synthetic",
+        "export_report_schema_version": "nextstat_simplified_likelihood_export_report_v0",
+        "factorization": {
+          "clipped_negative_eigenvalues": 0,
+          "explained_variance_fraction": 0.99999999999989,
+          "frobenius_residual": 4.075969599537922e-11,
+          "input_trace": 1367.5771719033578,
+          "max_clipped_negative_eigenvalue_magnitude": 0.0,
+          "method": "symmetric_eigendecomposition",
+          "original_rank": 8,
+          "retained_rank": 8,
+          "retained_trace": 1367.5771719032073,
+          "shared_systematic_trace": null,
+          "stat_covariance_trace": null
+        },
+        "fidelity": {
+          "delta_mu_hat": 0.0,
+          "delta_mu_hat_over_sigma_full": 0.0,
+          "max_abs_q_mu_diff": 2.567333012848394e-10,
+          "mu_hat_exported": 1.0,
+          "mu_hat_full": 1.0,
+          "passes": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "q_mu_exported": [
+            0.0,
+            0.0,
+            3.611467036535032e-08,
+            0.1523337098266211,
+            0.6059511570106224,
+            1.3558552200390181,
+            2.397152423143808
+          ],
+          "q_mu_full": [
+            0.0,
+            0.0,
+            3.611444299167488e-08,
+            0.1523337098122397,
+            0.6059511569512779,
+            1.355855219899638,
+            2.397152422887075
+          ],
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "sigma_mu_full": 1.2774927933257822,
+          "upper_limit_exported": 3.278350830078125,
+          "upper_limit_full": 3.278350830078125,
+          "upper_limit_ratio": 1.0
+        },
+        "gates": {
+          "fidelity": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "performance": {
+            "net_end_to_end_upper_limit_speedup": true
+          }
+        },
+        "name": "synthetic_covariance_large",
+        "output": {
+          "bins_count": 24,
+          "full_nuisance_count": 128,
+          "json_bytes": 16839,
+          "json_sha256": "bb9d8851093bbcd2539b176268e21854f196cb7c629b19ea48c06cbed0d7d469",
+          "reduced_nuisance_count": 8,
+          "reduction_ratio": 0.0625,
+          "schema_version": "nextstat_simplified_likelihood_v0",
+          "uncertainty_model_kind": "basis"
+        },
+        "reference": "internal-apex2-export-matrix",
+        "report_fidelity": {
+          "bins_count": 24,
+          "max_abs_expected_delta_at_nominal": 0.0,
+          "max_abs_expected_delta_random_draws": 6.704351585895552e-06,
+          "max_abs_yield_delta": 6.704351585895552e-06,
+          "max_rel_yield_delta": 1.306891147348061e-07,
+          "nuisance_count_full": 128,
+          "nuisance_count_reduced": 8,
+          "qmu_delta_smoke": 0.0,
+          "relative_background_cov_residual": 5.029290709743024e-14,
+          "upper_limit_ratio_smoke": 1.0
+        },
+        "source_fit_schema_version": "nextstat_fit_result_v0",
+        "source_workspace_format": "pyhf",
+        "source_workspace_path": null,
+        "source_workspace_schema_version": "pyhf_workspace_v1",
+        "status": "ok",
+        "validation": {
+          "audit_schema_valid": true,
+          "export_report_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_export_ok": true,
+          "schema_valid": true
+        }
+      },
+      {
+        "analysis_id": "synthetic_covariance_medium.export_matrix",
+        "bench": {
+          "export_wall_s": 0.06269105710089207,
+          "exported_end_to_end_upper_limit_wall_s": 0.015677967108786106,
+          "net_end_to_end_upper_limit_wall_s": 0.07836902420967817,
+          "speedup": {
+            "net_end_to_end_upper_limit": 2.1792428549098894
+          }
+        },
+        "case_kind": "synthetic",
+        "experiment": "Synthetic",
+        "export_report_schema_version": "nextstat_simplified_likelihood_export_report_v0",
+        "factorization": {
+          "clipped_negative_eigenvalues": 0,
+          "explained_variance_fraction": 0.9999999999998815,
+          "frobenius_residual": 1.4189995145645752e-11,
+          "input_trace": 271.68127316481025,
+          "max_clipped_negative_eigenvalue_magnitude": 0.0,
+          "method": "symmetric_eigendecomposition",
+          "original_rank": 6,
+          "retained_rank": 6,
+          "retained_trace": 271.6812731647781,
+          "shared_systematic_trace": null,
+          "stat_covariance_trace": null
+        },
+        "fidelity": {
+          "delta_mu_hat": 0.0,
+          "delta_mu_hat_over_sigma_full": 0.0,
+          "max_abs_q_mu_diff": 1.1066561000916408e-09,
+          "mu_hat_exported": 1.0,
+          "mu_hat_full": 1.0,
+          "passes": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "q_mu_exported": [
+            0.0,
+            0.0,
+            7.385096978396177e-10,
+            0.163828582330666,
+            0.6506552170289126,
+            1.453662527490323,
+            2.5662550137672895
+          ],
+          "q_mu_full": [
+            0.0,
+            0.0,
+            7.38737071515061e-10,
+            0.16382858224369556,
+            0.6506552167048767,
+            1.4536625268148953,
+            2.5662550126606334
+          ],
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "sigma_mu_full": 1.230870562779337,
+          "upper_limit_exported": 3.195343017578125,
+          "upper_limit_full": 3.195343017578125,
+          "upper_limit_ratio": 1.0
+        },
+        "gates": {
+          "fidelity": {
+            "mu_hat": true,
+            "q_mu": true,
+            "upper_limit": true
+          },
+          "performance": {
+            "net_end_to_end_upper_limit_speedup": true
+          }
+        },
+        "name": "synthetic_covariance_medium",
+        "output": {
+          "bins_count": 12,
+          "full_nuisance_count": 72,
+          "json_bytes": 8215,
+          "json_sha256": "0e29c35dcaba7390a3db3b4ab66b2ca85d85e6495d17ff9a24d83c0519ae6d08",
+          "reduced_nuisance_count": 6,
+          "reduction_ratio": 0.08333333333333333,
+          "schema_version": "nextstat_simplified_likelihood_v0",
+          "uncertainty_model_kind": "basis"
+        },
+        "reference": "internal-apex2-export-matrix",
+        "report_fidelity": {
+          "bins_count": 12,
+          "max_abs_expected_delta_at_nominal": 0.0,
+          "max_abs_expected_delta_random_draws": 7.35051215289273e-06,
+          "max_abs_yield_delta": 7.35051215289273e-06,
+          "max_rel_yield_delta": 1.5910199465135777e-07,
+          "nuisance_count_full": 72,
+          "nuisance_count_reduced": 6,
+          "qmu_delta_smoke": 0.0,
+          "relative_background_cov_residual": 1.0475818875467234e-13,
+          "upper_limit_ratio_smoke": 1.0
+        },
+        "source_fit_schema_version": "nextstat_fit_result_v0",
+        "source_workspace_format": "pyhf",
+        "source_workspace_path": null,
+        "source_workspace_schema_version": "pyhf_workspace_v1",
+        "status": "ok",
+        "validation": {
+          "audit_schema_valid": true,
+          "export_report_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_export_ok": true,
+          "schema_valid": true
+        }
+      }
+    ],
+    "cli_binary": "../apex2_simplified_likelihood_target_20260311T204927Z/release/nextstat",
+    "summary": {
+      "all_fidelity_gates_pass": true,
+      "all_performance_gates_pass": true,
+      "all_schema_valid": true,
+      "case_count": 11,
+      "case_kinds": [
+        "public_reinterpretation_style",
+        "synthetic"
+      ],
+      "max_abs_q_mu_diff": 0.09618848026584459,
+      "max_upper_limit_ratio_deviation": 0.011190668120821257,
+      "min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
+      "public_reinterpretation_style_case_count": 9,
+      "public_reinterpretation_style_case_names": [
+        "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
+        "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
+        "atlas_public_sr_cr_gaussian_export_stable_example",
+        "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
+        "cms_public_dual_sr_cr_gaussian_export_stable_example",
+        "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+        "cms_public_sr_cr_export_stable_example",
+        "cms_public_sr_dual_cr_gaussian_export_stable_example",
+        "cms_public_sr_vr_dual_cr_gaussian_export_stable_example"
+      ],
+      "status": "ok",
+      "synthetic_case_count": 2
+    }
+  },
+  "params": {
+    "alpha": 0.05,
+    "export_repeat": 1,
+    "fit_repeat": 3,
+    "gates": {
+      "delta_mu_hat_over_sigma_full_max": 0.05,
+      "end_to_end_upper_limit_speedup_min": 3.0,
+      "export_net_end_to_end_upper_limit_speedup_min": 0.0,
+      "json_size_fraction_max": 0.35,
+      "max_abs_q_mu_diff": 0.1,
+      "reduced_nuisance_fraction_max": 0.25,
+      "upper_limit_ratio_max": 1.05,
+      "upper_limit_ratio_min": 0.95
+    },
+    "limit_hi": 5.0,
+    "limit_max_iter": 80,
+    "limit_rtol": 0.0001,
+    "scan": [
+      0.0,
+      0.5,
+      1.0,
+      1.5,
+      2.0,
+      2.5,
+      3.0
+    ],
+    "suite": "bench",
+    "upper_limit_repeat": 3
+  },
+  "public_fixture_matrix": {
+    "cases": [
+      {
+        "analysis_id": "sl_two_bin_public_example",
+        "diagnostics": {
+          "factorization": null,
+          "fidelity": null
+        },
+        "evidence": {
+          "embedded_fidelity_diagnostics_present": false,
+          "full_vs_simplified_fidelity_supported": false
+        },
+        "experiment": "ATLAS",
+        "fixture_id": "atlas_basis_two_bin_public_example",
+        "gates": {
+          "derived_fidelity": true,
+          "runtime": true,
+          "schema": true,
+          "stable_surface": true
+        },
+        "provenance_kind": "public_style_example",
+        "ranking_semantics": "reduced_basis_only",
+        "reference": "https://nextstat.io/examples/sl_two_bin_public_example",
+        "research_grade_commands": [
+          "significance",
+          "hypotest-toys",
+          "viz-ranking"
+        ],
+        "runtime": {
+          "fit_success": true,
+          "hypotest_pvalue": 0.6453487520418445,
+          "scan_mu_hat": 0.6771966061354083,
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "scan_q_mu": [
+            0.0,
+            0.0,
+            0.036244768530661275,
+            0.22606365567994402,
+            0.5619831274063429,
+            1.0281472704318446,
+            1.6111164580301889
+          ],
+          "upper_limit_observed": 4.193878173828125
+        },
+        "source_format": "basis",
+        "stable_commands": [
+          "audit",
+          "fit",
+          "hypotest",
+          "upper-limit",
+          "scan"
+        ],
+        "status": "ok",
+        "title": "ATLAS-style basis-form public simplified likelihood example",
+        "validation": {
+          "audit_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_audit_ok": true,
+          "schema_valid": true
+        },
+        "workspace_json_path": "docs/specs/hep/simplified_likelihood_v0.example.json"
+      },
+      {
+        "analysis_id": "sl_covariance_three_bin_public_example",
+        "diagnostics": {
+          "factorization": {
+            "clipped_negative_eigenvalues": 0,
+            "explained_variance_fraction": 0.9999999999999999,
+            "frobenius_residual": 1.876098827769959e-15,
+            "input_trace": 0.8625,
+            "max_clipped_negative_eigenvalue_magnitude": 0.0,
+            "method": "symmetric_eigendecomposition",
+            "original_rank": 3,
+            "retained_rank": 3,
+            "retained_trace": 0.8624999999999999,
+            "shared_systematic_trace": 0.5725,
+            "stat_covariance_trace": 0.29000000000000004
+          },
+          "fidelity": null
+        },
+        "evidence": {
+          "embedded_fidelity_diagnostics_present": false,
+          "full_vs_simplified_fidelity_supported": false
+        },
+        "experiment": "CMS",
+        "fixture_id": "cms_covariance_three_bin_public_example",
+        "gates": {
+          "derived_fidelity": true,
+          "runtime": true,
+          "schema": true,
+          "stable_surface": true
+        },
+        "provenance_kind": "public_style_example",
+        "ranking_semantics": "reduced_basis_only",
+        "reference": "https://nextstat.io/examples/sl_covariance_three_bin_public_example",
+        "research_grade_commands": [
+          "significance",
+          "hypotest-toys",
+          "viz-ranking"
+        ],
+        "runtime": {
+          "fit_success": true,
+          "hypotest_pvalue": 0.6270645643795562,
+          "scan_mu_hat": 0.12307472766192482,
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "scan_q_mu": [
+            0.0,
+            0.03753403191541693,
+            0.19683527437415194,
+            0.4707249785648564,
+            0.8493342881613977,
+            1.3240072590081482,
+            1.8871123061283903
+          ],
+          "upper_limit_observed": 4.335174560546875
+        },
+        "source_format": "covariance",
+        "stable_commands": [
+          "audit",
+          "fit",
+          "hypotest",
+          "upper-limit",
+          "scan"
+        ],
+        "status": "ok",
+        "title": "CMS-style covariance-form public simplified likelihood example",
+        "validation": {
+          "audit_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_audit_ok": true,
+          "schema_valid": true
+        },
+        "workspace_json_path": "docs/specs/hep/simplified_likelihood_covariance_public_v0.example.json"
+      },
+      {
+        "analysis_id": "sl_derived_workspace_public_example",
+        "diagnostics": {
+          "factorization": {
+            "clipped_negative_eigenvalues": 0,
+            "explained_variance_fraction": 0.997,
+            "frobenius_residual": 0.0021,
+            "input_trace": 0.58,
+            "max_clipped_negative_eigenvalue_magnitude": 0.0,
+            "method": "symmetric_eigendecomposition",
+            "original_rank": 5,
+            "retained_rank": 2,
+            "retained_trace": 0.578
+          },
+          "fidelity": {
+            "bins_count": 2,
+            "max_abs_expected_delta_at_nominal": 0.037,
+            "max_abs_expected_delta_random_draws": 0.061,
+            "max_abs_yield_delta": 0.037,
+            "max_rel_yield_delta": 0.005,
+            "nuisance_count_full": 12,
+            "nuisance_count_reduced": 2,
+            "qmu_delta_smoke": 0.008,
+            "relative_background_cov_residual": 0.012,
+            "upper_limit_ratio_smoke": 1.013
+          }
+        },
+        "evidence": {
+          "embedded_fidelity_diagnostics_present": true,
+          "full_vs_simplified_fidelity_supported": true
+        },
+        "experiment": "ATLAS",
+        "fixture_id": "atlas_derived_workspace_public_example",
+        "gates": {
+          "derived_fidelity": true,
+          "runtime": true,
+          "schema": true,
+          "stable_surface": true
+        },
+        "provenance_kind": "derived_public_style_example",
+        "ranking_semantics": "reduced_basis_only",
+        "reference": "https://nextstat.io/examples/sl_derived_workspace_public_example",
+        "research_grade_commands": [
+          "significance",
+          "hypotest-toys",
+          "viz-ranking"
+        ],
+        "runtime": {
+          "fit_success": true,
+          "hypotest_pvalue": 0.6560395321588134,
+          "scan_mu_hat": 0.7476232747060785,
+          "scan_mu_values": [
+            0.0,
+            0.5,
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0
+          ],
+          "scan_q_mu": [
+            0.0,
+            0.0,
+            0.021941783219135758,
+            0.18735492216420013,
+            0.49965256034375294,
+            0.9431223634095609,
+            1.5043938432271453
+          ],
+          "upper_limit_observed": 4.264373779296875
+        },
+        "source_format": "derived_from_workspace",
+        "stable_commands": [
+          "audit",
+          "fit",
+          "hypotest",
+          "upper-limit",
+          "scan"
+        ],
+        "status": "ok",
+        "title": "ATLAS-style derived-from-workspace simplified likelihood example",
+        "validation": {
+          "audit_schema_valid": true,
+          "input_schema_valid": true,
+          "jsonschema_available": true,
+          "runtime_audit_ok": true,
+          "schema_valid": true
+        },
+        "workspace_json_path": "docs/specs/hep/simplified_likelihood_derived_from_workspace_v0.example.json"
+      }
+    ],
+    "catalog_path": "docs/specs/apex2_simplified_likelihood_public_fixture_catalog_v0.example.json",
+    "catalog_schema_version": "nextstat_simplified_likelihood_public_fixture_catalog_v0",
+    "summary": {
+      "all_derived_fidelity_gates_pass": true,
+      "all_runtime_gates_pass": true,
+      "all_schema_valid": true,
+      "all_stable_surface_gates_pass": true,
+      "catalog_schema_valid": true,
+      "derived_fixture_count": 1,
+      "fixture_count": 3,
+      "fixtures_with_embedded_fidelity_evidence": 1,
+      "jsonschema_available": true,
+      "source_formats": [
+        "basis",
+        "covariance",
+        "derived_from_workspace"
+      ],
+      "status": "ok"
+    }
+  },
+  "schema_version": "nextstat_apex2_simplified_likelihood_report_v0",
+  "stability": "apex2",
+  "summary": {
+    "all_fidelity_gates_pass": true,
+    "all_performance_gates_pass": true,
+    "all_schema_valid": true,
+    "bench": {
+      "min_speedup_end_to_end_upper_limit": 10.907335514525949,
+      "min_speedup_fit": 101.92188885485353,
+      "min_speedup_upper_limit": 11.500057507997205
+    },
+    "case_count": 2,
+    "export_matrix_case_count": 11,
+    "export_matrix_case_kinds": [
+      "public_reinterpretation_style",
+      "synthetic"
+    ],
+    "export_matrix_included": true,
+    "export_matrix_min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
+    "export_matrix_public_reinterpretation_style_case_count": 9,
+    "export_matrix_status": "ok",
+    "max_abs_q_mu_diff": 2.393811229239873e-07,
+    "max_delta_mu_hat_over_sigma_full": 0.0,
+    "max_json_size_fraction": 0.12117248240539445,
+    "max_reduced_nuisance_fraction": 0.08333333333333333,
+    "max_upper_limit_ratio_deviation": 0.0,
+    "public_fixture_matrix_fixture_count": 3,
+    "public_fixture_matrix_included": true,
+    "public_fixture_matrix_status": "ok",
+    "status": "ok"
+  }
+}

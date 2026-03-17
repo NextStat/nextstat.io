@@ -217,7 +217,7 @@ evidence now shows two concrete things:
 
 - the explicit `constraint_covariance_source` split remains green on the
   synthetic medium/large export controls
-- the committed exporter matrix now also includes seven machine-classified public
+- the committed exporter matrix now also includes nine machine-classified public
   reinterpretation-style export cases on `nextstat-bench`
 - those public-style exporter cases are now also published as a dedicated
   stable evidence artifact instead of living only inside the aggregate Apex2

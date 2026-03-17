@@ -6076,24 +6076,17 @@ fn build_simplified_likelihood_fidelity(
     let max_rel_yield_delta = max_abs_yield_delta / expected_scale;
 
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
-    let qmu_full = ns_inference::profile_likelihood::qmu_like(
-        &mle,
-        &selected_model,
-        derive_config.fidelity_smoke.qmu_test_mu,
-    )?;
-    let qmu_simplified = ns_inference::profile_likelihood::qmu_like(
-        &mle,
-        &simplified_model,
-        derive_config.fidelity_smoke.qmu_test_mu,
-    )?;
+    let full_ctx = ns_inference::AsymptoticCLsContext::new(&mle, &selected_model)?;
+    let simplified_ctx = ns_inference::AsymptoticCLsContext::new(&mle, &simplified_model)?;
+    let qmu_test_mu = derive_config.fidelity_smoke.qmu_test_mu;
+    let qmu_full = full_ctx.hypotest_qtilde(&mle, qmu_test_mu)?.q_mu;
+    let qmu_simplified = simplified_ctx.hypotest_qtilde(&mle, qmu_test_mu)?.q_mu;
 
     let alpha = 1.0 - derive_config.fidelity_smoke.upper_limit_cl;
     let poi_bounds = derived.workspace.poi.bounds;
     let upper_limit_lo = poi_bounds[0].max(0.0);
     let upper_limit_hi =
         if poi_bounds[1] > upper_limit_lo { poi_bounds[1] } else { upper_limit_lo + 10.0 };
-    let full_ctx = ns_inference::AsymptoticCLsContext::new(&mle, &selected_model)?;
-    let simplified_ctx = ns_inference::AsymptoticCLsContext::new(&mle, &simplified_model)?;
     let upper_limit_full =
         full_ctx.upper_limit_qtilde(&mle, alpha, upper_limit_lo, upper_limit_hi, 1e-3, 80)?;
     let upper_limit_simplified =

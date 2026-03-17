@@ -672,6 +672,7 @@ impl AsymptoticCLsContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::profile_likelihood::qmu_like;
     use ns_translate::pyhf::Workspace;
 
     fn load_simple_workspace() -> Workspace {
@@ -712,6 +713,23 @@ mod tests {
         let cls = safe_cls(clsb, clb);
         assert!(cls.is_finite());
         assert_eq!(cls, 0.0);
+    }
+
+    #[test]
+    fn test_hypotest_context_observed_qmu_matches_profile_likelihood_qmu() {
+        let workspace = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+        let mle = MaximumLikelihoodEstimator::new();
+        let ctx = AsymptoticCLsContext::new(&mle, &model).unwrap();
+
+        for mu_test in [0.5, 1.0, 2.0] {
+            let legacy = qmu_like(&mle, &model, mu_test).unwrap();
+            let via_ctx = ctx.hypotest_qtilde(&mle, mu_test).unwrap().q_mu;
+            assert!(
+                (legacy - via_ctx).abs() < 1e-12,
+                "mu_test={mu_test} legacy={legacy} via_ctx={via_ctx}"
+            );
+        }
     }
 
     #[test]

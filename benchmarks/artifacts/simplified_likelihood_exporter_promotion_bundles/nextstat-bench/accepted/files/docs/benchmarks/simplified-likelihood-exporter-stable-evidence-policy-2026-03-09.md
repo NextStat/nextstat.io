@@ -36,8 +36,8 @@ The canonical machine-readable policy is:
 
 The current accepted floor is:
 
-- `export_matrix_case_count >= 10`
-- `public_reinterpretation_style` case count `>= 8`
+- `export_matrix_case_count >= 11`
+- `public_reinterpretation_style` case count `>= 9`
 - synthetic control floor:
   `synthetic_min_net_end_to_end_upper_limit_speedup >= 1.25x`
 - public stable-evidence floor:
@@ -116,9 +116,9 @@ Required uploaded artifacts now explicitly include:
 
 The committed accepted policy reflects the current `nextstat-bench` evidence:
 
-- `export_matrix_case_count = 10`
+- `export_matrix_case_count = 11`
 - `public_case_count = 9`
-- `public_case_names = ["atlas_public_dual_sr_dual_cr_gaussian_export_stable_example", "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example", "atlas_public_sr_cr_gaussian_export_stable_example", "cms_public_sr_cr_export_stable_example", "cms_public_sr_cr_asymmetric_gaussian_export_stable_example", "cms_public_dual_sr_cr_gaussian_export_stable_example", "cms_public_sr_dual_cr_gaussian_export_stable_example", "cms_public_sr_vr_dual_cr_gaussian_export_stable_example"]`
+- `public_case_names = ["atlas_public_dual_sr_dual_cr_gaussian_export_stable_example", "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example", "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example", "atlas_public_sr_cr_gaussian_export_stable_example", "cms_public_sr_cr_export_stable_example", "cms_public_sr_cr_asymmetric_gaussian_export_stable_example", "cms_public_dual_sr_cr_gaussian_export_stable_example", "cms_public_sr_dual_cr_gaussian_export_stable_example", "cms_public_sr_vr_dual_cr_gaussian_export_stable_example"]`
 - `synthetic_min_net_end_to_end_upper_limit_speedup = 2.1792428549098894x`
 - `public_min_net_end_to_end_upper_limit_speedup = 0.8777103422927768x`
 - `max_abs_q_mu_diff = 0.09618848026584459`
