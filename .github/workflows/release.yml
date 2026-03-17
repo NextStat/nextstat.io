@@ -116,18 +116,22 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - name: Download CLI wheels
-        uses: actions/download-artifact@v4
-        with:
-          pattern: cli-wheels-*
-          path: dist
-          merge-multiple: true
+      - name: Download CLI release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "${GITHUB_REF_NAME}" \
+            --pattern 'nextstat_cli-*.whl' \
+            --pattern 'nextstat_cli-*.tar.gz' \
+            --dir dist
 
-      - name: Download CLI sdist
-        uses: actions/download-artifact@v4
-        with:
-          name: cli-sdist
-          path: dist
+      - name: Validate CLI release publish artifacts
+        run: |
+          python3 -m scripts.validate_release_publish_artifacts \
+            --dir dist \
+            --package-prefix nextstat_cli
 
       - name: Publish nextstat-cli to PyPI (Trusted Publisher)
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -158,18 +162,22 @@ jobs:
           done
           echo "::warning::nextstat-cli==$TAG not found after 5 min — publishing nextstat anyway"
 
-      - name: Download wheels
-        uses: actions/download-artifact@v4
-        with:
-          pattern: wheels-*
-          path: dist
-          merge-multiple: true
+      - name: Download nextstat release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "${GITHUB_REF_NAME}" \
+            --pattern 'nextstat-*.whl' \
+            --pattern 'nextstat-*.tar.gz' \
+            --dir dist
 
-      - name: Download sdist
-        uses: actions/download-artifact@v4
-        with:
-          name: sdist
-          path: dist
+      - name: Validate nextstat release publish artifacts
+        run: |
+          python3 -m scripts.validate_release_publish_artifacts \
+            --dir dist \
+            --package-prefix nextstat
 
       - name: Publish nextstat to PyPI (Trusted Publisher)
         uses: pypa/gh-action-pypi-publish@release/v1

@@ -228,7 +228,7 @@ Everything outside the published narrow source boundary remains
 Current March 11, 2026 committed exporter evidence meets those thresholds with:
 
 - `export_matrix_case_count = 10`
-- `export_matrix_public_reinterpretation_style_case_count = 8`
+- `export_matrix_public_reinterpretation_style_case_count = 9`
 - `min_net_end_to_end_upper_limit_speedup = 2.1792428549098894x`
 - `overall_min_net_end_to_end_upper_limit_speedup = 0.8777103422927768x`
 - `public_reinterpretation_style_min_net_end_to_end_upper_limit_speedup = 0.8777103422927768x`

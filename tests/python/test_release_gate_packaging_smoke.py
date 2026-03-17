@@ -27,6 +27,7 @@ def test_release_grade_python_gates_use_local_wheelhouse_and_prefer_installed_bi
         assert '"-m" "maturin"' in text, path
         assert '${repo_root}/.venv/bin/python' in text, path
         assert 'elif [[ -x "${repo_root}/.venv/bin/python" ]]; then' in text, path
+        assert '--interpreter "${py}"' in text, path
 
 
 def test_apex2_pre_release_gate_builds_nextstat_wheel_for_the_install_python() -> None:
@@ -55,6 +56,15 @@ def test_release_candidate_cli_aarch64_linux_build_pins_ring_arm_asm_env() -> No
     assert "CFLAGS_aarch64_unknown_linux_gnu" in workflow
     assert "-D__ARM_ARCH=8 -march=armv8-a" in workflow
     assert "matrix.target == 'aarch64-unknown-linux-gnu'" in workflow
+
+
+def test_histfactory_release_gate_installs_maturin_for_local_wheelhouse_build() -> None:
+    workflow = (_repo_root() / ".github" / "workflows" / "release-candidate.yml").read_text(
+        encoding="utf-8"
+    )
+    histfactory_job = workflow.split("histfactory-stable-surface:")[1].split("hepdata-import-stable-surface:")[0]
+    assert '"maturin>=1.11,<2.0"' in histfactory_job
+    assert 'make histfactory-stable-surface-gate' in histfactory_job
 
 
 def test_trex_analysis_spec_runners_prefer_wheelhouse_cli_binary() -> None:

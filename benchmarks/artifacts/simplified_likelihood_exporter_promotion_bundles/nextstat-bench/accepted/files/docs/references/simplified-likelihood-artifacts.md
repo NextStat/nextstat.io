@@ -249,14 +249,19 @@ Committed exporter benchmark persistence:
   - `benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/snapshot_index.json`
 - history path:
   `benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/history/`
+- published history directories referenced by hygiene checks:
+  - `benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/history/current_20260309T180800Z_previous`
+  - `benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/history/current_20260310T000000Z_previous`
+  - `benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/history/snapshot_20260310T000000Z_persisted`
+  - `benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/history/snapshot_20260311T170606Z_persisted`
 - purpose: persist the current bench-host `full -> derived -> reinterpret` exporter evidence under a committed audit-friendly path without claiming stable promotion of the exporter runtime itself
 - boundary: this is research-grade benchmark persistence only; it does not widen the promoted stable subset and does not replace rerunning `nextstat-bench` when exporter math changes
 - acceptance/gate docs:
   - `docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md`
   - `docs/benchmarks/simplified-likelihood-exporter-runtime-gate.md`
 - current March 11, 2026 committed exporter evidence:
-  - `export_matrix_case_count = 10`
-  - `export_matrix_public_reinterpretation_style_case_count = 8`
+  - `export_matrix_case_count = 11`
+  - `export_matrix_public_reinterpretation_style_case_count = 9`
   - `export_matrix_min_net_end_to_end_upper_limit_speedup = 0.8777103422927768x`
   - `export_matrix_synthetic_min_net_end_to_end_upper_limit_speedup = 2.1792428549098894x`
   - `export_matrix_public_reinterpretation_style_min_net_end_to_end_upper_limit_speedup = 0.8777103422927768x`
@@ -354,6 +359,11 @@ Accepted exporter promotion-readiness bundle:
   - `benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/snapshot_index.json`
 - stable archive path:
   `benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/history/`
+- published accepted-history directories referenced by hygiene checks:
+  - `benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/history/accepted_exporter-20260310T001421Z-public-floor-five_promoted`
+  - `benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/history/accepted_exporter-20260311T170606Z-public-floor-six_promoted`
+  - `benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/history/accepted_exporter-20260311T170606Z-public-floor-six-refresh_promoted`
+  - `benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/history/accepted_exporter-20260311T170606Z-public-floor-six-refresh2_promoted`
 - purpose: freeze exporter promotion-readiness evidence under a committed accepted path, derive the formal governance artifacts, and record the explicit release-facing stable decision for the narrow exporter subset
 - boundary: this persists verified exporter evidence and the explicit stable decision for the narrow subset; it does not widen any research-grade fallback beyond the published source-semantics boundary
 - current March 9, 2026 accepted blocker state:

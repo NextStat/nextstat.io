@@ -281,7 +281,7 @@ jobs:
       - name: Install Python dependencies
         run: |
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/pip install "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "pyarrow>=18.0"
+          .venv/bin/pip install "maturin>=1.11,<2.0" "pytest>=9.0" "numpy>=2.0" "pyhf>=0.7.6" "pyarrow>=18.0"
 
       - name: Shellcheck (bash -n) gate script
         run: bash -n scripts/benchmarks/histfactory_stable_surface_gate.sh

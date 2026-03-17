@@ -145,8 +145,8 @@ if [[ "${skip_maturin}" != "1" ]]; then
   wheelhouse="${repo_root}/tmp/gvm_wheels"
   rm -rf "${wheelhouse}"
   mkdir -p "${wheelhouse}"
-  (cd bindings/ns-cli-py && run_maturin build --release -o "${wheelhouse}")
-  (cd bindings/ns-py && run_maturin build --release -o "${wheelhouse}")
+  (cd bindings/ns-cli-py && run_maturin build --release --interpreter "${py}" -o "${wheelhouse}")
+  (cd bindings/ns-py && run_maturin build --release --interpreter "${py}" -o "${wheelhouse}")
   "${py}" -m pip install --force-reinstall --no-deps \
     "${wheelhouse}"/nextstat_cli-*.whl \
     "${wheelhouse}"/nextstat-*.whl

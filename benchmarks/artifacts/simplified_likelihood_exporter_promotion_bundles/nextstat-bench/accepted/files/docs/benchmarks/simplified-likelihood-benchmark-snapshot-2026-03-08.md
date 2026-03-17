@@ -152,7 +152,7 @@ Exporter follow-up matrix summary (`nextstat-bench`, March 11, 2026 exporter ref
 - export matrix status: `ok`
 - export matrix case count: `10`
 - export matrix case kinds: `public_reinterpretation_style`, `synthetic`
-- export matrix public reinterpretation-style case count: `8`
+- export matrix public reinterpretation-style case count: `9`
 - exported public validation artifact path:
   `benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_public_validation_report.json`
 - export matrix all schema valid: `true`

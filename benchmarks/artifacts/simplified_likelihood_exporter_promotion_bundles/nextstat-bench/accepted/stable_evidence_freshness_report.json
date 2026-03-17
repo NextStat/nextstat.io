@@ -7,8 +7,8 @@
     "public_case_count": 9,
     "public_min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
     "public_validation_status": "ok",
-    "reference_date": "2026-03-17",
-    "snapshot_age_days": 6,
+    "reference_date": "2026-03-11",
+    "snapshot_age_days": 0,
     "snapshot_date": "2026-03-11",
     "snapshot_id": "export-20260311T204927Z",
     "snapshot_status": "persisted",
@@ -27,7 +27,7 @@
     "require_stable_promotion_support_class": "stable"
   },
   "generated_at_utc": "1970-01-01T00:00:00Z",
-  "reference_date": "2026-03-17",
+  "reference_date": "2026-03-11",
   "report_kind": "stable_evidence_freshness",
   "schema_version": "nextstat_simplified_likelihood_exporter_stable_evidence_freshness_report_v0",
   "source_artifacts": {
@@ -36,8 +36,8 @@
     "policy_schema_path": "docs/schemas/benchmarks/simplified_likelihood_exporter_stable_evidence_policy_v0.schema.json",
     "public_validation_report_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_public_validation_report.json",
     "snapshot_report_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_benchmark_snapshot_report.json",
-    "stable_evidence_policy_path": "tmp/exporter_bundle_refresh/accepted/stable_evidence_policy.json",
-    "stable_promotion_decision_path": "tmp/exporter_bundle_refresh/accepted/stable_promotion_decision.json"
+    "stable_evidence_policy_path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_evidence_policy.json",
+    "stable_promotion_decision_path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json"
   },
   "status": "fresh",
   "summary": {
@@ -45,7 +45,7 @@
     "export_matrix_case_count": 11,
     "max_snapshot_age_days": 45,
     "public_case_count": 9,
-    "snapshot_age_days": 6,
+    "snapshot_age_days": 0,
     "snapshot_id": "export-20260311T204927Z",
     "status": "fresh",
     "top_level_failures": []

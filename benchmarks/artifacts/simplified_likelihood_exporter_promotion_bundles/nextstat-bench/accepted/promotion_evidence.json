@@ -33,7 +33,7 @@
       "kind": "doc",
       "required": true,
       "role": "exporter_acceptance_doc",
-      "sha256": "80c8240352be14cc389dc71ddd069da6850def13d7a686f4b9af69052b9bd59f",
+      "sha256": "6cb1e4d157c7a49bad85b20f6f6108f703e0f00e78c5fa0d63b85755138fe8a3",
       "source_path": "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md"
     },
     {
@@ -51,7 +51,7 @@
       "kind": "doc",
       "required": true,
       "role": "exporter_promotion_runbook_doc",
-      "sha256": "188e76b8cadf7baff82529eaa5e791fec98508d4d95ac6aca70c125fe27ce935",
+      "sha256": "7883f6017dc74fab913c92d85b35f8be21575ec3d11f2a29dc2490dde92aa671",
       "source_path": "docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md"
     },
     {
@@ -87,7 +87,7 @@
       "kind": "doc",
       "required": true,
       "role": "benchmark_snapshot_doc",
-      "sha256": "6299fce985ad48b6660a43d198586877ff04217c7ce976cc215553045b3588c8",
+      "sha256": "1d04baf7142f2ab57681a13449afa67ec641b72527f33633d556c6ebf19790ab",
       "source_path": "docs/benchmarks/simplified-likelihood-benchmark-snapshot-2026-03-08.md"
     },
     {
@@ -110,11 +110,11 @@
     },
     {
       "bundle_path": "files/docs/references/simplified-likelihood-artifacts.md",
-      "bytes": 34310,
+      "bytes": 35601,
       "kind": "doc",
       "required": true,
       "role": "artifact_reference_doc",
-      "sha256": "71ec5f7e592517a2512bcca2c4cb76573ffa765a02d8895a82382a9d603eeedd",
+      "sha256": "8f6be6f197fb49b578950f2c9ec3f2968dc042a0134ad6f685e34e5807b0bba8",
       "source_path": "docs/references/simplified-likelihood-artifacts.md"
     },
     {
@@ -209,11 +209,11 @@
     },
     {
       "bundle_path": "files/docs/specs/benchmarks/simplified_likelihood_export_benchmark_snapshot_report_v0.example.json",
-      "bytes": 3216,
+      "bytes": 2928,
       "kind": "example",
       "required": true,
       "role": "export_snapshot_report_example",
-      "sha256": "0a10e94b97d702200ed2e6dc77e0017d0957955f566a384237ef25b3b984853d",
+      "sha256": "c577cb0f5e98f9edf6481cf6add1e6d7bdd206e93381cd83765acb1cc8824d5b",
       "source_path": "docs/specs/benchmarks/simplified_likelihood_export_benchmark_snapshot_report_v0.example.json"
     },
     {

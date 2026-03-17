@@ -26,7 +26,7 @@
       "category": "scope_boundary",
       "current_state": "Accepted bundle now publishes a versioned stable-source-semantics boundary artifact for the future stable exporter claim: pyhf-only, single-POI, Gaussian-constrained source_model_constraints scope, with reduced-coordinate rather than source-level nuisance semantics.",
       "evidence_refs": [
-        "tmp/exporter_bundle_refresh/accepted/stable_source_semantics_boundary.json",
+        "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_source_semantics_boundary.json",
         "docs/benchmarks/simplified-likelihood-exporter-stable-source-semantics-boundary-2026-03-09.md",
         "docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md",
         "docs/benchmarks/simplified-likelihood-exporter-runtime-gate.md",
@@ -47,7 +47,7 @@
       "category": "review_package",
       "current_state": "Accepted bundle now commits a dedicated stable-candidate review packet artifact with maintainer recommendation and blocker summary.",
       "evidence_refs": [
-        "tmp/exporter_bundle_refresh/accepted/stable_candidate_review_packet.json",
+        "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_candidate_review_packet.json",
         "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-review-packet-2026-03-09.md",
         "docs/benchmarks/simplified-likelihood-exporter-stable-candidate-blocker-matrix-2026-03-09.md"
       ],
@@ -66,7 +66,7 @@
       "category": "release_governance",
       "current_state": "Accepted bundle now commits an explicit narrow stable-promotion decision artifact and the release-facing governance consumes it.",
       "evidence_refs": [
-        "tmp/exporter_bundle_refresh/accepted/stable_promotion_decision.json",
+        "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json",
         "docs/benchmarks/simplified-likelihood-exporter-stable-promotion-decision-2026-03-09.md",
         "docs/benchmarks/simplified-likelihood-exporter-release-pr-checklist-2026-03-09.md",
         "docs/benchmarks/simplified-likelihood-exporter-stable-review-checklist-2026-03-09.md",
@@ -82,16 +82,16 @@
       "why_blocking_stable": "The exporter surface intentionally stays outside automatic release promotion. A stable claim requires an explicit promotion decision and release-facing consumption of the accepted evidence."
     }
   ],
-  "bundle_dir": "tmp/exporter_bundle_refresh/accepted",
+  "bundle_dir": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted",
   "foundation": {
     "checks": [
       {
         "check_id": "accepted_bundle_integrity",
         "detail": "promotion_evidence, promotion_evidence_check, and promotion report all exist with the expected schema versions and passing statuses",
         "evidence_refs": [
-          "tmp/exporter_bundle_refresh/accepted/promotion_evidence.json",
-          "tmp/exporter_bundle_refresh/accepted/promotion_evidence_check.json",
-          "tmp/exporter_bundle_refresh/accepted/promotion_bundle_promotion_report.json"
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence_check.json",
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_bundle_promotion_report.json"
         ],
         "satisfied": true,
         "status": "satisfied",
@@ -101,7 +101,7 @@
         "check_id": "stable_review_ready",
         "detail": "stable_review_assessment.json exists, validates to the expected contract, and remains review_ready without automatic promotion",
         "evidence_refs": [
-          "tmp/exporter_bundle_refresh/accepted/stable_review_assessment.json"
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_review_assessment.json"
         ],
         "satisfied": true,
         "status": "satisfied",
@@ -121,9 +121,9 @@
         "check_id": "governance_boundary_explicit",
         "detail": "the accepted evidence keeps automatic stable promotion disabled, and any explicit stable claim must remain versioned through stable_promotion_decision.json",
         "evidence_refs": [
-          "tmp/exporter_bundle_refresh/accepted/promotion_evidence.json",
-          "tmp/exporter_bundle_refresh/accepted/stable_review_assessment.json",
-          "tmp/exporter_bundle_refresh/accepted/stable_promotion_decision.json"
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_review_assessment.json",
+          "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json"
         ],
         "satisfied": true,
         "status": "satisfied",
@@ -158,44 +158,44 @@
     },
     "promotion_evidence": {
       "exists": true,
-      "path": "tmp/exporter_bundle_refresh/accepted/promotion_evidence.json",
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_bundle_v0",
-      "sha256": "9fc18e3e53af342bf7aaf420f42db6bbbd74bb6bae60b6606976f79a80078cfa",
+      "sha256": "8838366310a8b044075039f8af9f6d7c06d607f64a15d617eca8e351409f3023",
       "status": null
     },
     "promotion_evidence_check": {
       "exists": true,
-      "path": "tmp/exporter_bundle_refresh/accepted/promotion_evidence_check.json",
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence_check.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_evidence_check_v0",
-      "sha256": "49a243da3b54823f91f959523c3e2fc282593757d819d308119267ac951b6bc7",
+      "sha256": "484847e8d2fa0b778966a4dfe5b29b9a2a799c1b079c7b37b25748d5ba13c8e1",
       "status": "passed"
     },
     "promotion_report": {
       "exists": true,
-      "path": "tmp/exporter_bundle_refresh/accepted/promotion_bundle_promotion_report.json",
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_bundle_promotion_report.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_promotion_bundle_promotion_report_v0",
-      "sha256": "ad08e3cb5f117b3f3e5637c76fffa35ee190fce0ee272aa7338a0f49ba3109eb",
+      "sha256": "2a48042a41d486a6ec6f9574e47be07e5cfcced00bf0d9988b3dd8e1852fcba3",
       "status": "promoted"
     },
     "stable_promotion_decision": {
       "exists": true,
-      "path": "tmp/exporter_bundle_refresh/accepted/stable_promotion_decision.json",
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_promotion_decision_v0",
       "sha256": null,
       "status": "accepted"
     },
     "stable_review_assessment": {
       "exists": true,
-      "path": "tmp/exporter_bundle_refresh/accepted/stable_review_assessment.json",
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_review_assessment.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_review_assessment_v0",
-      "sha256": "88df4f3fed3be62b6c040f9ad05725d76913839bd6627f8abccd1481a6e94ac3",
+      "sha256": "8fab21af7c19b2714a5ee267ecb57838957c1aca5ed2c765e1eebebfcca5a4f1",
       "status": null
     },
     "stable_source_semantics_boundary": {
       "exists": true,
-      "path": "tmp/exporter_bundle_refresh/accepted/stable_source_semantics_boundary.json",
+      "path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_source_semantics_boundary.json",
       "schema_version": "nextstat_simplified_likelihood_exporter_stable_source_semantics_boundary_v0",
-      "sha256": "27c70cb9393ece3a6baa4d433a630bc8dd89bfb58fcf4aea8ade5db8f7c388a1",
+      "sha256": "294d8a6a08148eedf582ddd9a6f0c54c29869f4f428347fea016fb4b5ddedeaa",
       "status": "published"
     }
   },

@@ -16,7 +16,7 @@
     "support_matrix_doc": "docs/benchmarks/simplified-likelihood-support-matrix-2026-03-08.md"
   },
   "automatic_stable_promotion": false,
-  "bundle_dir": "tmp/exporter_bundle_refresh/accepted",
+  "bundle_dir": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted",
   "future_stable_boundary": {
     "canonical_claims": [
       "future stable exporter claim remains pyhf-only on the source side",

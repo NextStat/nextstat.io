@@ -92,7 +92,7 @@
   "source_artifacts": {
     "benchmark_artifact_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
     "public_validation_report_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_public_validation_report.json",
-    "stable_promotion_decision_path": "tmp/exporter_bundle_refresh/accepted/stable_promotion_decision.json"
+    "stable_promotion_decision_path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/stable_promotion_decision.json"
   },
   "stable_evidence_floor": {
     "min_public_reinterpretation_style_case_count": 9,

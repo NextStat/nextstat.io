@@ -89,9 +89,9 @@ if [[ "${skip_maturin}" != "1" ]]; then
   rm -rf "${sl_exporter_wheels}"
   mkdir -p "${sl_exporter_wheels}"
   (cd bindings/ns-cli-py && \
-    CARGO_TARGET_DIR="${cargo_target_dir}" run_maturin build --release -o "${sl_exporter_wheels}")
+    CARGO_TARGET_DIR="${cargo_target_dir}" run_maturin build --release --interpreter "${py}" -o "${sl_exporter_wheels}")
   (cd bindings/ns-py && \
-    CARGO_TARGET_DIR="${cargo_target_dir}" run_maturin build --release -o "${sl_exporter_wheels}")
+    CARGO_TARGET_DIR="${cargo_target_dir}" run_maturin build --release --interpreter "${py}" -o "${sl_exporter_wheels}")
   "${py}" -m pip install --force-reinstall --no-deps \
     "${sl_exporter_wheels}"/nextstat_cli-*.whl \
     "${sl_exporter_wheels}"/nextstat-*.whl
@@ -769,10 +769,10 @@ assert committed == generated
 assert committed["status"] == "accepted"
 assert committed["support_class"] == "stable"
 assert committed["stable_evidence_floor"]["min_total_export_matrix_case_count"] == 11
-assert committed["stable_evidence_floor"]["min_public_reinterpretation_style_case_count"] == 8
+assert committed["stable_evidence_floor"]["min_public_reinterpretation_style_case_count"] == 9
 assert committed["maintenance_cadence"]["refresh_cadence"] == "on_every_exporter_release_pr_or_public_case_admission"
 assert committed["current_evidence_summary"]["export_matrix_case_count"] >= 11
-assert committed["current_evidence_summary"]["public_case_count"] >= 8
+assert committed["current_evidence_summary"]["public_case_count"] >= 9
 print(
     "validated",
     f"status={committed['status']}",

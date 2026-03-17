@@ -8,7 +8,7 @@
     "archived_previous_accepted": false,
     "archived_previous_accepted_path": null,
     "archived_promoted_bundle": true,
-    "archived_promoted_bundle_path": "tmp/exporter_bundle_refresh/history/accepted_exporter-20260311T204927Z-public-floor-six-refresh3_promoted"
+    "archived_promoted_bundle_path": "tmp/exporter_bundle_refresh/history/accepted_exporter-20260317T000000Z-public-floor-nine-refresh4_promoted"
   },
   "benchmark_artifact_source_path": "benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/apex2_simplified_likelihood_report.json",
   "dry_run": false,

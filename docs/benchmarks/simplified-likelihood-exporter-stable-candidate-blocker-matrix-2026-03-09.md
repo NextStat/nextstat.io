@@ -87,7 +87,7 @@ consumption.
 Current accepted evidence on `nextstat-bench` includes:
 
 - `export_matrix_case_count = 10`
-- `export_matrix_public_reinterpretation_style_case_count = 8`
+- `export_matrix_public_reinterpretation_style_case_count = 9`
 - public cases:
   `atlas_public_dual_sr_dual_cr_gaussian_export_stable_example`,
   `atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example`,

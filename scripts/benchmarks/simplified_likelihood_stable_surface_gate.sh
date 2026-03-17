@@ -157,9 +157,9 @@ if [[ "${skip_maturin}" != "1" ]]; then
   rm -rf "${sl_wheels}"
   mkdir -p "${sl_wheels}"
   (cd bindings/ns-cli-py && \
-    CARGO_TARGET_DIR="${cargo_target_dir}" run_maturin build --release -o "${sl_wheels}")
+    CARGO_TARGET_DIR="${cargo_target_dir}" run_maturin build --release --interpreter "${py}" -o "${sl_wheels}")
   (cd bindings/ns-py && \
-    CARGO_TARGET_DIR="${cargo_target_dir}" run_maturin build --release -o "${sl_wheels}")
+    CARGO_TARGET_DIR="${cargo_target_dir}" run_maturin build --release --interpreter "${py}" -o "${sl_wheels}")
   "${py}" -m pip install --force-reinstall --no-deps \
     "${sl_wheels}"/nextstat_cli-*.whl \
     "${sl_wheels}"/nextstat-*.whl

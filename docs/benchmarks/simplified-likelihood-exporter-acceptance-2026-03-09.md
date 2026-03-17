@@ -172,7 +172,7 @@ Supporting evidence:
 The current `nextstat-bench` exporter snapshot shows:
 
 - `export_matrix_case_count = 10`
-- `export_matrix_public_reinterpretation_style_case_count = 8`
+- `export_matrix_public_reinterpretation_style_case_count = 9`
 - `export_matrix_min_net_end_to_end_upper_limit_speedup = 0.8777103422927768x`
 - `export_matrix_synthetic_min_net_end_to_end_upper_limit_speedup = 2.1792428549098894x`
 - `public_validation.min_net_end_to_end_upper_limit_speedup = 0.8777103422927768x`

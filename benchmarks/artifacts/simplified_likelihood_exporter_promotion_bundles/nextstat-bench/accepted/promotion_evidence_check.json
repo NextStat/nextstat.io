@@ -1,6 +1,6 @@
 {
-  "bundle_dir": "tmp/exporter_bundle_refresh/.accepted_stage",
-  "bundle_json_path": "tmp/exporter_bundle_refresh/.accepted_stage/promotion_evidence.json",
+  "bundle_dir": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted",
+  "bundle_json_path": "benchmarks/artifacts/simplified_likelihood_exporter_promotion_bundles/nextstat-bench/accepted/promotion_evidence.json",
   "bundle_summary": {
     "artifact_count": 28,
     "benchmark_host": "nextstat-bench",

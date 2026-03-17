@@ -18,17 +18,17 @@
     {
       "bytes": 17260,
       "path": "files/docs/benchmarks/simplified-likelihood-benchmark-snapshot-2026-03-08.md",
-      "sha256": "6299fce985ad48b6660a43d198586877ff04217c7ce976cc215553045b3588c8"
+      "sha256": "1d04baf7142f2ab57681a13449afa67ec641b72527f33633d556c6ebf19790ab"
     },
     {
       "bytes": 11235,
       "path": "files/docs/benchmarks/simplified-likelihood-exporter-acceptance-2026-03-09.md",
-      "sha256": "80c8240352be14cc389dc71ddd069da6850def13d7a686f4b9af69052b9bd59f"
+      "sha256": "6cb1e4d157c7a49bad85b20f6f6108f703e0f00e78c5fa0d63b85755138fe8a3"
     },
     {
       "bytes": 12032,
       "path": "files/docs/benchmarks/simplified-likelihood-exporter-promotion-runbook-2026-03-09.md",
-      "sha256": "188e76b8cadf7baff82529eaa5e791fec98508d4d95ac6aca70c125fe27ce935"
+      "sha256": "7883f6017dc74fab913c92d85b35f8be21575ec3d11f2a29dc2490dde92aa671"
     },
     {
       "bytes": 8615,
@@ -61,9 +61,9 @@
       "sha256": "62dec48960ea538189f1adca7ec5b25cb126550b0941c0fd8dc0a2d230acfb4f"
     },
     {
-      "bytes": 34310,
+      "bytes": 35601,
       "path": "files/docs/references/simplified-likelihood-artifacts.md",
-      "sha256": "71ec5f7e592517a2512bcca2c4cb76573ffa765a02d8895a82382a9d603eeedd"
+      "sha256": "8f6be6f197fb49b578950f2c9ec3f2968dc042a0134ad6f685e34e5807b0bba8"
     },
     {
       "bytes": 3440,
@@ -106,9 +106,9 @@
       "sha256": "4c4fd550eeb5a17111538644e06bc962e0999adeef73320f70c352cd4fadfa4d"
     },
     {
-      "bytes": 3216,
+      "bytes": 2928,
       "path": "files/docs/specs/benchmarks/simplified_likelihood_export_benchmark_snapshot_report_v0.example.json",
-      "sha256": "0a10e94b97d702200ed2e6dc77e0017d0957955f566a384237ef25b3b984853d"
+      "sha256": "c577cb0f5e98f9edf6481cf6add1e6d7bdd206e93381cd83765acb1cc8824d5b"
     },
     {
       "bytes": 2824,
@@ -141,14 +141,14 @@
       "sha256": "fe6535230cc7d6f901670da35db95ee733202aa4427dc4c629ecab01dc042c03"
     },
     {
-      "bytes": 2404,
+      "bytes": 2405,
       "path": "promotion_bundle_promotion_report.json",
-      "sha256": "ad08e3cb5f117b3f3e5637c76fffa35ee190fce0ee272aa7338a0f49ba3109eb"
+      "sha256": "924f6e44a02b2bc99210afa33543204fdd8322b8351a7055c867dbd4c7241c64"
     },
     {
       "bytes": 16103,
       "path": "promotion_evidence.json",
-      "sha256": "9fc18e3e53af342bf7aaf420f42db6bbbd74bb6bae60b6606976f79a80078cfa"
+      "sha256": "8838366310a8b044075039f8af9f6d7c06d607f64a15d617eca8e351409f3023"
     },
     {
       "bytes": 2597,
@@ -158,12 +158,12 @@
     {
       "bytes": 13121,
       "path": "stable_candidate_blocker_matrix.json",
-      "sha256": "15813f50bc984f294b139ac327515d70e3c2973a1de245d61232169aa2e79b64"
+      "sha256": "c8b797c39bcffa9953be2945293410951c337fd1174493bbff424b570451e1d8"
     },
     {
       "bytes": 5774,
       "path": "stable_candidate_review_packet.json",
-      "sha256": "abc724809dd743cfc3d3917b4a826573d6891bc925f598e48fefeb4ec0087ac9"
+      "sha256": "3bd70fe95f19614d51997f17950f29a9b576f226de856e354d8854668bf24a2f"
     },
     {
       "bytes": 2710,
@@ -178,12 +178,12 @@
     {
       "bytes": 9650,
       "path": "stable_promotion_decision.json",
-      "sha256": "244cd424a0c6574aa44245f7931a9fd1a69e7586f5e095ab8059cd176eb21407"
+      "sha256": "b32f2d41469db50d140a5deb31b08771f38a00a9daa2b42a75446eee82f69fe8"
     },
     {
       "bytes": 4822,
       "path": "stable_review_assessment.json",
-      "sha256": "88df4f3fed3be62b6c040f9ad05725d76913839bd6627f8abccd1481a6e94ac3"
+      "sha256": "81d34ac00f990da64104dcc09c361de1a89dec413781fce06e046eaef7904448"
     },
     {
       "bytes": 4557,
@@ -191,14 +191,14 @@
       "sha256": "27c70cb9393ece3a6baa4d433a630bc8dd89bfb58fcf4aea8ade5db8f7c388a1"
     }
   ],
-  "generated_at": "2026-03-17T15:02:30.568310Z",
+  "generated_at": "2026-03-17T19:02:51.879603Z",
   "git": {
     "ref": "",
     "repository": "",
     "sha": ""
   },
   "schema_version": "nextstat.snapshot_index.v1",
-  "snapshot_id": "exporter-20260311T204927Z-public-floor-six-refresh3",
+  "snapshot_id": "exporter-20260317T000000Z-public-floor-nine-refresh4",
   "suite": "simplified_likelihood_exporter_promotion_bundle",
   "workflow": {}
 }
