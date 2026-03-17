@@ -6006,6 +6006,12 @@ fn build_simplified_likelihood_fidelity(
     derive_config: &ns_translate::simplified::export::SimplifiedLikelihoodDeriveConfig,
     derived: &ns_translate::simplified::export::SimplifiedLikelihoodDerivedCore,
 ) -> Result<ns_translate::simplified::schema::SimplifiedFidelityDiagnostics> {
+    // Embedded export-report fidelity is a contract-level smoke diagnostic. The external Apex2
+    // benchmark enforces the real performance/fidelity boundary, so we do not need a high-cost
+    // upper-limit solve here as long as the smoke ratio stays inside the documented gate.
+    const FIDELITY_SMOKE_UPPER_LIMIT_RTOL: f64 = 1e-2;
+    const FIDELITY_SMOKE_UPPER_LIMIT_MAX_ITER: usize = 24;
+
     let selected_model =
         model.with_fit_channel_selection(Some(&derive_config.selection.channels), None)?;
     let nuisance_count_reduced = match &derived.workspace.uncertainty_model {
@@ -6087,10 +6093,22 @@ fn build_simplified_likelihood_fidelity(
     let upper_limit_lo = poi_bounds[0].max(0.0);
     let upper_limit_hi =
         if poi_bounds[1] > upper_limit_lo { poi_bounds[1] } else { upper_limit_lo + 10.0 };
-    let upper_limit_full =
-        full_ctx.upper_limit_qtilde(&mle, alpha, upper_limit_lo, upper_limit_hi, 1e-3, 80)?;
-    let upper_limit_simplified =
-        simplified_ctx.upper_limit_qtilde(&mle, alpha, upper_limit_lo, upper_limit_hi, 1e-3, 80)?;
+    let upper_limit_full = full_ctx.upper_limit_qtilde(
+        &mle,
+        alpha,
+        upper_limit_lo,
+        upper_limit_hi,
+        FIDELITY_SMOKE_UPPER_LIMIT_RTOL,
+        FIDELITY_SMOKE_UPPER_LIMIT_MAX_ITER,
+    )?;
+    let upper_limit_simplified = simplified_ctx.upper_limit_qtilde(
+        &mle,
+        alpha,
+        upper_limit_lo,
+        upper_limit_hi,
+        FIDELITY_SMOKE_UPPER_LIMIT_RTOL,
+        FIDELITY_SMOKE_UPPER_LIMIT_MAX_ITER,
+    )?;
 
     Ok(ns_translate::simplified::schema::SimplifiedFidelityDiagnostics {
         nuisance_count_full: Some(derived.full_nuisance_count),

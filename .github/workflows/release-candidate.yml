@@ -351,6 +351,10 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --system core.longpaths true
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -422,6 +426,10 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
     steps:
+      - name: Enable long paths (Windows)
+        if: runner.os == 'Windows'
+        run: git config --system core.longpaths true
+
       - name: Checkout
         uses: actions/checkout@v4
 

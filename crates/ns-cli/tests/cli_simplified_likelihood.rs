@@ -61,53 +61,71 @@ fn run_nextstat_text(args: &[&str]) -> String {
     String::from_utf8(out.stdout).expect("nextstat should emit UTF-8 text")
 }
 
+fn derive_config_json_with_selection(
+    max_components: Option<usize>,
+    explained_variance_target: f64,
+    random_draws: usize,
+    channels: &[&str],
+    bins: &[&str],
+    constraint_covariance_source: &str,
+) -> String {
+    let mut reduction = serde_json::json!({
+        "output_uncertainty_model": "basis",
+        "basis_method": "eigen",
+        "explained_variance_target": explained_variance_target,
+        "constraint_covariance_source": constraint_covariance_source,
+        "split_stat_covariance": true,
+    });
+    if let Some(value) = max_components {
+        reduction["max_components"] = serde_json::json!(value);
+    }
+    serde_json::to_string_pretty(&serde_json::json!({
+        "schema_version": "nextstat_simplified_likelihood_derive_v0",
+        "source_workspace": {
+            "format": "pyhf",
+            "schema_version": "pyhf_workspace_v1",
+            "poi_name": "mu"
+        },
+        "fit_result": {
+            "schema_version": "nextstat_fit_result_v0",
+            "background_state": "postfit_background"
+        },
+        "selection": {
+            "channels": channels,
+            "bins": bins,
+        },
+        "reduction": reduction,
+        "jacobian": {
+            "method": "finite_difference",
+            "relative_step": 0.01,
+            "absolute_step_floor": 0.000001
+        },
+        "fidelity_smoke": {
+            "random_draws": random_draws,
+            "qmu_test_mu": 1.0,
+            "upper_limit_cl": 0.95
+        },
+        "output_contract": {
+            "schema_version": "nextstat_simplified_likelihood_v0",
+            "require_factorization_diagnostics": true,
+            "require_fidelity_diagnostics": true
+        }
+    }))
+    .expect("derive config should serialize")
+}
+
 fn derive_config_json(
     max_components: Option<usize>,
     explained_variance_target: f64,
     random_draws: usize,
 ) -> String {
-    let max_components_line = max_components
-        .map(|value| format!(",\n        \"max_components\": {value}"))
-        .unwrap_or_default();
-    format!(
-        r#"{{
-  "schema_version": "nextstat_simplified_likelihood_derive_v0",
-  "source_workspace": {{
-    "format": "pyhf",
-    "schema_version": "pyhf_workspace_v1",
-    "poi_name": "mu"
-  }},
-  "fit_result": {{
-    "schema_version": "nextstat_fit_result_v0",
-    "background_state": "postfit_background"
-  }},
-  "selection": {{
-    "channels": ["singlechannel"],
-    "bins": ["singlechannel/bin0", "singlechannel/bin1"]
-  }},
-  "reduction": {{
-    "output_uncertainty_model": "basis",
-    "basis_method": "eigen",
-    "explained_variance_target": {explained_variance_target},
-    "constraint_covariance_source": "aligned_fit_covariance"{max_components_line},
-    "split_stat_covariance": true
-  }},
-  "jacobian": {{
-    "method": "finite_difference",
-    "relative_step": 0.01,
-    "absolute_step_floor": 0.000001
-  }},
-  "fidelity_smoke": {{
-    "random_draws": {random_draws},
-    "qmu_test_mu": 1.0,
-    "upper_limit_cl": 0.95
-  }},
-  "output_contract": {{
-    "schema_version": "nextstat_simplified_likelihood_v0",
-    "require_factorization_diagnostics": true,
-    "require_fidelity_diagnostics": true
-  }}
-}}"#
+    derive_config_json_with_selection(
+        max_components,
+        explained_variance_target,
+        random_draws,
+        &["singlechannel"],
+        &["singlechannel/bin0", "singlechannel/bin1"],
+        "aligned_fit_covariance",
     )
 }
 
@@ -243,6 +261,94 @@ fn export_derived_simplified_workspace_with_optional_report(
         None
     };
     (work_dir, output_path, if emit_report { Some(report_path) } else { None }, simplified, report)
+}
+
+fn export_public_style_simplified_workspace_with_report(
+    name: &str,
+    fixture_name: &str,
+) -> (PathBuf, PathBuf, PathBuf, serde_json::Value, serde_json::Value) {
+    let input = fixture_path(fixture_name);
+    let work_dir = tmp_dir(name);
+    let _ = std::fs::remove_dir_all(&work_dir);
+    std::fs::create_dir_all(&work_dir).expect("temp dir should be creatable");
+
+    let fit_path = work_dir.join("fit.json");
+    let derive_config_path = work_dir.join("derive.json");
+    let output_path = work_dir.join("simplified.json");
+    let report_path = work_dir.join("simplified_export_report.json");
+
+    let fit_status = Command::new(env!("CARGO_BIN_EXE_nextstat"))
+        .args([
+            "fit",
+            "--input",
+            input.to_string_lossy().as_ref(),
+            "--output",
+            fit_path.to_string_lossy().as_ref(),
+            "--threads",
+            "1",
+        ])
+        .output()
+        .expect("fit command should run");
+    assert!(
+        fit_status.status.success(),
+        "fit should succeed before simplify, stderr={}",
+        String::from_utf8_lossy(&fit_status.stderr)
+    );
+
+    std::fs::write(
+        &derive_config_path,
+        derive_config_json_with_selection(
+            Some(2),
+            0.999,
+            8,
+            &["SR", "CR"],
+            &["SR/bin0", "SR/bin1", "CR/bin0", "CR/bin1"],
+            "source_model_constraints",
+        ),
+    )
+    .expect("derive config should be writable");
+
+    let out = Command::new(env!("CARGO_BIN_EXE_nextstat"))
+        .args([
+            "simplify",
+            "workspace",
+            "--input",
+            input.to_string_lossy().as_ref(),
+            "--fit",
+            fit_path.to_string_lossy().as_ref(),
+            "--derive-config",
+            derive_config_path.to_string_lossy().as_ref(),
+            "--experiment",
+            "CMS",
+            "--analysis-id",
+            name,
+            "--reference",
+            "internal-test",
+            "--output",
+            output_path.to_string_lossy().as_ref(),
+            "--report",
+            report_path.to_string_lossy().as_ref(),
+            "--threads",
+            "1",
+        ])
+        .output()
+        .expect("simplify command should run");
+    assert!(
+        out.status.success(),
+        "simplify workspace should succeed, stdout=\n{}\nstderr=\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+
+    let simplified: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&output_path).expect("simplified output should be written"),
+    )
+    .expect("simplified output should be valid JSON");
+    let report: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(&report_path).expect("export report should be written"),
+    )
+    .expect("export report should be valid JSON");
+    (work_dir, output_path, report_path, simplified, report)
 }
 
 #[test]
@@ -626,6 +732,52 @@ fn simplify_workspace_emits_bounded_fidelity_diagnostics_for_high_fidelity_expor
     assert!(
         max_rel_yield_delta <= 0.02,
         "expected overall relative yield drift to stay bounded, got {max_rel_yield_delta}"
+    );
+
+    let _ = std::fs::remove_dir_all(&work_dir);
+}
+
+#[test]
+fn simplify_workspace_keeps_public_export_smoke_fidelity_within_apex2_gate() {
+    let (work_dir, _output_path, _report_path, simplified, report) =
+        export_public_style_simplified_workspace_with_report(
+            "cli-public-export-fidelity",
+            "cms_public_sr_cr_gaussian_workspace.json",
+        );
+
+    let fidelity = simplified
+        .get("diagnostics")
+        .and_then(|v| v.get("fidelity"))
+        .expect("derived export should carry fidelity diagnostics");
+    let report_fidelity = report
+        .get("diagnostics")
+        .and_then(|v| v.get("fidelity"))
+        .expect("export report should carry fidelity diagnostics");
+
+    let qmu_delta_smoke = fidelity
+        .get("qmu_delta_smoke")
+        .and_then(|v| v.as_f64())
+        .expect("fidelity.qmu_delta_smoke should be f64");
+    let upper_limit_ratio_smoke = fidelity
+        .get("upper_limit_ratio_smoke")
+        .and_then(|v| v.as_f64())
+        .expect("fidelity.upper_limit_ratio_smoke should be f64");
+
+    assert!(
+        qmu_delta_smoke <= 0.1,
+        "expected public export q_mu smoke to stay inside Apex2 gate, got {qmu_delta_smoke}"
+    );
+    assert!(
+        (0.95..=1.05).contains(&upper_limit_ratio_smoke),
+        "expected public export upper-limit smoke ratio inside Apex2 gate, got {upper_limit_ratio_smoke}"
+    );
+    assert_eq!(
+        report_fidelity.get("qmu_delta_smoke").and_then(|v| v.as_f64()),
+        Some(qmu_delta_smoke)
+    );
+    assert_eq!(
+        report_fidelity.get("upper_limit_ratio_smoke").and_then(|v| v.as_f64()),
+        Some(upper_limit_ratio_smoke)
     );
 
     let _ = std::fs::remove_dir_all(&work_dir);
