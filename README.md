@@ -4,17 +4,27 @@
 [![Release Gates](https://img.shields.io/badge/release_gates-6_required-blue)](docs/releases/release-runbook.md)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
-NextStat is a governed statistical inference engine: a Rust core with Python,
-R, CLI, WASM, and server surfaces, machine-checked release gates, and
-deterministic parity contracts against reference implementations. The
-repository covers HEP inference, pharmacometrics, Bayesian workflows, survival
-analysis, econometrics, time series, and adjacent applied statistics.
+NextStat is a statistical inference engine built in Rust with bindings for
+Python, R, CLI, WASM, and a self-hosted server. It lets you run HistFactory
+fits, hypothesis tests, upper limits, and measurement combinations against the
+same pyhf JSON workspaces you already use — but orders of magnitude faster, with
+deterministic results, and without a C++ ROOT dependency.
 
-The project is designed around two paths:
+Beyond HEP, NextStat covers pharmacometrics (FOCE, SAEM, VPC, ICH M15),
+Bayesian sampling (NUTS), GLMs, survival analysis, econometrics, and time
+series — all from one engine, one install, one validation stack.
 
-- a deterministic reference path used for parity, validation, and release gates
-- an optimized production path using SIMD, parallelism, and optional GPU
-  acceleration
+**What makes it different:** every public surface ships with a parity contract
+against a reference implementation, a support matrix documenting what is
+covered, and a CI gate that blocks the release if the contract breaks. The
+result is an engine you can audit before you trust — not a library where
+correctness is assumed from reputation.
+
+The engine runs on two paths:
+
+- a **deterministic reference path** for parity, validation, and release gates
+- an **optimized production path** using SIMD, parallelism, and optional GPU
+  acceleration (CUDA, Metal)
 
 ## Why Trust It
 
