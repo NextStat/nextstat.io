@@ -1,8 +1,11 @@
 # NextStat
 
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL%203.0-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.93%2B-orange.svg)](https://www.rust-lang.org)
-[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org)
+[![Rust Tests](https://github.com/NextStat/nextstat.io/actions/workflows/rust-tests.yml/badge.svg)](https://github.com/NextStat/nextstat.io/actions/workflows/rust-tests.yml)
+[![Python Tests](https://github.com/NextStat/nextstat.io/actions/workflows/python-tests.yml/badge.svg)](https://github.com/NextStat/nextstat.io/actions/workflows/python-tests.yml)
+[![pyhf Parity Gate](https://github.com/NextStat/nextstat.io/actions/workflows/pyhf-parity.yml/badge.svg)](https://github.com/NextStat/nextstat.io/actions/workflows/pyhf-parity.yml)
+[![HEP Stable Surfaces](https://img.shields.io/badge/HEP_stable_surfaces-141%2F141-brightgreen)](docs/references/hep-stable-surface.md)
+[![Release Gates](https://img.shields.io/badge/release_gates-6_required-blue)](docs/releases/release-runbook.md)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 
 NextStat is a governed statistical inference engine: a Rust core with Python,
 R, CLI, WASM, and server surfaces, machine-checked release gates, and
@@ -16,11 +19,6 @@ The project is designed around two paths:
 - an optimized production path using SIMD, parallelism, and optional GPU
   acceleration
 
-NextStat is dual-licensed:
-
-- open source: [AGPL-3.0-or-later](LICENSE)
-- commercial alternative: [LICENSE-COMMERCIAL](LICENSE-COMMERCIAL)
-
 ## Why Trust It
 
 The key principle is simple:
@@ -29,7 +27,7 @@ The key principle is simple:
 
 The repository is large because it includes the quality system required to make
 stable-surface claims: tests, parity contracts, support matrices, benchmark
-evidence, validation bundles, schemas, examples, release manifests, and publish
+evidence, validation bundles, schemas, examples, release manifests, and release
 artifacts.
 
 Current trust anchors:
@@ -37,23 +35,17 @@ Current trust anchors:
 | Signal | Current State | Canonical Reference |
 | --- | --- | --- |
 | HEP stable surface | `141/141 stable`, `0 research` | [docs/references/hep-stable-surface.md](docs/references/hep-stable-surface.md) |
-| Required release surfaces | `6` required-for-release stable surfaces | [docs/releases/release-runbook.md](docs/releases/release-runbook.md) |
-| HEP governance bundle | machine-checked HEP matrix + validation bundle | [docs/references/validation-and-release-discipline.md](docs/references/validation-and-release-discipline.md) |
+| Required release surfaces | `6` required-for-release stable surfaces | [docs/references/validation-and-release-discipline.md](docs/references/validation-and-release-discipline.md) |
+| HEP governance bundle | machine-checked HEP matrix + validation bundle | [docs/references/hep-stable-surface.md](docs/references/hep-stable-surface.md) |
 | Pharma qualification | `NS-VAL-001 v2.0.0`, Appendix B traceability matrix, public IQ/OQ/PQ protocol | [docs/validation/iq-oq-pq-protocol.md](docs/validation/iq-oq-pq-protocol.md) |
 | Release discipline | prerelease gate, release manifest, full-fidelity local release simulation | [docs/releases/release-runbook.md](docs/releases/release-runbook.md) |
 | Benchmark governance | committed evidence policy + promotion rules | [docs/releases/benchmark-artifact-policy.md](docs/releases/benchmark-artifact-policy.md) |
 
-Some concrete public evidence already in the repo:
+Concrete public evidence in the repo:
 
-- HEP stable inventory: `141` stable surfaces across `9` slices (`HistFactory 48`, `GVM 47`, `Infrastructure 12`, `Unbinned 11`, `Viz 11`, `Import/Export 6`, `Simplified Likelihood 2`, `HEPData 2`, `Preprocess 2`)
-- Public pharma qualification inventory visible in the controlled protocol:
-  - `21` IQ IDs
-  - `79` OQ IDs
-  - `25` PQ IDs
-- Deterministic reference guarantees are explicit:
-  - pyhf NumPy `f64` is the canonical oracle for HistFactory parity
-  - stable HistFactory promises deterministic CPU parity and bit-reproducible results on the same input
-  - pharma qualification includes bit-for-bit reproducibility checks such as `OQ-SAEM-007` and `PQ-REPR-001`
+- **HEP**: `141` stable surfaces across `9` slices (HistFactory 48, GVM 47, Infrastructure 12, Unbinned 11, Viz 11, Import/Export 6, Simplified Likelihood 2, HEPData 2, Preprocess 2)
+- **Pharma**: `21` IQ, `79` OQ, `25` PQ qualification IDs in the controlled protocol with bit-for-bit reproducibility checks across FOCE, SAEM, and simulation paths
+- **Deterministic guarantees**: pyhf NumPy f64 is the canonical oracle for HistFactory parity; stable surfaces promise deterministic CPU parity and bit-reproducible results on the same input
 
 If you want the engineering model behind the repository, start here:
 
@@ -82,6 +74,7 @@ the maturity signal.
 - run stable scalar measurement combinations (GVM) plus advanced scenario and calibration studies
 - derive and export simplified-likelihood reduced models with explicit stable/research boundaries
 - build ntuple-to-workspace pipelines without a ROOT C++ dependency
+- build and evaluate unbinned likelihood workflows
 - generate deterministic report and validation artifacts
 
 ### Pharmacometrics and regulated reporting
@@ -98,7 +91,9 @@ the maturity signal.
 - estimate and forecast with state-space / Kalman workflows
 - run econometrics and causal-inference helpers
 - fit survival models
-- build and evaluate unbinned likelihood workflows
+
+> These surfaces do not yet carry published support matrices or release gates.
+> Treat them as functional but without the same stability contract as HEP or pharma.
 
 ## Quickstart
 
@@ -118,6 +113,20 @@ pip install "nextstat[all]"     # everything
 ```bash
 nextstat fit --input playground/examples/simple_workspace.json
 nextstat upper-limit --input playground/examples/simple_workspace.json --expected
+```
+
+Or from Python:
+
+```python
+import nextstat, json
+
+workspace = json.load(open("playground/examples/simple_workspace.json"))
+model = nextstat.HistFactoryModel.from_workspace(json.dumps(workspace))
+result = nextstat.fit(model)
+
+print(result.parameters)   # MLE parameter values
+print(result.twice_nll)     # 2 * NLL (pyhf convention)
+print(result.converged)     # True
 ```
 
 More:
@@ -179,35 +188,12 @@ Key references:
 
 ## Documentation Map
 
-### Start here
-
-- [Docs index](docs/README.md)
-- [Validation and release discipline](docs/references/validation-and-release-discipline.md)
-- [Tutorials index](docs/tutorials/README.md)
-- [Benchmarks hub](docs/benchmarks.md)
-
-### API and surfaces
-
-- [CLI reference](docs/references/cli.md)
-- [Python API](docs/references/python-api.md)
-- [Rust API](docs/references/rust-api.md)
-- [R bindings](docs/references/r-bindings.md)
-- [Tool API](docs/references/tool-api.md)
-- [Server API](docs/references/server-api.md)
-
-### Stable public references
-
-- [HEP stable surface](docs/references/hep-stable-surface.md)
-- [M15 reporting artifacts](docs/references/m15-reporting.md)
-- [Validation report reference](docs/references/validation-report.md)
-- [Benchmark artifact policy](docs/releases/benchmark-artifact-policy.md)
-- [Release runbook](docs/releases/release-runbook.md)
-
-### Tutorials and demos
-
-- [Phase 3.1 frequentist HEP tutorial](docs/tutorials/phase-3.1-frequentist.md)
-- [ROOT / TRExFitter parity tutorial](docs/tutorials/root-trexfitter-parity.md)
-- [Physics assistant demo](docs/demos/physics-assistant.md)
+| Area | References |
+| --- | --- |
+| **Start here** | [Docs index](docs/README.md) · [Validation and release discipline](docs/references/validation-and-release-discipline.md) · [Tutorials](docs/tutorials/README.md) · [Benchmarks hub](docs/benchmarks.md) |
+| **API surfaces** | [CLI](docs/references/cli.md) · [Python](docs/references/python-api.md) · [Rust](docs/references/rust-api.md) · [R](docs/references/r-bindings.md) · [Tool](docs/references/tool-api.md) · [Server](docs/references/server-api.md) |
+| **Trust & releases** | [HEP stable surface](docs/references/hep-stable-surface.md) · [M15 reporting](docs/references/m15-reporting.md) · [Validation report](docs/references/validation-report.md) · [Benchmark policy](docs/releases/benchmark-artifact-policy.md) · [Release runbook](docs/releases/release-runbook.md) |
+| **Tutorials & demos** | [Frequentist HEP](docs/tutorials/phase-3.1-frequentist.md) · [ROOT/TRExFitter parity](docs/tutorials/root-trexfitter-parity.md) · [Physics assistant](docs/demos/physics-assistant.md) |
 
 ## Representative Benchmark Snapshot
 
