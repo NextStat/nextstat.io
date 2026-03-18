@@ -1,5 +1,10 @@
 # Validation and Release Discipline
 
+**Document ID:** NS-ENG-VAL-001
+**Version:** 1.1.0
+**Status:** Controlled public engineering reference
+**Last updated:** 2026-03-18
+
 This page is the canonical public overview of how NextStat turns a large
 multi-surface repository into a governed, release-grade product.
 
@@ -8,7 +13,7 @@ matrices, acceptance contracts, benchmark snapshots, or release runbooks.
 Instead, it explains how those pieces fit together.
 
 For the maintainer-only shipping path, see the
-[Release Runbook](/docs/releases/release-runbook).
+[Release Runbook](../releases/release-runbook.md).
 
 ## Design Principle
 
@@ -47,7 +52,7 @@ The key design choice is that no single control plane is allowed to silently
 define release readiness on its own. A surface becomes stable only when the
 implementation, governance, release, and evidence planes all line up.
 
-## What This System Has To Solve
+## Repository Structure and Scope
 
 The repository contains several different kinds of material:
 
@@ -62,6 +67,45 @@ stores the contracts and evidence needed to make stable-surface claims.
 
 The result is a repository that contains both product code and the quality
 system needed to govern that product code.
+
+## Current Public Evidence Snapshot
+
+Several important governance facts are already machine-tracked and publicly
+documented:
+
+- HEP stable inventory: `141/141 stable`, `0 research`
+- required release surfaces: `6`
+- HEP owner slices:
+  - HistFactory: `48`
+  - GVM: `47`
+  - Infrastructure: `12`
+  - Unbinned: `11`
+  - Viz: `11`
+  - Import/Export: `6`
+  - Simplified Likelihood: `2`
+  - HEPData: `2`
+  - Preprocess: `2`
+- current public HEP layer split:
+  - CLI: `64`
+  - Python: `52`
+  - Server: `16`
+  - Tool: `9`
+
+For regulated pharma validation, the public controlled protocol is:
+
+- [IQ/OQ/PQ Validation Protocol](../validation/iq-oq-pq-protocol.md)
+
+That protocol currently states:
+
+- `Document ID: NS-VAL-001`
+- `Version: 2.0.0`
+- Appendix B traceability matrix linking requirements to test cases
+- public qualification inventory visible in the protocol text:
+  - `21` IQ IDs
+  - `79` OQ IDs
+  - `25` PQ IDs
+- the v2.0.0 change log explicitly records an expanded OQ traceability matrix
+  with `85 test cases`
 
 ## Quality Layers
 
@@ -120,6 +164,30 @@ through:
 This is the layer that turns "implementation" into "governed public
 behavior".
 
+### Deterministic Reference Guarantees
+
+For stable numerical surfaces, NextStat explicitly distinguishes between:
+
+- a deterministic reference path
+- an optimized production path
+
+The deterministic path is the trust anchor. Public docs already define this
+for major surfaces:
+
+- HistFactory / pyhf parity uses deterministic CPU evaluation with fixed
+  summation order, fixed seeds, and controlled threading
+- the pyhf parity contract uses pyhf's NumPy backend (`f64`, deterministic) as
+  the canonical oracle
+- the HistFactory stable subset promises deterministic CPU parity and
+  bit-reproducible results on the same input across releases
+- the pharma qualification protocol includes bit-for-bit reproducibility tests
+  such as `OQ-SAEM-007` and `PQ-REPR-001`
+
+The practical rule is:
+
+- optimize freely on the fast path
+- do not break the deterministic reference contract
+
 ## Canonical Commands and Outputs
 
 The public quality system is intentionally executable. The core commands are:
@@ -131,6 +199,7 @@ The public quality system is intentionally executable. The core commands are:
 | `python3 -m scripts.release_surface_matrix --check` | governance | validates the release inventory |
 | `python3 -m scripts.hep_surface_matrix --check` | governance | validates the HEP maturity inventory |
 | `python3 -m scripts.hep_validation_bundle --check` | governance/evidence | validates the canonical HEP bundle contract |
+| `make validation-pack` | regulated evidence | deterministic validation report and qualification-facing artifacts |
 | `make apex2-pre-release-gate` | prerelease | governance/perf summary, release reports, local dry-run |
 | `python3 -m scripts.release_full_fidelity_simulation` | release simulation | local workflow-faithful staging report |
 
@@ -146,6 +215,14 @@ The canonical prerelease outputs are:
 | `tmp/release_candidate_bundle/` | candidate asset bundle for review |
 | `tmp/hep_validation_bundle.json` | canonical HEP quality state |
 | `tmp/hep_validation_bundle.md` | human-readable HEP bundle summary |
+| `artifacts_jsononly/pharma_validation.json` | canonical pharma validation evidence reused by release-grade packaging paths |
+
+The public validation/reporting layer also includes regulated artifacts such as
+the validation pack and compliance mappings:
+
+- [Validation Report Reference](validation-report.md)
+- [IQ/OQ/PQ Validation Protocol](../validation/iq-oq-pq-protocol.md)
+- [21 CFR Part 11 Compliance Documentation](../validation/21cfr-part11-compliance.md)
 
 ## Stable-Surface Governance
 
@@ -162,10 +239,10 @@ For a promoted stable surface, the following are expected:
 
 Examples of surface-specific public references:
 
-- [HEP Stable Surface](/docs/references/hep-stable-surface)
-- [Simplified Likelihood Stable-Surface Acceptance](/docs/benchmarks/simplified-likelihood-stable-surface-acceptance-2026-03-08)
-- [HistFactory Support Matrix](/docs/benchmarks/histfactory-support-matrix-2026-03-17.md)
-- [HEPData Import Runtime Gate](/docs/benchmarks/hepdata-import-runtime-gate)
+- [HEP Stable Surface](hep-stable-surface.md)
+- [Simplified Likelihood Stable-Surface Acceptance](../benchmarks/simplified-likelihood-stable-surface-acceptance-2026-03-08.md)
+- [HistFactory Support Matrix](../benchmarks/histfactory-support-matrix-2026-03-17.md)
+- [HEPData Import Runtime Gate](../benchmarks/hepdata-import-runtime-gate.md)
 
 ## Machine-Readable Sources of Truth
 
@@ -246,7 +323,7 @@ The repository keeps both micro-benchmarks and end-to-end benchmark surfaces:
 
 Canonical public entry point:
 
-- [Benchmarks](/docs/benchmarks)
+- [Benchmarks](../benchmarks.md)
 
 Important policy distinction:
 
@@ -257,8 +334,8 @@ Important policy distinction:
 
 See:
 
-- [Benchmark Artifact Policy](/docs/releases/benchmark-artifact-policy)
-- [Release Runbook](/docs/releases/release-runbook)
+- [Benchmark Artifact Policy](../releases/benchmark-artifact-policy.md)
+- [Release Runbook](../releases/release-runbook.md)
 
 ## Artifact Placement Rules
 
@@ -274,6 +351,55 @@ float ambiguously between git, CI, and release assets.
 
 This placement discipline is what keeps the repository auditable instead of
 turning it into a cache of opaque generated output.
+
+## CI and Release Topology
+
+The automation layer is intentionally split by purpose rather than hidden
+behind a single monolithic CI status.
+
+### Pull request and push validation
+
+Representative always-on or path-sensitive workflows include:
+
+- `rust-tests.yml`
+- `python-tests.yml`
+- `pyhf-parity.yml`
+- `unbinned-toy-parity.yml`
+- stable-surface workflows such as:
+  - `gvm-stable-first.yml`
+  - `simplified-likelihood-stable-surface.yml`
+  - `simplified-likelihood-exporter-surface.yml`
+  - `m15-reporting-stable-surface.yml`
+- review and supply-chain workflows such as:
+  - `dependency-audit.yml`
+  - `codeql.yml`
+  - `secret-scan.yml`
+
+### Prerelease and publish workflows
+
+The release path is distinct and explicit:
+
+- `prepare-release.yml` for manual candidate preparation
+- `release-candidate.yml` for build, wheel, gate, and manifest generation
+- `release.yml` for GitHub Release plus crates.io/PyPI publication
+
+### Scheduled and nightly workflows
+
+Longer-running or environment-specific checks are separated out:
+
+- `apex2-nightly-slow.yml`
+- `slow-regressions.yml`
+- `bench.yml`
+- `coverage.yml`
+- `trex-baseline-refresh.yml`
+- `ns-root-external-bench.yml`
+
+The governance narrative matters because different checks block at different
+times:
+
+- PR/push checks catch implementation and surface drift early
+- prerelease gates block shipping
+- nightly and scheduled jobs harden the baseline without overloading PR paths
 
 ## Governance vs Performance
 
@@ -326,6 +452,27 @@ The intended operator behavior is:
 
 This is the practical difference between "the release is broken" and "the
 release is correct, but the local machine is not the canonical perf host."
+
+## Human Review and Change Control
+
+Automation is not the only release control.
+
+The project also relies on explicit human review:
+
+- maintainers review and comment on changes
+- approval is required before merge to `main`
+- DCO sign-off is required on all commits
+- release notes and prerelease outputs are reviewed before tag push
+
+Public references:
+
+- [CONTRIBUTING.md](../../CONTRIBUTING.md)
+- [.github/pull_request_template.md](../../.github/pull_request_template.md)
+
+This matters because numerical software needs both:
+
+- mechanical enforcement of contracts
+- human judgment around scope, interpretation, and release decisions
 
 ## Full-Fidelity Local Release Simulation
 
@@ -416,8 +563,8 @@ The release process should therefore be read as:
 
 Detailed procedure:
 
-- [Release Runbook](/docs/releases/release-runbook)
-- [CONTRIBUTING.md](/CONTRIBUTING.md)
+- [Release Runbook](../releases/release-runbook.md)
+- [CONTRIBUTING.md](../../CONTRIBUTING.md)
 
 ## Practical Reading Guide
 
@@ -427,16 +574,18 @@ order:
 1. the public support matrix
 2. the acceptance or parity contract
 3. the runtime or release gate doc
-4. the benchmark snapshot or validation bundle
+4. the benchmark snapshot, validation bundle, or qualification protocol
 5. the release runbook for the global shipping path
 
 If one of those layers is missing, the surface is not fully described.
 
 ## Related Documents
 
-- [Release Runbook](/docs/releases/release-runbook)
-- [Benchmarks](/docs/benchmarks)
-- [HEP Stable Surface](/docs/references/hep-stable-surface)
-- [Validation Report Reference](/docs/references/validation-report)
-- [White Paper](/docs/WHITEPAPER.md)
-- [Benchmark Artifact Policy](/docs/releases/benchmark-artifact-policy)
+- [Release Runbook](../releases/release-runbook.md)
+- [Benchmarks](../benchmarks.md)
+- [HEP Stable Surface](hep-stable-surface.md)
+- [Validation Report Reference](validation-report.md)
+- [White Paper](../WHITEPAPER.md)
+- [Benchmark Artifact Policy](../releases/benchmark-artifact-policy.md)
+- [IQ/OQ/PQ Validation Protocol](../validation/iq-oq-pq-protocol.md)
+- [21 CFR Part 11 Compliance Documentation](../validation/21cfr-part11-compliance.md)
