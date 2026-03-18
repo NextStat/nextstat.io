@@ -160,5 +160,6 @@ Use the pharma release evidence policy:
 ## Related references
 
 - [CONTRIBUTING.md](CONTRIBUTING.md)
+- [docs/references/validation-and-release-discipline.md](docs/references/validation-and-release-discipline.md)
 - [docs/benchmarks.md](docs/benchmarks.md)
 - [docs/references/m15-reporting.md](docs/references/m15-reporting.md)

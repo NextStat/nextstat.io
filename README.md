@@ -441,6 +441,7 @@ Pre-release gate runbook: see CONTRIBUTING.md § Release Checklist.
 
 - White paper (Markdown): `docs/WHITEPAPER.md`
 - White paper (PDF): built by `python3 scripts/build_whitepaper.py` and attached to GitHub Releases on tags (`v*`)
+- Validation and release discipline overview: `docs/references/validation-and-release-discipline.md`
 - Internal plans/design notes are maintained outside this public repository.
 
 ## Contributing

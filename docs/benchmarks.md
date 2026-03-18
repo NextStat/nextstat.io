@@ -2,6 +2,10 @@
 
 For the canonical GitHub-release maintainer path, see: [Release Runbook](/docs/releases/release-runbook).
 
+For the canonical overview of how tests, parity contracts, benchmark evidence,
+stable-surface governance, and release gating fit together, see:
+[Validation and Release Discipline](/docs/references/validation-and-release-discipline).
+
 For the policy that defines what benchmark evidence belongs in git vs CI artifacts vs release assets, see: [Benchmark Artifact Policy](/docs/releases/benchmark-artifact-policy).
 
 The canonical machine-readable prerelease outputs are:
