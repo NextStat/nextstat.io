@@ -1,8 +1,5 @@
 # NextStat
 
-[![Rust Tests](https://github.com/NextStat/nextstat.io/actions/workflows/rust-tests.yml/badge.svg)](https://github.com/NextStat/nextstat.io/actions/workflows/rust-tests.yml)
-[![Python Tests](https://github.com/NextStat/nextstat.io/actions/workflows/python-tests.yml/badge.svg)](https://github.com/NextStat/nextstat.io/actions/workflows/python-tests.yml)
-[![pyhf Parity Gate](https://github.com/NextStat/nextstat.io/actions/workflows/pyhf-parity.yml/badge.svg)](https://github.com/NextStat/nextstat.io/actions/workflows/pyhf-parity.yml)
 [![HEP Stable Surfaces](https://img.shields.io/badge/HEP_stable_surfaces-141%2F141-brightgreen)](docs/references/hep-stable-surface.md)
 [![Release Gates](https://img.shields.io/badge/release_gates-6_required-blue)](docs/releases/release-runbook.md)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
