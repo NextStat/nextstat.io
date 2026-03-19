@@ -132,14 +132,20 @@ def test_mams_stress_multiseed_reuse_existing_surfaces_case_catalog_and_parity_s
         "meta": {"python": "3.12.0", "platform": "test", "nextstat_version": "0.0.0"},
         "dataset": {"id": "case", "sha256": "3" * 64},
         "config": {
+            "benchmark_seed": 42,
+            "cold_start_seed": 42,
             "dataset_seed": 12345,
             "n_chains": 4,
             "n_samples": 2000,
             "n_warmup": 3500,
+            "reported_draws_seed": 43,
+            "reported_draws_source": "warm_start",
             "seed": 42,
             "target_accept": 0.985,
+            "warm_start_seed": 43,
             "n_groups": 20,
             "n_per_group": 20,
+            "init_l": None,
         },
         "timing": {"wall_time_s": 1.0},
         "metrics": {
@@ -167,6 +173,8 @@ def test_mams_stress_multiseed_reuse_existing_surfaces_case_catalog_and_parity_s
         obj["status"] = status
         obj["metrics"] = dict(case_template["metrics"])
         obj["metrics"]["max_r_hat"] = rhat
+        obj["config"] = dict(case_template["config"])
+        obj["config"]["init_l"] = 2.0 if backend == "nextstat_mams" else None
         (cases_dir / file_name).write_text(json.dumps(obj) + "\n", encoding="utf-8")
 
     completed = subprocess.run(
@@ -178,15 +186,20 @@ def test_mams_stress_multiseed_reuse_existing_surfaces_case_catalog_and_parity_s
     summary = json.loads((out_dir / "mams_stress_multiseed_summary.json").read_text(encoding="utf-8"))
     assert summary["config"]["n_groups"] == 20
     assert summary["config"]["n_per_group"] == 20
+    assert summary["seed_semantics"]["warm_start_seed_offset"] == 1
     assert summary["case_catalog"][0]["case"] == "neal_funnel_ncp_10d"
     supported_row = next(item for item in summary["cases"] if item["case"] == "neal_funnel_ncp_10d" and item["backend"] == "nextstat_mams")
     assert supported_row["case_tier"] == "supported"
+    assert supported_row["configs"][0]["reported_draws_seed"] == 43
+    assert supported_row["config_overrides"] == {"init_l": 2.0}
     parity_row = summary["parity"]["rows"][0]
     assert parity_row["parity_scope"] == "required"
 
     md = (out_dir / "mams_stress_multiseed_summary.md").read_text(encoding="utf-8")
     assert "## Case Catalog" in md
+    assert "init_l=2.0" in md
     assert "pathological_control" in md
+    assert "reported posterior/diagnostic metrics come from `config.reported_draws_seed`" in md
 
 
 def test_mams_stress_suite_forwards_hier_case_parameters(monkeypatch, tmp_path: Path) -> None:
@@ -222,14 +235,20 @@ def test_mams_stress_suite_forwards_hier_case_parameters(monkeypatch, tmp_path: 
                     "meta": {"python": "3.12.0", "platform": "test", "nextstat_version": "0.0.0"},
                     "dataset": {"id": case, "sha256": "0" * 64},
                     "config": {
+                        "benchmark_seed": seed,
+                        "cold_start_seed": seed,
                         "dataset_seed": 12345,
                         "n_chains": 1,
                         "n_samples": 2,
                         "n_warmup": 1,
+                        "reported_draws_seed": seed + 1,
+                        "reported_draws_source": "warm_start",
                         "seed": seed,
                         "target_accept": 0.985,
+                        "warm_start_seed": seed + 1,
                         "n_groups": 11 if case == "hier_random_intercept_non_centered" else None,
                         "n_per_group": 13 if case == "hier_random_intercept_non_centered" else None,
+                        "init_l": 2.0 if case == "hier_random_intercept_non_centered" and backend == "nextstat_mams" else None,
                     },
                     "timing": {"wall_time_s": 0.1},
                     "metrics": {
@@ -275,7 +294,17 @@ def test_mams_stress_suite_forwards_hier_case_parameters(monkeypatch, tmp_path: 
     assert hier_calls
     assert all(call[call.index("--n-groups") + 1] == "11" for call in hier_calls)
     assert all(call[call.index("--n-per-group") + 1] == "13" for call in hier_calls)
+    hier_mams_calls = [call for call in hier_calls if call[call.index("--backend") + 1] == "nextstat_mams"]
+    assert hier_mams_calls
+    assert all("--init-l" in call for call in hier_mams_calls)
+    assert all(call[call.index("--init-l") + 1] == "2.0" for call in hier_mams_calls)
 
     suite_doc = json.loads((out_dir / "mams_stress_suite.json").read_text(encoding="utf-8"))
     assert suite_doc["suite"] == "mams_stress"
     assert any(row["case_tier"] == "pathological_control" for row in suite_doc["case_catalog"])
+    hier_suite_row = next(
+        row
+        for row in suite_doc["cases"]
+        if row["case"] == "hier_random_intercept_non_centered" and row["backend"] == "nextstat_mams"
+    )
+    assert hier_suite_row["config_overrides"] == {"init_l": 2.0}

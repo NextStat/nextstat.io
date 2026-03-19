@@ -59,6 +59,19 @@ def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
 
 
+def _seed_semantics_contract() -> dict[str, object]:
+    return {
+        "benchmark_seed_field": "config.seed",
+        "benchmark_seed_alias_field": "config.benchmark_seed",
+        "cold_start_seed_field": "config.cold_start_seed",
+        "warm_start_seed_field": "config.warm_start_seed",
+        "reported_draws_seed_field": "config.reported_draws_seed",
+        "reported_draws_source_field": "config.reported_draws_source",
+        "warm_start_seed_offset": 1,
+        "reported_draws_source": "warm_start",
+    }
+
+
 def _summary_contract(
     *,
     config_by_key: dict[tuple[str, str], list[dict[str, Any]]],
@@ -263,6 +276,7 @@ def main() -> int:
     actual_backends = sorted({backend for (_, backend) in by_key.keys()})
     backends_str = ",".join(actual_backends) if actual_backends else str(args.backends)
     summary_config = _summary_contract(config_by_key=config_by_key, args=args)
+    seed_semantics = _seed_semantics_contract()
 
     md_lines: list[str] = []
     md_lines.append("# MAMS suite (multi-seed summary)")
@@ -277,6 +291,10 @@ def main() -> int:
     md_lines.append("")
     md_lines.append("Metrics are aggregated across sampler seeds as mean ± std (where available).")
     md_lines.append("`dataset_seed` stays fixed so repeatability reflects sampler variation, not regenerated data variation.")
+    md_lines.append(
+        "`config.seed` / `config.benchmark_seed` is the requested benchmark seed; cold start uses that seed, "
+        "warm start uses `seed+1`, and reported posterior/diagnostic metrics come from `config.reported_draws_seed`."
+    )
     md_lines.append("")
     md_lines.append("## Aggregate table")
     md_lines.append("")
@@ -393,6 +411,7 @@ def main() -> int:
                 "seeds": seeds,
                 "backends": backends_str,
                 "config": summary_config,
+                "seed_semantics": seed_semantics,
                 "cases": cases_json,
                 "parity": {
                     "method": parity_method,

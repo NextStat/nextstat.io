@@ -6,6 +6,7 @@
 
 Metrics are aggregated across sampler seeds as mean ± std (where available).
 `dataset_seed` stays fixed so repeatability reflects sampler variation, not regenerated data variation.
+`config.seed` / `config.benchmark_seed` is the requested benchmark seed; cold start uses that seed, warm start uses `seed+1`, and reported posterior/diagnostic metrics come from `config.reported_draws_seed`.
 
 ## Aggregate table
 

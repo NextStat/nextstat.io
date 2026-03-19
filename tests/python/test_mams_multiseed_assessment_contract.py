@@ -31,6 +31,16 @@ def test_mams_multiseed_assessment_passes_clean_repeatability_bundle(tmp_path: P
             "parity_fail_z": 12.0,
             "deterministic": True,
         },
+        "seed_semantics": {
+            "benchmark_seed_field": "config.seed",
+            "benchmark_seed_alias_field": "config.benchmark_seed",
+            "cold_start_seed_field": "config.cold_start_seed",
+            "warm_start_seed_field": "config.warm_start_seed",
+            "reported_draws_seed_field": "config.reported_draws_seed",
+            "reported_draws_source_field": "config.reported_draws_source",
+            "warm_start_seed_offset": 1,
+            "reported_draws_source": "warm_start",
+        },
         "cases": [
             {
                 "case": "glm_logistic",
@@ -102,6 +112,16 @@ def test_mams_multiseed_assessment_surfaces_rhat_and_parity_failures(tmp_path: P
             "parity_warn_z": 8.0,
             "parity_fail_z": 12.0,
             "deterministic": True,
+        },
+        "seed_semantics": {
+            "benchmark_seed_field": "config.seed",
+            "benchmark_seed_alias_field": "config.benchmark_seed",
+            "cold_start_seed_field": "config.cold_start_seed",
+            "warm_start_seed_field": "config.warm_start_seed",
+            "reported_draws_seed_field": "config.reported_draws_seed",
+            "reported_draws_source_field": "config.reported_draws_source",
+            "warm_start_seed_offset": 1,
+            "reported_draws_source": "warm_start",
         },
         "cases": [
             {

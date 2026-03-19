@@ -140,6 +140,7 @@ pub struct SimplifiedLikelihoodDeriveMetadata {
 pub struct SimplifiedLikelihoodAlignedFitResult {
     pub schema_version: Option<String>,
     pub parameters: Vec<f64>,
+    pub uncertainties: Option<Vec<f64>>,
     pub covariance: Vec<f64>,
 }
 

@@ -123,26 +123,20 @@ impl MaximumLikelihoodEstimator {
         &self.config
     }
 
-    /// Fit any [`LogDensityModel`] by minimizing negative log-likelihood.
-    ///
-    /// # Arguments
-    /// * `model` - Statistical model to fit
-    ///
-    /// # Returns
-    /// FitResult with best-fit parameters, uncertainties, covariance, and fit quality
-    pub fn fit<M: LogDensityModel>(&self, model: &M) -> Result<FitResult> {
-        let result = self.fit_minimum(model)?;
+    fn finalize_fit_result<M: LogDensityModel>(
+        &self,
+        model: &M,
+        result: crate::optimizer::OptimizationResult,
+        include_warnings: bool,
+    ) -> Result<FitResult> {
         let bounds = model.parameter_bounds();
         let diag = diagnostics_from_opt(&result, &bounds);
-
-        // Compute full Hessian and covariance matrix
         let hessian = self.compute_hessian(model, &result.parameters)?;
         let n = result.parameters.len();
         let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
 
         let fr = match self.invert_hessian(&hessian, n) {
             Some(covariance) => {
-                // Uncertainties from diagonal of covariance matrix
                 let mut all_variances_ok = true;
                 let mut uncertainties = Vec::with_capacity(n);
                 for i in 0..n {
@@ -156,9 +150,7 @@ impl MaximumLikelihoodEstimator {
                 }
 
                 if all_variances_ok {
-                    // Store covariance as row-major flat Vec
                     let cov_flat: Vec<f64> = covariance.iter().copied().collect();
-
                     FitResult::with_covariance(
                         result.parameters,
                         uncertainties,
@@ -183,12 +175,10 @@ impl MaximumLikelihoodEstimator {
                 }
             }
             None => {
-                // Hessian inversion failed; fall back to diagonal estimate
                 log::warn!("Hessian inversion failed, using diagonal approximation");
-                let uncertainties = self.diagonal_uncertainties(&hessian, n);
                 FitResult::new(
                     result.parameters,
-                    uncertainties,
+                    self.diagonal_uncertainties(&hessian, n),
                     result.fval,
                     result.converged,
                     result.n_iter as usize,
@@ -199,12 +189,24 @@ impl MaximumLikelihoodEstimator {
         };
         let mut fr = apply_diagnostics(fr, diag);
 
-        // Identifiability warnings
-        let param_names = model.parameter_names();
-        let warns = identifiability_warnings(&hessian, n, &param_names, &fr.uncertainties);
-        fr.warnings = warns;
+        if include_warnings {
+            let param_names = model.parameter_names();
+            fr.warnings = identifiability_warnings(&hessian, n, &param_names, &fr.uncertainties);
+        }
 
         Ok(fr)
+    }
+
+    /// Fit any [`LogDensityModel`] by minimizing negative log-likelihood.
+    ///
+    /// # Arguments
+    /// * `model` - Statistical model to fit
+    ///
+    /// # Returns
+    /// FitResult with best-fit parameters, uncertainties, covariance, and fit quality
+    pub fn fit<M: LogDensityModel>(&self, model: &M) -> Result<FitResult> {
+        let result = self.fit_minimum(model)?;
+        self.finalize_fit_result(model, result, true)
     }
 
     /// Fit from an explicit starting point (warm-start) with full Hessian/covariance.
@@ -216,72 +218,26 @@ impl MaximumLikelihoodEstimator {
         initial_params: &[f64],
     ) -> Result<FitResult> {
         let result = self.fit_minimum_from(model, initial_params)?;
-        let bounds = model.parameter_bounds();
-        let diag = diagnostics_from_opt(&result, &bounds);
+        self.finalize_fit_result(model, result, true)
+    }
 
-        let hessian = self.compute_hessian(model, &result.parameters)?;
-        let n = result.parameters.len();
-        let diag_uncertainties = self.diagonal_uncertainties(&hessian, n);
+    /// Bounded fast path for internal Wald-smoke diagnostics.
+    ///
+    /// Matches [`fit`] on best-fit values, uncertainties, covariance, and optimizer diagnostics,
+    /// but skips identifiability warning generation because smoke callers do not consume it.
+    pub fn fit_for_wald_smoke<M: LogDensityModel>(&self, model: &M) -> Result<FitResult> {
+        let result = self.fit_minimum(model)?;
+        self.finalize_fit_result(model, result, false)
+    }
 
-        let fr = match self.invert_hessian(&hessian, n) {
-            Some(covariance) => {
-                let mut all_variances_ok = true;
-                let mut uncertainties = Vec::with_capacity(n);
-                for i in 0..n {
-                    let var = covariance[(i, i)];
-                    if var.is_finite() && var > 0.0 {
-                        uncertainties.push(var.sqrt());
-                    } else {
-                        all_variances_ok = false;
-                        uncertainties.push(diag_uncertainties[i]);
-                    }
-                }
-                if all_variances_ok {
-                    let cov_flat: Vec<f64> = covariance.iter().copied().collect();
-                    FitResult::with_covariance(
-                        result.parameters,
-                        uncertainties,
-                        cov_flat,
-                        result.fval,
-                        result.converged,
-                        result.n_iter as usize,
-                        result.n_fev,
-                        result.n_gev,
-                    )
-                } else {
-                    log::warn!("Invalid covariance diagonal; omitting covariance matrix");
-                    FitResult::new(
-                        result.parameters,
-                        uncertainties,
-                        result.fval,
-                        result.converged,
-                        result.n_iter as usize,
-                        result.n_fev,
-                        result.n_gev,
-                    )
-                }
-            }
-            None => {
-                log::warn!("Hessian inversion failed, using diagonal approximation");
-                let uncertainties = self.diagonal_uncertainties(&hessian, n);
-                FitResult::new(
-                    result.parameters,
-                    uncertainties,
-                    result.fval,
-                    result.converged,
-                    result.n_iter as usize,
-                    result.n_fev,
-                    result.n_gev,
-                )
-            }
-        };
-        let mut fr = apply_diagnostics(fr, diag);
-
-        let param_names = model.parameter_names();
-        let warns = identifiability_warnings(&hessian, n, &param_names, &fr.uncertainties);
-        fr.warnings = warns;
-
-        Ok(fr)
+    /// Warm-started bounded fast path for internal Wald-smoke diagnostics.
+    pub fn fit_for_wald_smoke_from<M: LogDensityModel>(
+        &self,
+        model: &M,
+        initial_params: &[f64],
+    ) -> Result<FitResult> {
+        let result = self.fit_minimum_from(model, initial_params)?;
+        self.finalize_fit_result(model, result, false)
     }
 
     /// Minimize NLL and return the optimizer result.
@@ -1913,6 +1869,7 @@ pub fn ranking_metal(
 mod tests {
     use super::*;
     use ns_translate::pyhf::Workspace;
+    use std::time::Instant;
 
     fn load_simple_workspace() -> Workspace {
         let json = include_str!("../../../tests/fixtures/simple_workspace.json");
@@ -1927,6 +1884,178 @@ mod tests {
             .unwrap_or_else(|e| panic!("failed to read fixture {}: {e}", path.display()));
         let ws: Workspace = serde_json::from_str(&json).unwrap();
         HistFactoryModel::from_workspace(&ws).unwrap()
+    }
+
+    #[test]
+    #[ignore = "internal timing report; run explicitly"]
+    fn selected_model_smoke_tail_timing_report() {
+        let model = load_model_from_fixture("atlas_public_dual_sr_vr_dual_cr_gaussian_workspace.json");
+        let channels = vec![
+            "SRLow".to_string(),
+            "SRHigh".to_string(),
+            "VRMix".to_string(),
+            "CRTop".to_string(),
+            "CRZ".to_string(),
+        ];
+        let selected_model = model
+            .with_fit_channel_selection(Some(&channels), None)
+            .expect("selected model should build");
+
+        let mle = MaximumLikelihoodEstimator::new();
+        let full_fit = mle.fit(&model).expect("full fit should succeed");
+        let warm_start = full_fit.parameters.clone();
+
+        let t0 = Instant::now();
+        let fit_from_result = mle
+            .fit_from(&selected_model, &warm_start)
+            .expect("selected full fit should succeed");
+        let fit_from_total_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let minimum = mle
+            .fit_minimum_from(&selected_model, &warm_start)
+            .expect("selected minimum should succeed");
+        let minimum_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let generic_hessian = mle
+            .compute_hessian(&selected_model, &minimum.parameters)
+            .expect("generic Hessian should succeed");
+        let generic_hessian_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let generic_covariance = mle
+            .invert_hessian(&generic_hessian, minimum.parameters.len())
+            .expect("generic Hessian inversion should succeed");
+        let generic_invert_s = t0.elapsed().as_secs_f64();
+        let decomposed_total_s = minimum_s + generic_hessian_s + generic_invert_s;
+
+        let n = minimum.parameters.len();
+        let diag_uncertainties = mle.diagonal_uncertainties(&generic_hessian, n);
+
+        let t0 = Instant::now();
+        let bounds = selected_model.parameter_bounds();
+        let diag = diagnostics_from_opt(&minimum, &bounds);
+        let mut all_variances_ok = true;
+        let mut uncertainties = Vec::with_capacity(n);
+        for i in 0..n {
+            let var = generic_covariance[(i, i)];
+            if var.is_finite() && var > 0.0 {
+                uncertainties.push(var.sqrt());
+            } else {
+                all_variances_ok = false;
+                uncertainties.push(diag_uncertainties[i]);
+            }
+        }
+        let fr = if all_variances_ok {
+            FitResult::with_covariance(
+                minimum.parameters.clone(),
+                uncertainties.clone(),
+                generic_covariance.iter().copied().collect(),
+                minimum.fval,
+                minimum.converged,
+                minimum.n_iter as usize,
+                minimum.n_fev,
+                minimum.n_gev,
+            )
+        } else {
+            FitResult::new(
+                minimum.parameters.clone(),
+                uncertainties.clone(),
+                minimum.fval,
+                minimum.converged,
+                minimum.n_iter as usize,
+                minimum.n_fev,
+                minimum.n_gev,
+            )
+        };
+        let _fr = apply_diagnostics(fr, diag);
+        let result_assembly_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let param_names = selected_model.parameter_names();
+        let _warns = identifiability_warnings(&generic_hessian, n, &param_names, &uncertainties);
+        let warning_tail_s = t0.elapsed().as_secs_f64();
+        let measured_wrapper_tail_s = result_assembly_s + warning_tail_s;
+
+        let mut tape = ns_ad::tape::Tape::with_capacity(selected_model.n_params() * 20);
+        let t0 = Instant::now();
+        let _hf_hessian = mle
+            .compute_hessian_histfactory(&selected_model, &minimum.parameters, &mut tape)
+            .expect("HistFactory Hessian should succeed");
+        let histfactory_hessian_s = t0.elapsed().as_secs_f64();
+
+        assert!(
+            (fit_from_result.parameters[0] - minimum.parameters[0]).abs() <= 1e-8,
+            "selected probe should compare equivalent fits"
+        );
+
+        eprintln!(
+            "sl-selected-smoke-tail-timing-report fit_from_total={fit_from_total_s:.6}s minimum={minimum_s:.6}s generic_hessian={generic_hessian_s:.6}s generic_invert={generic_invert_s:.6}s decomposed_total={decomposed_total_s:.6}s fit_wrapper_gap={:.6}s result_assembly={result_assembly_s:.6}s warning_tail={warning_tail_s:.6}s measured_wrapper_tail={measured_wrapper_tail_s:.6}s unexplained_wrapper_gap={:.6}s histfactory_hessian={histfactory_hessian_s:.6}s post_minimum_total={:.6}s",
+            (fit_from_total_s - decomposed_total_s).max(0.0),
+            ((fit_from_total_s - decomposed_total_s) - measured_wrapper_tail_s).max(0.0),
+            generic_hessian_s + generic_invert_s,
+        );
+    }
+
+    #[test]
+    fn test_fit_for_wald_smoke_from_matches_fit_from_core_result() {
+        let workspace = load_simple_workspace();
+        let model = HistFactoryModel::from_workspace(&workspace).unwrap();
+
+        let mle = MaximumLikelihoodEstimator::new();
+        let mut warm_start = model.parameter_init();
+        warm_start[0] = 0.35;
+        if warm_start.len() > 1 {
+            warm_start[1] = 0.15;
+        }
+
+        let full = mle.fit_from(&model, &warm_start).unwrap();
+        let smoke = mle.fit_for_wald_smoke_from(&model, &warm_start).unwrap();
+
+        assert_eq!(full.converged, smoke.converged);
+        assert_eq!(full.n_iter, smoke.n_iter);
+        assert_eq!(full.n_fev, smoke.n_fev);
+        assert_eq!(full.n_gev, smoke.n_gev);
+        assert!(
+            (full.nll - smoke.nll).abs() <= 1e-10,
+            "smoke-only NLL drifted: full={} smoke={}",
+            full.nll,
+            smoke.nll
+        );
+        assert_eq!(full.parameters.len(), smoke.parameters.len());
+        assert_eq!(full.uncertainties.len(), smoke.uncertainties.len());
+        assert_eq!(full.covariance.as_ref().map(Vec::len), smoke.covariance.as_ref().map(Vec::len));
+
+        for (idx, (lhs, rhs)) in full.parameters.iter().zip(smoke.parameters.iter()).enumerate() {
+            assert!(
+                (lhs - rhs).abs() <= 1e-10,
+                "smoke-only parameter[{idx}] drifted: full={lhs} smoke={rhs}"
+            );
+        }
+
+        for (idx, (lhs, rhs)) in full.uncertainties.iter().zip(smoke.uncertainties.iter()).enumerate()
+        {
+            assert!(
+                (lhs - rhs).abs() <= 1e-10,
+                "smoke-only uncertainty[{idx}] drifted: full={lhs} smoke={rhs}"
+            );
+        }
+
+        if let (Some(lhs), Some(rhs)) = (full.covariance.as_ref(), smoke.covariance.as_ref()) {
+            for (idx, (lhs, rhs)) in lhs.iter().zip(rhs.iter()).enumerate() {
+                assert!(
+                    (lhs - rhs).abs() <= 1e-10,
+                    "smoke-only covariance[{idx}] drifted: full={lhs} smoke={rhs}"
+                );
+            }
+        }
+
+        assert!(
+            smoke.warnings.is_empty(),
+            "smoke-only fit should skip warning generation, got {:?}",
+            smoke.warnings
+        );
     }
 
     #[test]

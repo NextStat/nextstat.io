@@ -274,7 +274,7 @@ def sample(
 
     Common kwargs (all methods):
         n_chains (int): Number of parallel chains. Default: 4 (NUTS/WALNUTS/MAMS), 4096 (LAPS).
-        n_warmup (int): Warmup iterations. Default: 500 for NUTS/WALNUTS, 2000 for MAMS.
+        n_warmup (int): Warmup iterations. Default: 500 for NUTS/WALNUTS, 3500 for MAMS.
         n_samples (int): Sampling iterations. Default: 1000 (NUTS/WALNUTS/MAMS), 2000 (LAPS).
         seed (int): Random seed. Default: 42.
         target_accept (float): Target acceptance rate. Default: 0.8 (NUTS/WALNUTS), 0.985 (MAMS), 0.9 (LAPS).
@@ -310,6 +310,7 @@ def sample(
         init_l (float): Initial trajectory length. Default: 0.0 (stable ``sqrt(d)`` default in preconditioned space).
         max_leapfrog (int): Max leapfrog steps. Default: 1024.
         diagonal_precond (bool): Use diagonal preconditioning. Default: True.
+        eps_jitter (float): Step size jitter scale. Default: 0.0 on the stable CPU surface.
 
     LAPS-specific kwargs (GPU, requires CUDA build):
         model_data (dict): Model-specific data (e.g. ``{"y": [...], "sigma": [...]}``)

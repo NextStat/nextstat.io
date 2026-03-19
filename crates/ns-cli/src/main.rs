@@ -6006,12 +6006,6 @@ fn build_simplified_likelihood_fidelity(
     derive_config: &ns_translate::simplified::export::SimplifiedLikelihoodDeriveConfig,
     derived: &ns_translate::simplified::export::SimplifiedLikelihoodDerivedCore,
 ) -> Result<ns_translate::simplified::schema::SimplifiedFidelityDiagnostics> {
-    // Embedded export-report fidelity is a contract-level smoke diagnostic. The external Apex2
-    // benchmark enforces the real performance/fidelity boundary, so we do not need a high-cost
-    // upper-limit solve here as long as the smoke ratio stays inside the documented gate.
-    const FIDELITY_SMOKE_UPPER_LIMIT_RTOL: f64 = 1e-2;
-    const FIDELITY_SMOKE_UPPER_LIMIT_MAX_ITER: usize = 24;
-
     let selected_model =
         model.with_fit_channel_selection(Some(&derive_config.selection.channels), None)?;
     let nuisance_count_reduced = match &derived.workspace.uncertainty_model {
@@ -6082,32 +6076,39 @@ fn build_simplified_likelihood_fidelity(
     let max_rel_yield_delta = max_abs_yield_delta / expected_scale;
 
     let mle = ns_inference::MaximumLikelihoodEstimator::new();
-    let full_ctx = ns_inference::AsymptoticCLsContext::new(&mle, &selected_model)?;
-    let simplified_ctx = ns_inference::AsymptoticCLsContext::new(&mle, &simplified_model)?;
     let qmu_test_mu = derive_config.fidelity_smoke.qmu_test_mu;
-    let qmu_full = full_ctx.hypotest_qtilde(&mle, qmu_test_mu)?.q_mu;
-    let qmu_simplified = simplified_ctx.hypotest_qtilde(&mle, qmu_test_mu)?.q_mu;
-
-    let alpha = 1.0 - derive_config.fidelity_smoke.upper_limit_cl;
-    let poi_bounds = derived.workspace.poi.bounds;
-    let upper_limit_lo = poi_bounds[0].max(0.0);
-    let upper_limit_hi =
-        if poi_bounds[1] > upper_limit_lo { poi_bounds[1] } else { upper_limit_lo + 10.0 };
-    let upper_limit_full = full_ctx.upper_limit_qtilde(
+    let full_smoke = if selection_matches_full_workspace(model, &selected_flat_indices) {
+        aligned_fit_wald_smoke_summary(
+            aligned_fit,
+            poi_idx,
+            qmu_test_mu,
+            derive_config.fidelity_smoke.upper_limit_cl,
+        )
+        .unwrap_or(fitted_wald_smoke_summary(
+            &mle,
+            &selected_model,
+            qmu_test_mu,
+            derive_config.fidelity_smoke.upper_limit_cl,
+        )?)
+    } else {
+        fitted_wald_smoke_summary_with_start(
+            &mle,
+            &selected_model,
+            Some(aligned_fit.parameters.as_slice()),
+            qmu_test_mu,
+            derive_config.fidelity_smoke.upper_limit_cl,
+        )?
+    };
+    let simplified_smoke = fitted_wald_smoke_summary_with_start(
         &mle,
-        alpha,
-        upper_limit_lo,
-        upper_limit_hi,
-        FIDELITY_SMOKE_UPPER_LIMIT_RTOL,
-        FIDELITY_SMOKE_UPPER_LIMIT_MAX_ITER,
-    )?;
-    let upper_limit_simplified = simplified_ctx.upper_limit_qtilde(
-        &mle,
-        alpha,
-        upper_limit_lo,
-        upper_limit_hi,
-        FIDELITY_SMOKE_UPPER_LIMIT_RTOL,
-        FIDELITY_SMOKE_UPPER_LIMIT_MAX_ITER,
+        &simplified_model,
+        Some(&simplified_model_warm_start(
+            &simplified_model,
+            &derived.workspace.poi.name,
+            aligned_fit.parameters[poi_idx],
+        )?),
+        qmu_test_mu,
+        derive_config.fidelity_smoke.upper_limit_cl,
     )?;
 
     Ok(ns_translate::simplified::schema::SimplifiedFidelityDiagnostics {
@@ -6117,11 +6118,19 @@ fn build_simplified_likelihood_fidelity(
         relative_background_cov_residual: Some(relative_background_cov_residual),
         max_abs_expected_delta_at_nominal: Some(max_abs_expected_delta_at_nominal),
         max_abs_expected_delta_random_draws: Some(max_abs_expected_delta_random_draws),
-        qmu_delta_smoke: Some((qmu_full - qmu_simplified).abs()),
-        upper_limit_ratio_smoke: Some(upper_limit_simplified / upper_limit_full.max(1e-12)),
+        qmu_delta_smoke: Some((full_smoke.q_mu - simplified_smoke.q_mu).abs()),
+        upper_limit_ratio_smoke: Some(
+            simplified_smoke.upper_limit / full_smoke.upper_limit.max(1e-12)
+        ),
         max_abs_yield_delta: Some(max_abs_yield_delta),
         max_rel_yield_delta: Some(max_rel_yield_delta),
     })
+}
+
+#[derive(Debug, Clone, Copy)]
+struct WaldSmokeSummary {
+    q_mu: f64,
+    upper_limit: f64,
 }
 
 fn flat_indices_from_simplified_bins(
@@ -6166,6 +6175,118 @@ fn select_expected_entries(values: &[f64], flat_indices: &[usize]) -> Result<Vec
         );
     }
     Ok(selected)
+}
+
+fn selection_matches_full_workspace(
+    model: &ns_translate::pyhf::HistFactoryModel,
+    flat_indices: &[usize],
+) -> bool {
+    let total_bins: usize =
+        (0..model.n_channels()).filter_map(|idx| model.channel_bin_count(idx).ok()).sum();
+    flat_indices.len() == total_bins && flat_indices.iter().enumerate().all(|(idx, &value)| idx == value)
+}
+
+fn aligned_fit_wald_smoke_summary(
+    aligned_fit: &ns_translate::simplified::export::SimplifiedLikelihoodAlignedFitResult,
+    poi_idx: usize,
+    qmu_test_mu: f64,
+    upper_limit_cl: f64,
+) -> Option<WaldSmokeSummary> {
+    let uncertainties = aligned_fit.uncertainties.as_ref()?;
+    let mu_hat = *aligned_fit.parameters.get(poi_idx)?;
+    let sigma_mu = *uncertainties.get(poi_idx)?;
+    wald_smoke_summary(mu_hat, sigma_mu, qmu_test_mu, upper_limit_cl).ok()
+}
+
+fn fitted_wald_smoke_summary(
+    mle: &ns_inference::MaximumLikelihoodEstimator,
+    model: &ns_translate::pyhf::HistFactoryModel,
+    qmu_test_mu: f64,
+    upper_limit_cl: f64,
+) -> Result<WaldSmokeSummary> {
+    fitted_wald_smoke_summary_with_start(mle, model, None, qmu_test_mu, upper_limit_cl)
+}
+
+fn fitted_wald_smoke_summary_with_start(
+    mle: &ns_inference::MaximumLikelihoodEstimator,
+    model: &ns_translate::pyhf::HistFactoryModel,
+    initial_params: Option<&[f64]>,
+    qmu_test_mu: f64,
+    upper_limit_cl: f64,
+) -> Result<WaldSmokeSummary> {
+    let fit = match initial_params {
+        Some(initial_params) => mle.fit_for_wald_smoke_from(model, initial_params)?,
+        None => mle.fit_for_wald_smoke(model)?,
+    };
+    let poi_idx =
+        model.poi_index().ok_or_else(|| anyhow::anyhow!("model must define a POI"))?;
+    let mu_hat = *fit
+        .parameters
+        .get(poi_idx)
+        .ok_or_else(|| anyhow::anyhow!("fit result missing POI parameter"))?;
+    let sigma_mu = *fit
+        .uncertainties
+        .get(poi_idx)
+        .ok_or_else(|| anyhow::anyhow!("fit result missing POI uncertainty"))?;
+    wald_smoke_summary(mu_hat, sigma_mu, qmu_test_mu, upper_limit_cl)
+}
+
+fn simplified_model_warm_start(
+    simplified_model: &ns_translate::pyhf::HistFactoryModel,
+    poi_name: &str,
+    poi_value: f64,
+) -> Result<Vec<f64>> {
+    let mut initial_params: Vec<f64> =
+        simplified_model.parameters().iter().map(|parameter| parameter.init).collect();
+    let poi_idx = simplified_model
+        .parameters()
+        .iter()
+        .position(|parameter| parameter.name == poi_name)
+        .ok_or_else(|| anyhow::anyhow!("simplified model missing POI parameter '{poi_name}'"))?;
+    initial_params[poi_idx] = poi_value;
+    Ok(initial_params)
+}
+
+fn wald_smoke_summary(
+    mu_hat: f64,
+    sigma_mu: f64,
+    qmu_test_mu: f64,
+    upper_limit_cl: f64,
+) -> Result<WaldSmokeSummary> {
+    if !mu_hat.is_finite() {
+        anyhow::bail!("Wald smoke requires finite mu_hat");
+    }
+    if !sigma_mu.is_finite() || sigma_mu <= 0.0 {
+        anyhow::bail!("Wald smoke requires finite positive sigma_mu, got {sigma_mu}");
+    }
+    let upper_limit = wald_upper_limit_smoke(mu_hat, sigma_mu, upper_limit_cl)?;
+    Ok(WaldSmokeSummary {
+        q_mu: wald_qtilde_smoke(mu_hat, sigma_mu, qmu_test_mu),
+        upper_limit,
+    })
+}
+
+fn wald_qtilde_smoke(mu_hat: f64, sigma_mu: f64, mu_test: f64) -> f64 {
+    let inv_var = 1.0 / sigma_mu.powi(2).max(1e-24);
+    if mu_hat > mu_test {
+        0.0
+    } else if mu_hat < 0.0 {
+        ((mu_test.powi(2) - 2.0 * mu_test * mu_hat) * inv_var).max(0.0)
+    } else {
+        ((mu_test - mu_hat).powi(2) * inv_var).max(0.0)
+    }
+}
+
+fn wald_upper_limit_smoke(mu_hat: f64, sigma_mu: f64, upper_limit_cl: f64) -> Result<f64> {
+    if !(0.0 < upper_limit_cl && upper_limit_cl < 1.0) {
+        anyhow::bail!(
+            "Wald smoke requires upper_limit_cl in (0, 1), got {upper_limit_cl}"
+        );
+    }
+    let normal = statrs::distribution::Normal::new(0.0, 1.0)
+        .map_err(|err| anyhow::anyhow!("failed to build standard normal: {err}"))?;
+    let z = normal.inverse_cdf(upper_limit_cl);
+    Ok(mu_hat.max(0.0) + z * sigma_mu)
 }
 
 fn relative_covariance_residual(total: &[Vec<f64>], retained: &[Vec<f64>]) -> Result<f64> {
@@ -17351,6 +17472,9 @@ fn aligned_fit_result_from_fit_json(
             .clone()
             .or_else(|| Some("nextstat_fit_result_v0".to_string())),
         parameters: params_from_fit_result(model, fit)?,
+        uncertainties: (!fit.uncertainties.is_empty())
+            .then(|| uncertainties_from_fit_result(model, fit, "simplified-likelihood fidelity smoke"))
+            .transpose()?,
         covariance: covariance_from_fit_result(model, fit, "simplified-likelihood derive/export")?,
     })
 }
@@ -18220,6 +18344,135 @@ fn cmd_viz_render(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::Value;
+    use std::path::{Path, PathBuf};
+    use std::time::Instant;
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .canonicalize()
+            .expect("repo root should exist")
+    }
+
+    fn fixture_path(name: &str) -> PathBuf {
+        repo_root().join("tests").join("fixtures").join(name)
+    }
+
+    fn medium_public_lane_catalog_path() -> PathBuf {
+        repo_root()
+            .join(".internal")
+            .join("docs")
+            .join("internal")
+            .join("2026-03-18_simplified-likelihood-exporter-medium-public-lane-v0.catalog.json")
+    }
+
+    fn medium_public_timing_derive_config(
+    ) -> ns_translate::simplified::export::SimplifiedLikelihoodDeriveConfig {
+        serde_json::from_value(serde_json::json!({
+            "schema_version": "nextstat_simplified_likelihood_derive_v0",
+            "source_workspace": {
+                "format": "pyhf",
+                "schema_version": "pyhf_workspace_v1",
+                "poi_name": "mu"
+            },
+            "fit_result": {
+                "schema_version": "nextstat_fit_result_v0",
+                "background_state": "postfit_background"
+            },
+            "selection": {
+                "channels": ["SRLow", "SRHigh", "VRMix", "CRTop", "CRZ"],
+                "bins": [
+                    "SRLow/bin0",
+                    "SRLow/bin1",
+                    "SRHigh/bin0",
+                    "SRHigh/bin1",
+                    "VRMix/bin0",
+                    "CRTop/bin0",
+                    "CRZ/bin0"
+                ]
+            },
+            "reduction": {
+                "output_uncertainty_model": "basis",
+                "basis_method": "eigen",
+                "explained_variance_target": 0.999,
+                "max_components": 2,
+                "constraint_covariance_source": "source_model_constraints",
+                "split_stat_covariance": true
+            },
+            "jacobian": {
+                "method": "finite_difference",
+                "relative_step": 0.01,
+                "absolute_step_floor": 0.000001
+            },
+            "fidelity_smoke": {
+                "random_draws": 8,
+                "qmu_test_mu": 1.0,
+                "upper_limit_cl": 0.95
+            },
+            "output_contract": {
+                "schema_version": "nextstat_simplified_likelihood_v0",
+                "require_factorization_diagnostics": true,
+                "require_fidelity_diagnostics": true
+            }
+        }))
+        .expect("timing derive config should deserialize")
+    }
+
+    fn derive_config_for_catalog_case(case: &Value) -> ns_translate::simplified::export::SimplifiedLikelihoodDeriveConfig {
+        let channels = case["selection"]["channels"]
+            .as_array()
+            .expect("catalog selection.channels should be an array")
+            .iter()
+            .map(|value| value.as_str().expect("channel should be a string").to_string())
+            .collect::<Vec<_>>();
+        let bins = case["selection"]["bins"]
+            .as_array()
+            .expect("catalog selection.bins should be an array")
+            .iter()
+            .map(|value| value.as_str().expect("bin should be a string").to_string())
+            .collect::<Vec<_>>();
+        serde_json::from_value(serde_json::json!({
+            "schema_version": "nextstat_simplified_likelihood_derive_v0",
+            "source_workspace": {
+                "format": case["source_workspace_format"].as_str().expect("format should be a string"),
+                "schema_version": case["source_workspace_schema_version"].as_str().expect("schema version should be a string"),
+                "poi_name": case["poi_name"].as_str().expect("poi_name should be a string")
+            },
+            "fit_result": {
+                "schema_version": "nextstat_fit_result_v0",
+                "background_state": "postfit_background"
+            },
+            "selection": {
+                "channels": channels,
+                "bins": bins
+            },
+            "reduction": {
+                "output_uncertainty_model": case["output_uncertainty_model"].as_str().expect("output_uncertainty_model should be a string"),
+                "basis_method": case["basis_method"].as_str().expect("basis_method should be a string"),
+                "explained_variance_target": case["explained_variance_target"].as_f64().expect("explained_variance_target should be a number"),
+                "constraint_covariance_source": case["constraint_covariance_source"].as_str().expect("constraint_covariance_source should be a string"),
+                "split_stat_covariance": case["split_stat_covariance"].as_bool().expect("split_stat_covariance should be a bool")
+            },
+            "jacobian": {
+                "method": "finite_difference",
+                "relative_step": 0.01,
+                "absolute_step_floor": 0.000001
+            },
+            "fidelity_smoke": {
+                "random_draws": 8,
+                "qmu_test_mu": 1.0,
+                "upper_limit_cl": 0.95
+            },
+            "output_contract": {
+                "schema_version": "nextstat_simplified_likelihood_v0",
+                "require_factorization_diagnostics": true,
+                "require_fidelity_diagnostics": true
+            }
+        }))
+        .expect("catalog case derive config should deserialize")
+    }
 
     #[test]
     fn cuda_shard_plan_auto_increases_too_few_shards_for_u32_offsets_in_device_mode() {
@@ -18352,5 +18605,444 @@ mod tests {
         assert_eq!(diag["retry"]["n_toys_used"].as_u64(), Some(0));
         assert_eq!(diag["line_search"]["total_exhaustions"].as_u64(), Some(0));
         assert_eq!(diag["status_histogram"]["Converged"].as_u64(), Some(1));
+    }
+
+    #[test]
+    fn warm_started_wald_smoke_summary_matches_cold_path_for_medium_public_models() {
+        let input = fixture_path("atlas_public_dual_sr_vr_dual_cr_gaussian_workspace.json");
+        let derive_config = medium_public_timing_derive_config();
+        let metadata = ns_translate::simplified::export::SimplifiedLikelihoodDeriveMetadata {
+            experiment: "ATLAS".to_string(),
+            analysis_id: "timing.medium.public.export".to_string(),
+            reference: "internal://warm-start-regression".to_string(),
+            description: Some("Warm-start regression for medium-public exporter fidelity".to_string()),
+        };
+        let (workspace, model) =
+            load_workspace_and_model(&input, 1, InterpDefaults::Root).expect("workspace should load");
+        let mle = ns_inference::MaximumLikelihoodEstimator::new();
+        let fit = mle.fit(&model).expect("fit should succeed");
+        let fit_json = FitResultJson {
+            schema_version: Some("nextstat_fit_result_v0".to_string()),
+            parameter_names: model.parameters().iter().map(|p| p.name.clone()).collect(),
+            bestfit: fit.parameters.clone(),
+            uncertainties: fit.uncertainties.clone(),
+            covariance: fit.covariance.clone(),
+            nll: fit.nll,
+            converged: fit.converged,
+            n_iter: fit.n_iter,
+            n_fev: fit.n_fev,
+            n_gev: fit.n_gev,
+        };
+        let aligned_fit =
+            aligned_fit_result_from_fit_json(&model, &fit_json).expect("aligned fit should succeed");
+        let derived = ns_translate::simplified::export::derive_simplified_likelihood_core(
+            &workspace,
+            &model,
+            &aligned_fit,
+            &derive_config,
+            &metadata,
+        )
+        .expect("derive core should succeed");
+        let selected_model = model
+            .with_fit_channel_selection(Some(&derive_config.selection.channels), None)
+            .expect("selected model should build");
+        let mut workspace_for_conversion = derived.workspace.clone();
+        workspace_for_conversion.diagnostics.get_or_insert_with(Default::default).fidelity =
+            Some(ns_translate::simplified::schema::SimplifiedFidelityDiagnostics {
+                nuisance_count_full: Some(derived.full_nuisance_count),
+                nuisance_count_reduced: Some(match &derived.workspace.uncertainty_model {
+                    ns_translate::simplified::schema::SimplifiedUncertaintyModel::Basis {
+                        components,
+                    } => components.len(),
+                    ns_translate::simplified::schema::SimplifiedUncertaintyModel::Covariance {
+                        total_covariance,
+                        ..
+                    } => total_covariance.len(),
+                }),
+                bins_count: Some(derived.workspace.bins.len()),
+                relative_background_cov_residual: Some(0.0),
+                max_abs_expected_delta_at_nominal: Some(0.0),
+                max_abs_expected_delta_random_draws: Some(0.0),
+                qmu_delta_smoke: Some(0.0),
+                upper_limit_ratio_smoke: Some(1.0),
+                max_abs_yield_delta: Some(0.0),
+                max_rel_yield_delta: Some(0.0),
+            });
+        let simplified_model = ns_translate::simplified::convert::simplified_to_model(
+            &workspace_for_conversion,
+        )
+        .expect("simplified model should build");
+        let qmu_test_mu = derive_config.fidelity_smoke.qmu_test_mu;
+        let upper_limit_cl = derive_config.fidelity_smoke.upper_limit_cl;
+
+        let selected_cold =
+            fitted_wald_smoke_summary(&mle, &selected_model, qmu_test_mu, upper_limit_cl)
+                .expect("cold selected smoke should succeed");
+        let selected_warm = fitted_wald_smoke_summary_with_start(
+            &mle,
+            &selected_model,
+            Some(aligned_fit.parameters.as_slice()),
+            qmu_test_mu,
+            upper_limit_cl,
+        )
+        .expect("warm selected smoke should succeed");
+        assert!(
+            (selected_cold.q_mu - selected_warm.q_mu).abs() <= 1e-6,
+            "selected-model q_mu drifted under warm start: cold={} warm={}",
+            selected_cold.q_mu,
+            selected_warm.q_mu
+        );
+        assert!(
+            (selected_cold.upper_limit - selected_warm.upper_limit).abs() <= 1e-6,
+            "selected-model upper-limit drifted under warm start: cold={} warm={}",
+            selected_cold.upper_limit,
+            selected_warm.upper_limit
+        );
+
+        let simplified_warm_start = simplified_model_warm_start(
+            &simplified_model,
+            &derived.workspace.poi.name,
+            aligned_fit.parameters[model.poi_index().expect("model should define a POI")],
+        )
+        .expect("simplified warm start should build");
+        let simplified_cold =
+            fitted_wald_smoke_summary(&mle, &simplified_model, qmu_test_mu, upper_limit_cl)
+                .expect("cold simplified smoke should succeed");
+        let simplified_warm = fitted_wald_smoke_summary_with_start(
+            &mle,
+            &simplified_model,
+            Some(simplified_warm_start.as_slice()),
+            qmu_test_mu,
+            upper_limit_cl,
+        )
+        .expect("warm simplified smoke should succeed");
+        assert!(
+            (simplified_cold.q_mu - simplified_warm.q_mu).abs() <= 1e-6,
+            "simplified-model q_mu drifted under warm start: cold={} warm={}",
+            simplified_cold.q_mu,
+            simplified_warm.q_mu
+        );
+        assert!(
+            (simplified_cold.upper_limit - simplified_warm.upper_limit).abs() <= 1e-6,
+            "simplified-model upper-limit drifted under warm start: cold={} warm={}",
+            simplified_cold.upper_limit,
+            simplified_warm.upper_limit
+        );
+    }
+
+    #[test]
+    #[ignore = "internal timing report; run explicitly"]
+    fn simplified_likelihood_medium_public_export_timing_report() {
+        let input = fixture_path("atlas_public_dual_sr_vr_dual_cr_gaussian_workspace.json");
+        let derive_config = medium_public_timing_derive_config();
+        let metadata = ns_translate::simplified::export::SimplifiedLikelihoodDeriveMetadata {
+            experiment: "ATLAS".to_string(),
+            analysis_id: "timing.medium.public.export".to_string(),
+            reference: "internal://timing-report".to_string(),
+            description: Some("Internal timing report for medium-public exporter lane".to_string()),
+        };
+
+        let t_total = Instant::now();
+
+        let t0 = Instant::now();
+        let (workspace, model) =
+            load_workspace_and_model(&input, 1, InterpDefaults::Root).expect("workspace should load");
+        let load_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let mle = ns_inference::MaximumLikelihoodEstimator::new();
+        let fit = mle.fit(&model).expect("fit should succeed");
+        let prep_fit_s = t0.elapsed().as_secs_f64();
+
+        let fit_json = FitResultJson {
+            schema_version: Some("nextstat_fit_result_v0".to_string()),
+            parameter_names: model.parameters().iter().map(|p| p.name.clone()).collect(),
+            bestfit: fit.parameters.clone(),
+            uncertainties: fit.uncertainties.clone(),
+            covariance: fit.covariance.clone(),
+            nll: fit.nll,
+            converged: fit.converged,
+            n_iter: fit.n_iter,
+            n_fev: fit.n_fev,
+            n_gev: fit.n_gev,
+        };
+
+        let t0 = Instant::now();
+        let aligned_fit =
+            aligned_fit_result_from_fit_json(&model, &fit_json).expect("aligned fit should succeed");
+        let aligned_fit_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let mut derived = ns_translate::simplified::export::derive_simplified_likelihood_core(
+            &workspace,
+            &model,
+            &aligned_fit,
+            &derive_config,
+            &metadata,
+        )
+        .expect("derive core should succeed");
+        let derive_core_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let selected_model = model
+            .with_fit_channel_selection(Some(&derive_config.selection.channels), None)
+            .expect("selected model should build");
+        let selected_model_build_s = t0.elapsed().as_secs_f64();
+        let mut workspace_for_conversion = derived.workspace.clone();
+        workspace_for_conversion.diagnostics.get_or_insert_with(Default::default).fidelity =
+            Some(ns_translate::simplified::schema::SimplifiedFidelityDiagnostics {
+                nuisance_count_full: Some(derived.full_nuisance_count),
+                nuisance_count_reduced: Some(match &derived.workspace.uncertainty_model {
+                    ns_translate::simplified::schema::SimplifiedUncertaintyModel::Basis {
+                        components,
+                    } => components.len(),
+                    ns_translate::simplified::schema::SimplifiedUncertaintyModel::Covariance {
+                        total_covariance,
+                        ..
+                    } => total_covariance.len(),
+                }),
+                bins_count: Some(derived.workspace.bins.len()),
+                relative_background_cov_residual: Some(0.0),
+                max_abs_expected_delta_at_nominal: Some(0.0),
+                max_abs_expected_delta_random_draws: Some(0.0),
+                qmu_delta_smoke: Some(0.0),
+                upper_limit_ratio_smoke: Some(1.0),
+                max_abs_yield_delta: Some(0.0),
+                max_rel_yield_delta: Some(0.0),
+            });
+        let t0 = Instant::now();
+        let simplified_model = ns_translate::simplified::convert::simplified_to_model(
+            &workspace_for_conversion,
+        )
+        .expect("simplified model should build");
+        let simplified_model_build_s = t0.elapsed().as_secs_f64();
+        let qmu_test_mu = derive_config.fidelity_smoke.qmu_test_mu;
+        let upper_limit_cl = derive_config.fidelity_smoke.upper_limit_cl;
+        let selected_warm_start = aligned_fit.parameters.clone();
+        let simplified_warm_start = simplified_model_warm_start(
+            &simplified_model,
+            &derived.workspace.poi.name,
+            aligned_fit.parameters[model.poi_index().expect("model should define a POI")],
+        )
+        .expect("simplified warm start should build");
+
+        let t0 = Instant::now();
+        let _selected_smoke = fitted_wald_smoke_summary_with_start(
+            &mle,
+            &selected_model,
+            Some(selected_warm_start.as_slice()),
+            qmu_test_mu,
+            upper_limit_cl,
+        )
+        .expect("selected smoke should succeed");
+        let selected_smoke_total_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let _selected_minimum = mle
+            .fit_minimum_from(&selected_model, selected_warm_start.as_slice())
+            .expect("selected minimum should succeed");
+        let selected_minimum_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let _simplified_smoke = fitted_wald_smoke_summary_with_start(
+            &mle,
+            &simplified_model,
+            Some(simplified_warm_start.as_slice()),
+            qmu_test_mu,
+            upper_limit_cl,
+        )
+        .expect("simplified smoke should succeed");
+        let simplified_smoke_total_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let _simplified_minimum = mle
+            .fit_minimum_from(&simplified_model, simplified_warm_start.as_slice())
+            .expect("simplified minimum should succeed");
+        let simplified_minimum_s = t0.elapsed().as_secs_f64();
+
+        let selected_flat_indices =
+            flat_indices_from_simplified_bins(&model, &derived.workspace.bins)
+                .expect("flat indices should build");
+
+        let t0 = Instant::now();
+        let mut full_params = aligned_fit.parameters.clone();
+        full_params[model.poi_index().expect("model should define a POI")] = qmu_test_mu;
+        let full_expected_all = model
+            .expected_data(&full_params)
+            .expect("full expected data should build");
+        let full_expected = select_expected_entries(&full_expected_all, &selected_flat_indices)
+            .expect("selected expected entries should build");
+        let simplified_expected = {
+            let mut params: Vec<f64> =
+                simplified_model.parameters().iter().map(|parameter| parameter.init).collect();
+            for (idx, parameter) in simplified_model.parameters().iter().enumerate() {
+                params[idx] = if parameter.name == derived.workspace.poi.name {
+                    qmu_test_mu
+                } else {
+                    0.0
+                };
+            }
+            simplified_model
+                .expected_data(&params)
+                .expect("simplified expected data should build")
+        };
+        let _max_abs_expected_delta_at_nominal = full_expected
+            .iter()
+            .zip(simplified_expected.iter())
+            .map(|(full, simplified)| (full - simplified).abs())
+            .fold(0.0_f64, f64::max);
+        let nominal_delta_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let _relative_background_cov_residual = relative_covariance_residual(
+            &derived.total_background_covariance,
+            &derived.retained_background_covariance,
+        )
+        .expect("relative covariance residual should build");
+        let covariance_residual_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let _max_abs_expected_delta_random_draws = max_abs_random_draw_delta(
+            &derived.total_background_covariance,
+            &derived.retained_background_covariance,
+            derive_config.fidelity_smoke.random_draws,
+        )
+        .expect("random draw delta should build");
+        let random_draw_delta_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let fidelity =
+            build_simplified_likelihood_fidelity(&model, &aligned_fit, &derive_config, &derived)
+                .expect("fidelity should succeed");
+        let fidelity_s = t0.elapsed().as_secs_f64();
+        derived.workspace.diagnostics.get_or_insert_with(Default::default).fidelity = Some(fidelity);
+
+        let t0 = Instant::now();
+        ns_translate::simplified::validate::validate_simplified_likelihood(&derived.workspace)
+            .expect("validation should succeed");
+        let validate_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let export_report =
+            ns_translate::simplified::export::build_simplified_likelihood_export_report(
+                &derive_config,
+                &metadata,
+                &derived,
+            )
+            .expect("export report should succeed");
+        let export_report_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let workspace_json = serde_json::to_value(&derived.workspace)
+            .expect("workspace JSON conversion should succeed");
+        let workspace_json_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let workspace_bytes = serde_json::to_vec_pretty(&workspace_json)
+            .expect("workspace serialization should succeed");
+        let workspace_serialize_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let report_json =
+            serde_json::to_value(&export_report).expect("report JSON conversion should succeed");
+        let report_json_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let report_bytes = serde_json::to_vec_pretty(&report_json)
+            .expect("report serialization should succeed");
+        let report_serialize_s = t0.elapsed().as_secs_f64();
+
+        let total_s = t_total.elapsed().as_secs_f64();
+        let exporter_total_s = total_s - prep_fit_s;
+        eprintln!(
+            "sl-medium-public-export-timing-report load={load_s:.6}s prep_fit={prep_fit_s:.6}s align_fit={aligned_fit_s:.6}s derive_core={derive_core_s:.6}s selected_model_build={selected_model_build_s:.6}s simplified_model_build={simplified_model_build_s:.6}s nominal_delta={nominal_delta_s:.6}s covariance_residual={covariance_residual_s:.6}s random_draw_delta={random_draw_delta_s:.6}s fidelity={fidelity_s:.6}s selected_smoke_total={selected_smoke_total_s:.6}s selected_minimum={selected_minimum_s:.6}s selected_post_minimum_est={:.6}s simplified_smoke_total={simplified_smoke_total_s:.6}s simplified_minimum={simplified_minimum_s:.6}s simplified_post_minimum_est={:.6}s validate={validate_s:.6}s export_report={export_report_s:.6}s workspace_json={workspace_json_s:.6}s workspace_serialize={workspace_serialize_s:.6}s report_json={report_json_s:.6}s report_serialize={report_serialize_s:.6}s exporter_total={exporter_total_s:.6}s total_with_fit={total_s:.6}s workspace_bytes={} report_bytes={}",
+            (selected_smoke_total_s - selected_minimum_s).max(0.0),
+            (simplified_smoke_total_s - simplified_minimum_s).max(0.0),
+            workspace_bytes.len(),
+            report_bytes.len(),
+        );
+    }
+
+    #[test]
+    #[ignore = "internal aligned-vs-selected lane probe; run explicitly"]
+    fn simplified_likelihood_medium_public_aligned_selected_probe() {
+        let catalog_path = medium_public_lane_catalog_path();
+        let catalog: Value = serde_json::from_slice(
+            &std::fs::read(&catalog_path).expect("catalog should be readable"),
+        )
+        .expect("catalog JSON should deserialize");
+        let cases = catalog["cases"].as_array().expect("catalog cases should be an array");
+        let mle = ns_inference::MaximumLikelihoodEstimator::new();
+
+        for case in cases {
+            let case_name = case["case_id"].as_str().expect("case_id should be a string");
+            let workspace_path = repo_root()
+                .join(case["workspace_json_path"].as_str().expect("workspace_json_path should be a string"));
+            let derive_config = derive_config_for_catalog_case(case);
+            let metadata = ns_translate::simplified::export::SimplifiedLikelihoodDeriveMetadata {
+                experiment: case["experiment"].as_str().expect("experiment should be a string").to_string(),
+                analysis_id: case["analysis_id"].as_str().expect("analysis_id should be a string").to_string(),
+                reference: case["reference"].as_str().expect("reference should be a string").to_string(),
+                description: Some(format!("internal aligned-vs-selected probe for {case_name}")),
+            };
+            let (workspace, model) = load_workspace_and_model(&workspace_path, 1, InterpDefaults::Root)
+                .expect("workspace should load");
+            let fit = mle.fit(&model).expect("fit should succeed");
+            let fit_json = FitResultJson {
+                schema_version: Some("nextstat_fit_result_v0".to_string()),
+                parameter_names: model.parameters().iter().map(|p| p.name.clone()).collect(),
+                bestfit: fit.parameters.clone(),
+                uncertainties: fit.uncertainties.clone(),
+                covariance: fit.covariance.clone(),
+                nll: fit.nll,
+                converged: fit.converged,
+                n_iter: fit.n_iter,
+                n_fev: fit.n_fev,
+                n_gev: fit.n_gev,
+            };
+            let aligned_fit = aligned_fit_result_from_fit_json(&model, &fit_json)
+                .expect("aligned fit should succeed");
+            let _derived = ns_translate::simplified::export::derive_simplified_likelihood_core(
+                &workspace,
+                &model,
+                &aligned_fit,
+                &derive_config,
+                &metadata,
+            )
+            .expect("derive core should succeed");
+            let selected_model = model
+                .with_fit_channel_selection(Some(&derive_config.selection.channels), None)
+                .expect("selected model should build");
+            let qmu_test_mu = derive_config.fidelity_smoke.qmu_test_mu;
+            let upper_limit_cl = derive_config.fidelity_smoke.upper_limit_cl;
+            let selected_smoke = fitted_wald_smoke_summary_with_start(
+                &mle,
+                &selected_model,
+                Some(aligned_fit.parameters.as_slice()),
+                qmu_test_mu,
+                upper_limit_cl,
+            )
+            .expect("selected smoke should succeed");
+            let aligned_smoke = aligned_fit_wald_smoke_summary(
+                &aligned_fit,
+                model.poi_index().expect("model should define a POI"),
+                qmu_test_mu,
+                upper_limit_cl,
+            )
+            .expect("aligned smoke should succeed");
+
+            let qmu_delta = (aligned_smoke.q_mu - selected_smoke.q_mu).abs();
+            let ul_ratio = aligned_smoke.upper_limit / selected_smoke.upper_limit.max(1e-12);
+
+            eprintln!(
+                "sl-medium-public-aligned-selected-probe case={} qmu_delta={:.6} ul_ratio={:.6} bins={} channels={} explained_variance_target={:.6}",
+                case_name,
+                qmu_delta,
+                ul_ratio,
+                derive_config.selection.bins.as_ref().map(|bins| bins.len()).unwrap_or(0),
+                derive_config.selection.channels.len(),
+                derive_config.reduction.explained_variance_target
+            );
+        }
     }
 }

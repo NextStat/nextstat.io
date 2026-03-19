@@ -4,7 +4,7 @@
   "title": "NextStat MAMS Multi-Seed Summary v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "generated_at", "suite", "seeds", "backends", "config", "cases", "parity"],
+  "required": ["schema_version", "generated_at", "suite", "seeds", "backends", "config", "seed_semantics", "cases", "parity"],
   "properties": {
     "schema_version": { "const": "nextstat.mams_multiseed_summary.v1" },
     "generated_at": { "type": "string", "minLength": 1 },
@@ -25,6 +25,30 @@
         "parity_warn_z": { "type": "number", "minimum": 0 },
         "parity_fail_z": { "type": "number", "minimum": 0 },
         "deterministic": { "type": "boolean" }
+      }
+    },
+    "seed_semantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "benchmark_seed_field",
+        "benchmark_seed_alias_field",
+        "cold_start_seed_field",
+        "warm_start_seed_field",
+        "reported_draws_seed_field",
+        "reported_draws_source_field",
+        "warm_start_seed_offset",
+        "reported_draws_source"
+      ],
+      "properties": {
+        "benchmark_seed_field": { "type": "string", "const": "config.seed" },
+        "benchmark_seed_alias_field": { "type": "string", "const": "config.benchmark_seed" },
+        "cold_start_seed_field": { "type": "string", "const": "config.cold_start_seed" },
+        "warm_start_seed_field": { "type": "string", "const": "config.warm_start_seed" },
+        "reported_draws_seed_field": { "type": "string", "const": "config.reported_draws_seed" },
+        "reported_draws_source_field": { "type": "string", "const": "config.reported_draws_source" },
+        "warm_start_seed_offset": { "type": "integer", "const": 1 },
+        "reported_draws_source": { "type": "string", "const": "warm_start" }
       }
     },
     "cases": {

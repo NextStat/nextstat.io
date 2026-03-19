@@ -2,6 +2,60 @@
   "entries": [
     {
       "artifact_count": 14,
+      "generated_at": "2026-03-18T20:26:12.207619Z",
+      "git": {
+        "ref": "",
+        "repository": "",
+        "sha": ""
+      },
+      "snapshot_id": "mams-publisher-20260318T201316Z",
+      "snapshot_index_path": "snapshots/mams-publisher-20260318T201316Z/snapshot_index.json",
+      "snapshot_index_sha256": "92f7f20ff6fb2baebcf49eac9290ba2bd589598923cf794e24ee351d2b08cb4d",
+      "suite": "public-benchmarks-seed",
+      "suite_health": [
+        {
+          "assessment_path": "mams/mams_assessment.json",
+          "assessment_schema_version": "nextstat.mams_assessment.v1",
+          "assessment_sha256": "85d6c3e6faa804d67aff84155b00ea50acf7b203c2fbe7bf3141848d0ab451c0",
+          "core_quality": {
+            "failure_count": 0,
+            "passed": true,
+            "status": "passed",
+            "warning_count": 0
+          },
+          "promotion_gate": {
+            "failing_cases": [],
+            "failure_count": 0,
+            "passed": true,
+            "review_summary": {
+              "failing_cases": [],
+              "n_failing_cases": 0,
+              "n_failures": 0,
+              "n_reviewed_cases": 4,
+              "worst_ess_per_sec": {
+                "case": "glm_logistic",
+                "value": 964.9458322286483
+              },
+              "worst_max_r_hat": {
+                "case": "std_normal_10d",
+                "value": 1.0084817363622698
+              },
+              "worst_min_ess_bulk": {
+                "case": "neal_funnel_2d",
+                "value": 1092.5183505785126
+              }
+            },
+            "reviewed_case_count": 4,
+            "status": "passed",
+            "target_backend": "nextstat_mams"
+          },
+          "suite": "mams"
+        }
+      ],
+      "workflow": {}
+    },
+    {
+      "artifact_count": 14,
       "generated_at": "2026-03-12T00:51:05.944109Z",
       "git": {
         "ref": "",
@@ -514,7 +568,7 @@
       "workflow": {}
     }
   ],
-  "entry_count": 17,
-  "generated_at": "2026-03-12T00:51:05.944109Z",
+  "entry_count": 18,
+  "generated_at": "2026-03-18T20:26:12.207619Z",
   "schema_version": "nextstat.snapshot_registry.v1"
 }

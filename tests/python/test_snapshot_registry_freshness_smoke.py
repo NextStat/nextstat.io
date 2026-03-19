@@ -8,6 +8,14 @@ def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _committed_snapshot_registry() -> dict:
+    return json.loads(
+        (_repo_root() / "benchmarks" / "nextstat-public-benchmarks" / "manifests" / "snapshot_registry.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+
 def test_committed_snapshot_registry_is_fresh() -> None:
     subprocess.check_call(
         [
@@ -48,11 +56,7 @@ def test_public_benchmarks_publish_templates_check_and_upload_registry() -> None
 
 
 def test_committed_snapshot_registry_surfaces_host_backed_bayesian_health() -> None:
-    registry = json.loads(
-        (_repo_root() / "benchmarks" / "nextstat-public-benchmarks" / "manifests" / "snapshot_registry.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    registry = _committed_snapshot_registry()
     health_entries = [entry for entry in registry["entries"] if entry.get("suite_health")]
     assert health_entries, "committed snapshot registry must contain at least one health-complete snapshot"
 
@@ -68,11 +72,7 @@ def test_committed_snapshot_registry_surfaces_host_backed_bayesian_health() -> N
 
 
 def test_committed_snapshot_registry_surfaces_host_backed_mams_health() -> None:
-    registry = json.loads(
-        (_repo_root() / "benchmarks" / "nextstat-public-benchmarks" / "manifests" / "snapshot_registry.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    registry = _committed_snapshot_registry()
     mams_rows = [
         row
         for entry in registry["entries"]
@@ -87,3 +87,35 @@ def test_committed_snapshot_registry_surfaces_host_backed_mams_health() -> None:
         isinstance(row["promotion_gate"].get("review_summary", {}).get("worst_max_r_hat"), dict)
         for row in mams_rows
     )
+
+
+def test_latest_committed_mams_snapshot_carries_explicit_seed_semantics() -> None:
+    registry = _committed_snapshot_registry()
+    latest_mams_entry = next(
+        (
+            entry
+            for entry in registry["entries"]
+            if any(row.get("suite") == "mams" for row in entry.get("suite_health", []))
+        ),
+        None,
+    )
+    assert latest_mams_entry is not None, "committed snapshot registry must contain a MAMS published snapshot"
+
+    snapshot_index_path = (
+        _repo_root()
+        / "benchmarks"
+        / "nextstat-public-benchmarks"
+        / "manifests"
+        / latest_mams_entry["snapshot_index_path"]
+    )
+    snapshot_dir = snapshot_index_path.parent
+    case_path = snapshot_dir / "mams" / "cases" / "glm_logistic__nextstat_mams__s42.json"
+    case_doc = json.loads(case_path.read_text(encoding="utf-8"))
+    cfg = case_doc["config"]
+
+    assert cfg["seed"] == 42
+    assert cfg["benchmark_seed"] == 42
+    assert cfg["cold_start_seed"] == 42
+    assert cfg["warm_start_seed"] == 43
+    assert cfg["reported_draws_seed"] == 43
+    assert cfg["reported_draws_source"] == "warm_start"

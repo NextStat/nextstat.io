@@ -135,6 +135,28 @@
       ]
     },
     {
+      "id": "bayesian_design_stable_surface",
+      "name": "Bayesian Trial Design Stable Surface",
+      "required_for_release": false,
+      "make_target": "",
+      "workflow_job": "",
+      "docs": [
+        "docs/references/bayesian-trial-design-artifacts.md",
+        "docs/benchmarks/bayesian-design-release-pr-checklist-2026-03-08.md",
+        "docs/benchmarks/bayesian-design-report-packaging-runtime-gate.md"
+      ],
+      "path_globs": [
+        "bindings/ns-py/python/nextstat/bayes_design.py",
+        "bindings/ns-py/python/nextstat/bayes_design.pyi",
+        "crates/ns-inference/src/bayes_design.rs",
+        "scripts/benchmarks/bench_bayesian_design_report_bundle.py",
+        "docs/specs/pharma/bayesian_*",
+        "docs/schemas/pharma/bayesian_*",
+        "tests/python/test_bayes_design_*",
+        "tests/python/test_bayesian_design_*"
+      ]
+    },
+    {
       "id": "root_trexfitter_parity",
       "name": "ROOT / TRExFitter parity",
       "required_for_release": false,

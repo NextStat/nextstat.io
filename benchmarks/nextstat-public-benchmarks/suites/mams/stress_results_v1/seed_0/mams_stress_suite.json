@@ -24,91 +24,99 @@
       "backend": "nextstat_mams",
       "case": "neal_funnel_10d_centered",
       "case_tier": "pathological_control",
+      "config_overrides": null,
       "ess_per_grad": 0.011912703710102453,
-      "ess_per_sec": 4683.06930332285,
+      "ess_per_sec": 4078.5175052756813,
       "max_r_hat": 1.2983885791038552,
       "min_ess_bulk": 1858.3817787759826,
       "n_grad_evals": 156000,
       "path": "cases/neal_funnel_10d_centered__nextstat_mams__s0.json",
       "seed": 0,
-      "sha256": "5d061d88d4126db23e3e24d8c729cfb195672ca0faa641ccc3162524b46af76a",
+      "sha256": "5f693706fb0c5f0ccfa7ae5df8fd683655f80854007a20e082975de7609fb324",
       "status": "ok",
-      "wall_time_s": 0.39682986913248897
+      "wall_time_s": 0.45565129397436976
     },
     {
       "backend": "nextstat_nuts",
       "case": "neal_funnel_10d_centered",
       "case_tier": "pathological_control",
+      "config_overrides": null,
       "ess_per_grad": 2.3457765213509036e-06,
-      "ess_per_sec": 1.9330130643803873,
+      "ess_per_sec": 1.7988432841102582,
       "max_r_hat": 2.046269539369432,
       "min_ess_bulk": 5.690586422273858,
       "n_grad_evals": 2425886,
       "path": "cases/neal_funnel_10d_centered__nextstat_nuts__s0.json",
       "seed": 0,
-      "sha256": "9b05e4c8a82aeb0a89783e53ec1a9668a8d1cdbb5321ba52110807c62381af01",
+      "sha256": "651c42712d457c2de080da412b3653c9f94f15ff1bcb9c4544699f19d3a10081",
       "status": "ok",
-      "wall_time_s": 2.943894444964826
+      "wall_time_s": 3.163469810038805
     },
     {
       "backend": "nextstat_mams",
       "case": "neal_funnel_ncp_10d",
       "case_tier": "supported",
+      "config_overrides": null,
       "ess_per_grad": 0.26393974705018824,
-      "ess_per_sec": 58032.23365880338,
+      "ess_per_sec": 46667.600201594345,
       "max_r_hat": 1.006634429836915,
       "min_ess_bulk": 6334.553929204518,
       "n_grad_evals": 24000,
       "path": "cases/neal_funnel_ncp_10d__nextstat_mams__s0.json",
       "seed": 0,
-      "sha256": "a7850b76099544677c835feef46fe3f5a71cde269d8d739a5723dd899a6c46b7",
+      "sha256": "86617e43d791d7cfceee953d3738820c128b373ddb646de8c3278664a64db5d6",
       "status": "ok",
-      "wall_time_s": 0.10915578342974186
+      "wall_time_s": 0.1357377259992063
     },
     {
       "backend": "nextstat_nuts",
       "case": "neal_funnel_ncp_10d",
       "case_tier": "supported",
+      "config_overrides": null,
       "ess_per_grad": 0.06911805363560962,
-      "ess_per_sec": 37122.511816609,
+      "ess_per_sec": 29686.286335822442,
       "max_r_hat": 1.0021770041921432,
       "min_ess_bulk": 8000.0,
       "n_grad_evals": 115744,
       "path": "cases/neal_funnel_ncp_10d__nextstat_nuts__s0.json",
       "seed": 0,
-      "sha256": "55248d554df35e514365ee597ce19f554906963760a4126b2b0ebcc47d8f229b",
+      "sha256": "252d19a319ec825c0d51d114677e3e58d73992a5d0629e6b7a992435da31794c",
       "status": "ok",
-      "wall_time_s": 0.2155026588588953
+      "wall_time_s": 0.26948470110073686
     },
     {
       "backend": "nextstat_mams",
       "case": "hier_random_intercept_non_centered",
       "case_tier": "supported",
-      "ess_per_grad": 0.0555136677117567,
-      "ess_per_sec": 868.017685277954,
-      "max_r_hat": 1.0086664092437985,
-      "min_ess_bulk": 2109.5193730467545,
-      "n_grad_evals": 38000,
+      "config_overrides": {
+        "init_l": 2.0
+      },
+      "ess_per_grad": 0.0670913978974726,
+      "ess_per_sec": 691.4665809483595,
+      "max_r_hat": 1.0068713972418837,
+      "min_ess_bulk": 939.2795705646163,
+      "n_grad_evals": 14000,
       "path": "cases/hier_random_intercept_non_centered__nextstat_mams__s0.json",
       "seed": 0,
-      "sha256": "20cebdeb3518cc83de841f39ba79e1e575ad077c6e407a9156b11d54b701f817",
+      "sha256": "101c427f78c60f24f6a4ce0741fd63e61ca5d743c0a720fab8f2abffd63f31cf",
       "status": "ok",
-      "wall_time_s": 2.43027234217152
+      "wall_time_s": 1.358387514948845
     },
     {
       "backend": "nextstat_nuts",
       "case": "hier_random_intercept_non_centered",
       "case_tier": "supported",
+      "config_overrides": null,
       "ess_per_grad": 0.015894149227537156,
-      "ess_per_sec": 417.79198833656244,
+      "ess_per_sec": 390.1448755995101,
       "max_r_hat": 1.0030607457873935,
       "min_ess_bulk": 3258.427744838937,
       "n_grad_evals": 205008,
       "path": "cases/hier_random_intercept_non_centered__nextstat_nuts__s0.json",
       "seed": 0,
-      "sha256": "c89ab96bf331991595b4487941015a6e093e036faa6eb2f56c619b9b26fa092c",
+      "sha256": "5d59ea710cd16bde88ce3cb518d6905a8aece378fd69d49bebb2e1cd6a53a184",
       "status": "ok",
-      "wall_time_s": 7.799162826966494
+      "wall_time_s": 8.351840428076684
     }
   ],
   "config": {
@@ -131,7 +139,7 @@
   },
   "deterministic": true,
   "meta": {
-    "nextstat_version": "0.9.9",
+    "nextstat_version": "0.10.1",
     "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
     "python": "3.12.3"
   },
@@ -187,22 +195,22 @@
       {
         "case": "hier_random_intercept_non_centered",
         "case_tier": "supported",
-        "max_z": 3.796513685865133,
+        "max_z": 4.6634618870228595,
         "parity_scope": "required",
         "seed": 0,
         "status": "ok",
         "worst": [
           {
             "param": "sigma_alpha",
-            "z": 3.796513685865133
+            "z": 4.6634618870228595
           },
           {
-            "param": "z_alpha12",
-            "z": 2.1976077440307464
+            "param": "beta1",
+            "z": 2.7932882581100964
           },
           {
-            "param": "z_alpha1",
-            "z": 2.133547547595611
+            "param": "z_alpha9",
+            "z": 1.4815981862753607
           }
         ]
       }

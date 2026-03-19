@@ -1,6 +1,6 @@
 ---
 title: "Subscription / Churn Analysis — Pilot Runbook"
-status: stable
+status: internal
 ---
 
 # Subscription / Churn Analysis

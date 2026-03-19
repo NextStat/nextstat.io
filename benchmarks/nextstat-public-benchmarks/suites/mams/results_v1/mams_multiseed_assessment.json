@@ -150,6 +150,6 @@
   },
   "schema_version": "nextstat.mams_multiseed_assessment.v1",
   "source_summary_path": "mams_multiseed_summary.json",
-  "source_summary_sha256": "de524fb953941148f1781936f8b9713a0a63685817f9bc4f2d87fe82adcb7211",
+  "source_summary_sha256": "fd7917f1ad13990e7a69cdac2ce5b49b7a7993cd7db6c16f5ee07e6318edbf0d",
   "suite": "mams"
 }

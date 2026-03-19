@@ -4,7 +4,7 @@
   "title": "NextStat MAMS Stress Multi-Seed Summary v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "generated_at", "suite", "seeds", "backends", "config", "case_catalog", "cases", "parity"],
+  "required": ["schema_version", "generated_at", "suite", "seeds", "backends", "config", "seed_semantics", "case_catalog", "cases", "parity"],
   "properties": {
     "schema_version": { "const": "nextstat.mams_stress_multiseed_summary.v1" },
     "generated_at": { "type": "string", "minLength": 1 },
@@ -27,6 +27,30 @@
         "n_groups": { "type": "integer", "minimum": 1 },
         "n_per_group": { "type": "integer", "minimum": 1 },
         "deterministic": { "type": "boolean" }
+      }
+    },
+    "seed_semantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "benchmark_seed_field",
+        "benchmark_seed_alias_field",
+        "cold_start_seed_field",
+        "warm_start_seed_field",
+        "reported_draws_seed_field",
+        "reported_draws_source_field",
+        "warm_start_seed_offset",
+        "reported_draws_source"
+      ],
+      "properties": {
+        "benchmark_seed_field": { "type": "string", "const": "config.seed" },
+        "benchmark_seed_alias_field": { "type": "string", "const": "config.benchmark_seed" },
+        "cold_start_seed_field": { "type": "string", "const": "config.cold_start_seed" },
+        "warm_start_seed_field": { "type": "string", "const": "config.warm_start_seed" },
+        "reported_draws_seed_field": { "type": "string", "const": "config.reported_draws_seed" },
+        "reported_draws_source_field": { "type": "string", "const": "config.reported_draws_source" },
+        "warm_start_seed_offset": { "type": "integer", "const": 1 },
+        "reported_draws_source": { "type": "string", "const": "warm_start" }
       }
     },
     "case_catalog": {
@@ -65,7 +89,8 @@
           "min_ess_tail": { "type": "array", "items": { "type": "number", "minimum": 0 } },
           "max_r_hat": { "type": "array", "items": { "type": "number", "minimum": 0 } },
           "accept_rate": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1 } },
-          "configs": { "type": "array", "items": { "type": "object" } }
+          "configs": { "type": "array", "items": { "type": "object" } },
+          "config_overrides": { "type": "object", "additionalProperties": true }
         }
       }
     },

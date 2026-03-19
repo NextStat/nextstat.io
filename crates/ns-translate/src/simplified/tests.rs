@@ -387,6 +387,7 @@ fn test_derive_simplified_likelihood_core_from_workspace_reduces_to_requested_ba
     let fit_result = SimplifiedLikelihoodAlignedFitResult {
         schema_version: Some("nextstat_fit_result_v0".to_string()),
         parameters: vec![0.0, 1.0, 1.0],
+        uncertainties: None,
         covariance: vec![
             0.0, 0.0, 0.0, //
             0.0, 0.09, 0.12, //
@@ -543,6 +544,7 @@ fn test_derive_simplified_likelihood_core_rejects_partial_channel_bin_selection(
     let fit_result = SimplifiedLikelihoodAlignedFitResult {
         schema_version: Some("nextstat_fit_result_v0".to_string()),
         parameters: vec![0.0, 1.0, 1.0],
+        uncertainties: None,
         covariance: vec![
             0.0, 0.0, 0.0, //
             0.0, 0.09, 0.0, //
@@ -659,6 +661,7 @@ fn test_derive_simplified_likelihood_core_rejects_non_gaussian_source_constraint
     let fit_result = SimplifiedLikelihoodAlignedFitResult {
         schema_version: Some("nextstat_fit_result_v0".to_string()),
         parameters: vec![1.0, 0.0],
+        uncertainties: None,
         covariance: vec![
             1.0, 0.0, //
             0.0, 1.0,

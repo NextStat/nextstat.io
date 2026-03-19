@@ -2,14 +2,19 @@
   "backend": "nextstat_mams",
   "case": "glm_logistic",
   "config": {
+    "benchmark_seed": 0,
+    "cold_start_seed": 0,
     "dataset_seed": 12345,
     "n_chains": 4,
     "n_groups": null,
     "n_per_group": null,
     "n_samples": 2000,
     "n_warmup": 3500,
+    "reported_draws_seed": 1,
+    "reported_draws_source": "warm_start",
     "seed": 0,
-    "target_accept": 0.985
+    "target_accept": 0.985,
+    "warm_start_seed": 1
   },
   "dataset": {
     "id": "glm_logistic",

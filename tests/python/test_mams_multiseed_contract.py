@@ -9,6 +9,7 @@ from types import SimpleNamespace
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MULTISEED_SCRIPT = REPO_ROOT / "benchmarks" / "nextstat-public-benchmarks" / "suites" / "mams" / "multiseed.py"
 SUITE_SCRIPT = REPO_ROOT / "benchmarks" / "nextstat-public-benchmarks" / "suites" / "mams" / "suite.py"
+RUN_SCRIPT = REPO_ROOT / "benchmarks" / "nextstat-public-benchmarks" / "suites" / "mams" / "run.py"
 
 
 def test_mams_multiseed_reuse_existing_surfaces_dataset_seed_and_parity(tmp_path: Path) -> None:
@@ -81,12 +82,17 @@ def test_mams_multiseed_reuse_existing_surfaces_dataset_seed_and_parity(tmp_path
         },
         "dataset": {"id": "glm_logistic", "sha256": "2" * 64},
         "config": {
+            "benchmark_seed": 42,
+            "cold_start_seed": 42,
             "dataset_seed": 12345,
             "n_chains": 4,
             "n_samples": 2000,
             "n_warmup": 1000,
+            "reported_draws_seed": 43,
+            "reported_draws_source": "warm_start",
             "seed": 42,
             "target_accept": 0.9,
+            "warm_start_seed": 43,
         },
         "timing": {"wall_time_s": 1.0},
         "metrics": {
@@ -134,11 +140,18 @@ def test_mams_multiseed_reuse_existing_surfaces_dataset_seed_and_parity(tmp_path
     summary = json.loads((out_dir / "mams_multiseed_summary.json").read_text(encoding="utf-8"))
     assert summary["config"]["dataset_seed"] == 12345
     assert summary["backends"] == "nextstat_mams,nextstat_nuts"
+    assert summary["seed_semantics"]["warm_start_seed_offset"] == 1
+    assert summary["seed_semantics"]["reported_draws_source"] == "warm_start"
     row = next(item for item in summary["cases"] if item["backend"] == "nextstat_mams")
     assert row["ess_per_sec_warm"] == [220.0]
     assert row["min_ess_tail"] == [410.0]
     assert row["accept_rate"] == [0.92]
     assert row["n_integration_steps"] == [1198.0]
+    assert row["configs"][0]["benchmark_seed"] == 42
+    assert row["configs"][0]["cold_start_seed"] == 42
+    assert row["configs"][0]["warm_start_seed"] == 43
+    assert row["configs"][0]["reported_draws_seed"] == 43
+    assert row["configs"][0]["reported_draws_source"] == "warm_start"
     parity_row = summary["parity"]["rows"][0]
     assert parity_row["max_z"] == [2.25]
     assert parity_row["seed_rows"][0]["worst"] == [{"param": "beta[1]", "z": 2.25}]
@@ -147,6 +160,82 @@ def test_mams_multiseed_reuse_existing_surfaces_dataset_seed_and_parity(tmp_path
     assert "## Parity Summary" in md
     assert "dataset_seed=12345" in md
     assert "sampler variation" in md
+    assert "reported posterior/diagnostic metrics come from `config.reported_draws_seed`" in md
+
+
+def test_mams_run_surfaces_explicit_seed_semantics(monkeypatch, tmp_path: Path) -> None:
+    spec = importlib.util.spec_from_file_location("mams_run_contract", RUN_SCRIPT)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    class FakeStdNormalModel:
+        def __init__(self, dim: int) -> None:
+            self.dim = dim
+
+    sample_calls: list[int] = []
+
+    def fake_sample(_model, **kwargs):  # noqa: ANN001
+        sample_calls.append(int(kwargs["seed"]))
+        return {
+            "diagnostics": {
+                "r_hat": {"x": 1.001},
+                "ess_bulk": {"x": 120.0},
+                "ess_tail": {"x": 140.0},
+            },
+            "sample_stats": {
+                "n_leapfrog": [[11, 12]],
+                "accept_prob": [[0.93, 0.95]],
+            },
+            "posterior": {"x": [[0.1, 0.2]]},
+            "param_names": ["x"],
+        }
+
+    monkeypatch.setitem(
+        sys.modules,
+        "nextstat",
+        SimpleNamespace(
+            __version__="0.0.0",
+            StdNormalModel=FakeStdNormalModel,
+            sample=fake_sample,
+        ),
+    )
+
+    out_path = tmp_path / "std_normal.json"
+    old_argv = sys.argv[:]
+    try:
+        sys.argv = [
+            str(RUN_SCRIPT),
+            "--case",
+            "std_normal_10d",
+            "--backend",
+            "nextstat_mams",
+            "--out",
+            str(out_path),
+            "--n-chains",
+            "1",
+            "--warmup",
+            "2",
+            "--samples",
+            "2",
+            "--seed",
+            "42",
+            "--deterministic",
+        ]
+        rc = module.main()
+    finally:
+        sys.argv = old_argv
+
+    assert rc == 0
+    assert sample_calls == [42, 43]
+
+    doc = json.loads(out_path.read_text(encoding="utf-8"))
+    assert doc["config"]["seed"] == 42
+    assert doc["config"]["benchmark_seed"] == 42
+    assert doc["config"]["cold_start_seed"] == 42
+    assert doc["config"]["warm_start_seed"] == 43
+    assert doc["config"]["reported_draws_seed"] == 43
+    assert doc["config"]["reported_draws_source"] == "warm_start"
 
 
 def test_mams_suite_forwards_dataset_seed_to_case_runner(monkeypatch, tmp_path: Path) -> None:
@@ -187,12 +276,17 @@ def test_mams_suite_forwards_dataset_seed_to_case_runner(monkeypatch, tmp_path: 
                     },
                     "dataset": {"id": case, "sha256": "0" * 64},
                     "config": {
+                        "benchmark_seed": seed,
+                        "cold_start_seed": seed,
                         "dataset_seed": dataset_seed,
                         "n_chains": 1,
                         "n_samples": 2,
                         "n_warmup": 1,
+                        "reported_draws_seed": seed + 1,
+                        "reported_draws_source": "warm_start",
                         "seed": seed,
                         "target_accept": 0.9,
+                        "warm_start_seed": seed + 1,
                     },
                     "timing": {"wall_time_s": 0.1},
                     "metrics": {

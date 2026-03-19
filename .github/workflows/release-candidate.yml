@@ -831,6 +831,12 @@ jobs:
           python3 scripts/hep_surface_matrix.py --check
           python3 -m scripts.hep_validation_bundle --check
 
+      - name: Validate repo-wide surface matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/repo_surface_matrix.py --check
+
       - name: Build HEP validation bundle
         shell: bash
         run: |
@@ -838,6 +844,20 @@ jobs:
           python3 -m scripts.hep_validation_bundle \
             --out-json tmp/hep_validation_bundle.json \
             --out-md tmp/hep_validation_bundle.md
+
+      - name: Validate repo-wide validation bundle (RWS-09)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m scripts.repo_validation_bundle --check
+
+      - name: Build repo-wide validation bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m scripts.repo_validation_bundle \
+            --out-json tmp/repo_validation_bundle.json \
+            --out-md tmp/repo_validation_bundle.md
 
       - name: Build release candidate bundle
         shell: bash
@@ -868,3 +888,11 @@ jobs:
           path: |
             tmp/hep_validation_bundle.json
             tmp/hep_validation_bundle.md
+
+      - name: Upload repo-wide validation bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-validation-bundle
+          path: |
+            tmp/repo_validation_bundle.json
+            tmp/repo_validation_bundle.md

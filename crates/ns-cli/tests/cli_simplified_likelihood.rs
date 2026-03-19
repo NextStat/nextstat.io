@@ -267,6 +267,22 @@ fn export_public_style_simplified_workspace_with_report(
     name: &str,
     fixture_name: &str,
 ) -> (PathBuf, PathBuf, PathBuf, serde_json::Value, serde_json::Value) {
+    export_public_style_simplified_workspace_with_report_for_case(
+        name,
+        fixture_name,
+        "CMS",
+        &["SR", "CR"],
+        &["SR/bin0", "SR/bin1", "CR/bin0", "CR/bin1"],
+    )
+}
+
+fn export_public_style_simplified_workspace_with_report_for_case(
+    name: &str,
+    fixture_name: &str,
+    experiment: &str,
+    channels: &[&str],
+    bins: &[&str],
+) -> (PathBuf, PathBuf, PathBuf, serde_json::Value, serde_json::Value) {
     let input = fixture_path(fixture_name);
     let work_dir = tmp_dir(name);
     let _ = std::fs::remove_dir_all(&work_dir);
@@ -301,8 +317,8 @@ fn export_public_style_simplified_workspace_with_report(
             Some(2),
             0.999,
             8,
-            &["SR", "CR"],
-            &["SR/bin0", "SR/bin1", "CR/bin0", "CR/bin1"],
+            channels,
+            bins,
             "source_model_constraints",
         ),
     )
@@ -319,7 +335,7 @@ fn export_public_style_simplified_workspace_with_report(
             "--derive-config",
             derive_config_path.to_string_lossy().as_ref(),
             "--experiment",
-            "CMS",
+            experiment,
             "--analysis-id",
             name,
             "--reference",
@@ -770,6 +786,63 @@ fn simplify_workspace_keeps_public_export_smoke_fidelity_within_apex2_gate() {
     assert!(
         (0.95..=1.05).contains(&upper_limit_ratio_smoke),
         "expected public export upper-limit smoke ratio inside Apex2 gate, got {upper_limit_ratio_smoke}"
+    );
+    assert_eq!(
+        report_fidelity.get("qmu_delta_smoke").and_then(|v| v.as_f64()),
+        Some(qmu_delta_smoke)
+    );
+    assert_eq!(
+        report_fidelity.get("upper_limit_ratio_smoke").and_then(|v| v.as_f64()),
+        Some(upper_limit_ratio_smoke)
+    );
+
+    let _ = std::fs::remove_dir_all(&work_dir);
+}
+
+#[test]
+fn simplify_workspace_keeps_medium_public_export_smoke_fidelity_within_apex2_gate() {
+    let (work_dir, _output_path, _report_path, simplified, report) =
+        export_public_style_simplified_workspace_with_report_for_case(
+            "cli-medium-public-export-fidelity",
+            "atlas_public_dual_sr_vr_dual_cr_gaussian_workspace.json",
+            "ATLAS",
+            &["SRLow", "SRHigh", "VRMix", "CRTop", "CRZ"],
+            &[
+                "SRLow/bin0",
+                "SRLow/bin1",
+                "SRHigh/bin0",
+                "SRHigh/bin1",
+                "VRMix/bin0",
+                "CRTop/bin0",
+                "CRZ/bin0",
+            ],
+        );
+
+    let fidelity = simplified
+        .get("diagnostics")
+        .and_then(|v| v.get("fidelity"))
+        .expect("derived export should carry fidelity diagnostics");
+    let report_fidelity = report
+        .get("diagnostics")
+        .and_then(|v| v.get("fidelity"))
+        .expect("export report should carry fidelity diagnostics");
+
+    let qmu_delta_smoke = fidelity
+        .get("qmu_delta_smoke")
+        .and_then(|v| v.as_f64())
+        .expect("fidelity.qmu_delta_smoke should be f64");
+    let upper_limit_ratio_smoke = fidelity
+        .get("upper_limit_ratio_smoke")
+        .and_then(|v| v.as_f64())
+        .expect("fidelity.upper_limit_ratio_smoke should be f64");
+
+    assert!(
+        qmu_delta_smoke <= 0.1,
+        "expected medium-public export q_mu smoke to stay inside Apex2 gate, got {qmu_delta_smoke}"
+    );
+    assert!(
+        (0.95..=1.05).contains(&upper_limit_ratio_smoke),
+        "expected medium-public export upper-limit smoke ratio inside Apex2 gate, got {upper_limit_ratio_smoke}"
     );
     assert_eq!(
         report_fidelity.get("qmu_delta_smoke").and_then(|v| v.as_f64()),

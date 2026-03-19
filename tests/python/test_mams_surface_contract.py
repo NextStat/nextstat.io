@@ -1,6 +1,12 @@
 """Stable-surface contract tests for Python MAMS exposure."""
 
+import sys
+from pathlib import Path
+
 import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT / "bindings" / "ns-py" / "python"))
 
 import nextstat
 
@@ -40,6 +46,13 @@ def test_mams_public_signature_defaults_are_stabilized():
     assert "target_accept=0.985" in sig
     assert "max_leapfrog=1024" in sig
     assert "eps_jitter=0.0" in sig
+
+
+def test_unified_sample_docstring_matches_mams_stable_defaults():
+    doc = nextstat.sample.__doc__ or ""
+    assert "500 for NUTS/WALNUTS, 3500 for MAMS" in doc
+    assert "0.8 (NUTS/WALNUTS), 0.985 (MAMS), 0.9 (LAPS)" in doc
+    assert "eps_jitter (float): Step size jitter scale. Default: 0.0 on the stable CPU surface." in doc
 
 
 def test_mams_default_surface_handles_funnel_geometry():

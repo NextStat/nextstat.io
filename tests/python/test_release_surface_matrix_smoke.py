@@ -80,6 +80,7 @@ def test_pre_release_gate_and_docs_reference_release_surface_outputs() -> None:
     assert "tmp/apex2_pre_release_gate_summary.json" in gate
     assert "tmp/apex2_pre_release_gate_summary.md" in gate
     assert "scripts.release_surface_matrix" in gate
+    assert "scripts/repo_surface_matrix.py" in gate
     assert "tmp/release_manifest.json" in gate
     assert "tmp/release_manifest.md" in gate
     assert "tmp/release_full_fidelity_simulation_report.json" in gate

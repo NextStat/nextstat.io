@@ -52,6 +52,19 @@ def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
 
 
+def _seed_semantics_contract() -> dict[str, object]:
+    return {
+        "benchmark_seed_field": "config.seed",
+        "benchmark_seed_alias_field": "config.benchmark_seed",
+        "cold_start_seed_field": "config.cold_start_seed",
+        "warm_start_seed_field": "config.warm_start_seed",
+        "reported_draws_seed_field": "config.reported_draws_seed",
+        "reported_draws_source_field": "config.reported_draws_source",
+        "warm_start_seed_offset": 1,
+        "reported_draws_source": "warm_start",
+    }
+
+
 def _summary_config(*, config_by_key: dict[tuple[str, str], list[dict[str, Any]]], args: argparse.Namespace) -> dict[str, object]:
     configs = [cfg for cfgs in config_by_key.values() for cfg in cfgs if isinstance(cfg, dict)]
     if not configs:
@@ -88,6 +101,38 @@ def _summary_config(*, config_by_key: dict[tuple[str, str], list[dict[str, Any]]
         "n_per_group": int(_safe_float(first.get("n_per_group")) or int(args.n_per_group)),
         "deterministic": bool(args.deterministic),
     }
+
+
+def _stable_config_overrides(configs: list[dict[str, Any]], summary_config: dict[str, object]) -> dict[str, Any]:
+    overrides: dict[str, Any] = {}
+    if not configs:
+        return overrides
+
+    keys: set[str] = set()
+    for cfg in configs:
+        if isinstance(cfg, dict):
+            keys.update(str(key) for key in cfg.keys())
+
+    for key in sorted(keys):
+        if key in {
+            "seed",
+            "benchmark_seed",
+            "cold_start_seed",
+            "warm_start_seed",
+            "reported_draws_seed",
+            "reported_draws_source",
+        }:
+            continue
+        values = [cfg.get(key) for cfg in configs if isinstance(cfg, dict) and key in cfg]
+        if not values or any(value != values[0] for value in values[1:]):
+            continue
+        value = values[0]
+        if value is None:
+            continue
+        if key in summary_config and summary_config[key] == value:
+            continue
+        overrides[key] = value
+    return overrides
 
 
 def main() -> int:
@@ -244,8 +289,11 @@ def main() -> int:
                 if value is not None:
                     by_key[key][metric_key].append(value)
 
+    summary_cfg = _summary_config(config_by_key=config_by_key, args=args)
+    seed_semantics = _seed_semantics_contract()
     summary_cases: list[dict[str, Any]] = []
     for (case_id, backend), metric_map in sorted(by_key.items()):
+        configs = config_by_key.get((case_id, backend), [])
         summary_cases.append(
             {
                 "case": case_id,
@@ -262,7 +310,8 @@ def main() -> int:
                 "min_ess_tail": metric_map.get("min_ess_tail", []),
                 "max_r_hat": metric_map.get("max_r_hat", []),
                 "accept_rate": metric_map.get("accept_rate", []),
-                "configs": config_by_key.get((case_id, backend), []),
+                "configs": configs,
+                "config_overrides": _stable_config_overrides(configs, summary_cfg),
             }
         )
 
@@ -285,7 +334,8 @@ def main() -> int:
         "suite": "mams_stress",
         "seeds": seeds,
         "backends": str(args.backends),
-        "config": _summary_config(config_by_key=config_by_key, args=args),
+        "config": summary_cfg,
+        "seed_semantics": seed_semantics,
         "case_catalog": case_catalog_rows,
         "cases": summary_cases,
         "parity": {
@@ -309,6 +359,12 @@ def main() -> int:
         f"dataset_seed=`{cfg['dataset_seed']}`, target_accept=`{cfg['target_accept']}`"
     )
     lines.append("")
+    lines.append(
+        "Seed semantics: `config.seed` / `config.benchmark_seed` is the requested benchmark seed; "
+        "cold start uses that seed, warm start uses `seed+1`, and reported posterior/diagnostic metrics come "
+        "from `config.reported_draws_seed`."
+    )
+    lines.append("")
     lines.append("## Case Catalog")
     lines.append("")
     lines.append("| Case | Tier | Parity scope | Description |")
@@ -320,15 +376,19 @@ def main() -> int:
     lines.append("")
     lines.append("## Aggregate Cases")
     lines.append("")
-    lines.append("| Case | Tier | Backend | Statuses | ESS/s mean ± sd | min ESS_bulk worst | max R-hat worst |")
-    lines.append("|---|---|---|---|---:|---:|---:|")
+    lines.append("| Case | Tier | Backend | Statuses | Config overrides | ESS/s mean ± sd | min ESS_bulk worst | max R-hat worst |")
+    lines.append("|---|---|---|---|---|---:|---:|---:|")
     for row in summary_cases:
         ess_mean, ess_sd = _mean_std([float(x) for x in row["ess_per_sec"]])
         ess_text = "—" if ess_mean is None else f"{_fmt(ess_mean)} ± {_fmt(ess_sd)}"
         worst_ess_bulk = min((_safe_float(x) for x in row["min_ess_bulk"]), default=None)
         worst_rhat = max((_safe_float(x) for x in row["max_r_hat"]), default=None)
+        overrides = row.get("config_overrides") if isinstance(row.get("config_overrides"), dict) else {}
+        override_text = "—"
+        if overrides:
+            override_text = ", ".join(f"{key}={overrides[key]}" for key in sorted(overrides))
         lines.append(
-            f"| {row['case']} | {row['case_tier']} | {row['backend']} | `{','.join(row['statuses']) or '—'}` | {ess_text} | {_fmt(worst_ess_bulk)} | {_fmt(worst_rhat)} |"
+            f"| {row['case']} | {row['case_tier']} | {row['backend']} | `{','.join(row['statuses']) or '—'}` | {override_text} | {ess_text} | {_fmt(worst_ess_bulk)} | {_fmt(worst_rhat)} |"
         )
     if parity_rows:
         lines.append("")

@@ -56,6 +56,19 @@ def sha256_json_obj(obj: Any) -> str:
     return hashlib.sha256(b).hexdigest()
 
 
+def _seed_semantics(seed: int) -> dict[str, Any]:
+    benchmark_seed = int(seed)
+    warm_start_seed = benchmark_seed + 1
+    return {
+        "seed": benchmark_seed,
+        "benchmark_seed": benchmark_seed,
+        "cold_start_seed": benchmark_seed,
+        "warm_start_seed": warm_start_seed,
+        "reported_draws_seed": warm_start_seed,
+        "reported_draws_source": "warm_start",
+    }
+
+
 def _diag_summary_nextstat(diag: dict[str, Any]) -> dict[str, float | None]:
     r_hat = diag.get("r_hat") if isinstance(diag.get("r_hat"), dict) else {}
     ess_bulk = diag.get("ess_bulk") if isinstance(diag.get("ess_bulk"), dict) else {}
@@ -197,6 +210,8 @@ def _run_nextstat_backend(model_obj: Any, cfg: dict[str, Any], *, method: str) -
         )
         if method == "mams":
             kwargs["method"] = "mams"
+            if cfg.get("init_l") is not None:
+                kwargs["init_l"] = cfg["init_l"]
         r = nextstat.sample(model_obj, **kwargs)
         wall = time.perf_counter() - t0
         return wall, r
@@ -506,6 +521,12 @@ def main() -> int:
         help="Optional fixed dataset seed for generated fixtures such as glm_logistic (default: use sampler seed).",
     )
     ap.add_argument("--target-accept", type=float, default=0.985)
+    ap.add_argument(
+        "--init-l",
+        type=float,
+        default=None,
+        help="Optional explicit MAMS trajectory length override for benchmark lanes that need non-default geometry tuning.",
+    )
     ap.add_argument("--deterministic", action="store_true")
     args = ap.parse_args()
 
@@ -517,12 +538,14 @@ def main() -> int:
         "n_chains": args.n_chains,
         "n_warmup": args.warmup,
         "n_samples": args.samples,
-        "seed": args.seed,
         "dataset_seed": dataset_seed,
         "target_accept": args.target_accept,
         "n_groups": int(args.n_groups) if args.case == "hier_random_intercept_non_centered" else None,
         "n_per_group": int(args.n_per_group) if args.case == "hier_random_intercept_non_centered" else None,
+        **_seed_semantics(int(args.seed)),
     }
+    if args.init_l is not None:
+        cfg["init_l"] = float(args.init_l)
 
     # Dataset (only for generated cases)
     dataset: dict[str, Any] | None = None

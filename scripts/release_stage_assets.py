@@ -232,6 +232,14 @@ def stage_release_assets(dist_root: Path, out_dir: Path) -> list[Path]:
         ]),
     ]
 
+    # Repo-wide governance artifacts (staged from repo root, not CI artifacts)
+    repo_root = _repo_root()
+    repo_surface_matrix = repo_root / "repo_surface_matrix_v1.json"
+    if repo_surface_matrix.exists():
+        target = out_dir / "repo_surface_matrix_v1.json"
+        _copy(repo_surface_matrix, target)
+        copied.append(target)
+
     for asset_name, patterns in canonical_assets:
         display_name = asset_name or patterns[0]
         src = _require_first_match(dist_root, display_name, patterns)

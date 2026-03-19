@@ -31,6 +31,16 @@ def test_mams_stress_assessment_passes_supported_and_controls(tmp_path: Path) ->
             "n_per_group": 20,
             "deterministic": True,
         },
+        "seed_semantics": {
+            "benchmark_seed_field": "config.seed",
+            "benchmark_seed_alias_field": "config.benchmark_seed",
+            "cold_start_seed_field": "config.cold_start_seed",
+            "warm_start_seed_field": "config.warm_start_seed",
+            "reported_draws_seed_field": "config.reported_draws_seed",
+            "reported_draws_source_field": "config.reported_draws_source",
+            "warm_start_seed_offset": 1,
+            "reported_draws_source": "warm_start",
+        },
         "case_catalog": [
             {"case": "neal_funnel_ncp_10d", "case_tier": "supported", "parity_scope": "required", "description": "supported"},
             {"case": "hier_random_intercept_non_centered", "case_tier": "supported", "parity_scope": "required", "description": "supported"},
@@ -159,6 +169,16 @@ def test_mams_stress_assessment_fails_supported_and_control_health(tmp_path: Pat
             "n_groups": 20,
             "n_per_group": 20,
             "deterministic": True,
+        },
+        "seed_semantics": {
+            "benchmark_seed_field": "config.seed",
+            "benchmark_seed_alias_field": "config.benchmark_seed",
+            "cold_start_seed_field": "config.cold_start_seed",
+            "warm_start_seed_field": "config.warm_start_seed",
+            "reported_draws_seed_field": "config.reported_draws_seed",
+            "reported_draws_source_field": "config.reported_draws_source",
+            "warm_start_seed_offset": 1,
+            "reported_draws_source": "warm_start",
         },
         "case_catalog": [
             {"case": "neal_funnel_ncp_10d", "case_tier": "supported", "parity_scope": "required", "description": "supported"},

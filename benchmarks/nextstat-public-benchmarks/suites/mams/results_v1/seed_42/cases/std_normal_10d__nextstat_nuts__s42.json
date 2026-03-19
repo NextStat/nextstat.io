@@ -2,14 +2,19 @@
   "backend": "nextstat_nuts",
   "case": "std_normal_10d",
   "config": {
+    "benchmark_seed": 42,
+    "cold_start_seed": 42,
     "dataset_seed": 12345,
     "n_chains": 4,
     "n_groups": null,
     "n_per_group": null,
     "n_samples": 2000,
     "n_warmup": 3500,
+    "reported_draws_seed": 43,
+    "reported_draws_source": "warm_start",
     "seed": 42,
-    "target_accept": 0.985
+    "target_accept": 0.985,
+    "warm_start_seed": 43
   },
   "dataset": {
     "id": "std_normal_10d",

@@ -18,7 +18,7 @@
       },
       "worst_ess_per_sec": {
         "case": "neal_funnel_10d_centered",
-        "value": 706.068010394322
+        "value": 663.0795109044632
       },
       "worst_max_r_hat": {
         "case": "neal_funnel_10d_centered",
@@ -45,7 +45,7 @@
           "ok"
         ],
         "worst_accept_rate": 0.9775364380223933,
-        "worst_ess_per_sec": 706.068010394322,
+        "worst_ess_per_sec": 663.0795109044632,
         "worst_max_r_hat": 1.8610555778144373,
         "worst_min_ess_bulk": 1418.9246551796984,
         "worst_min_ess_tail": 34.693559116792414
@@ -56,26 +56,19 @@
   },
   "schema_version": "nextstat.mams_stress_assessment.v1",
   "source_summary_path": "mams_stress_multiseed_summary.json",
-  "source_summary_sha256": "f6e8b2766875892be5fc511f04e8e42bc6cbc70c60ed4f18ec1752e631331c0a",
+  "source_summary_sha256": "ddee9cfe3515ab9b3f05f28db42f0293a5d49984d4acd072f6095411828ae33f",
   "stress_readiness": {
     "components": {
       "pathological_control_health": "passed",
-      "supported_repeatability_gate": "failed"
+      "supported_repeatability_gate": "passed"
     },
-    "passed": false,
-    "status": "failed"
+    "passed": true,
+    "status": "passed"
   },
   "suite": "mams_stress",
   "supported_repeatability_gate": {
-    "failures": [
-      {
-        "case": "hier_random_intercept_non_centered",
-        "observed": 1.0158000312342303,
-        "reason": "max_r_hat_exceeds_threshold",
-        "threshold": 1.01
-      }
-    ],
-    "passed": false,
+    "failures": [],
+    "passed": true,
     "policy": {
       "max_r_hat": 1.01,
       "parity_fail_z": 12.0,
@@ -85,36 +78,34 @@
       "require_complete_seed_coverage": true
     },
     "review_summary": {
-      "failing_cases": [
-        "hier_random_intercept_non_centered"
-      ],
-      "n_failing_cases": 1,
-      "n_failures": 1,
+      "failing_cases": [],
+      "n_failing_cases": 0,
+      "n_failures": 0,
       "n_reviewed_cases": 2,
       "n_reviewed_parity_cases": 2,
       "worst_accept_rate": {
         "case": "hier_random_intercept_non_centered",
-        "value": 0.9801267108820219
+        "value": 0.979186719146263
       },
       "worst_ess_per_sec": {
         "case": "hier_random_intercept_non_centered",
-        "value": 709.6651609117806
+        "value": 432.9145296701868
       },
       "worst_max_r_hat": {
         "case": "hier_random_intercept_non_centered",
-        "value": 1.0158000312342303
+        "value": 1.0074697408787634
       },
       "worst_min_ess_bulk": {
         "case": "hier_random_intercept_non_centered",
-        "value": 2041.2782750024833
+        "value": 600.2054294837485
       },
       "worst_min_ess_tail": {
         "case": "hier_random_intercept_non_centered",
-        "value": 863.1118969820802
+        "value": 776.7046822488792
       },
       "worst_parity_max_z": {
         "case": "hier_random_intercept_non_centered",
-        "value": 4.089853468089003
+        "value": 4.6634618870228595
       }
     },
     "reviewed_cases": [
@@ -128,11 +119,11 @@
           "ok",
           "ok"
         ],
-        "worst_accept_rate": 0.9801267108820219,
-        "worst_ess_per_sec": 709.6651609117806,
-        "worst_max_r_hat": 1.0158000312342303,
-        "worst_min_ess_bulk": 2041.2782750024833,
-        "worst_min_ess_tail": 863.1118969820802
+        "worst_accept_rate": 0.979186719146263,
+        "worst_ess_per_sec": 432.9145296701868,
+        "worst_max_r_hat": 1.0074697408787634,
+        "worst_min_ess_bulk": 600.2054294837485,
+        "worst_min_ess_tail": 776.7046822488792
       },
       {
         "backend": "nextstat_mams",
@@ -145,7 +136,7 @@
           "ok"
         ],
         "worst_accept_rate": 0.9815496173518312,
-        "worst_ess_per_sec": 56539.5226715023,
+        "worst_ess_per_sec": 46667.600201594345,
         "worst_max_r_hat": 1.006634429836915,
         "worst_min_ess_bulk": 6334.553929204518,
         "worst_min_ess_tail": 5967.699099141655
@@ -161,7 +152,7 @@
           "ok",
           "ok"
         ],
-        "worst_max_z": 4.089853468089003
+        "worst_max_z": 4.6634618870228595
       },
       {
         "case": "neal_funnel_ncp_10d",
@@ -175,7 +166,7 @@
         "worst_max_z": 1.2717084660494444
       }
     ],
-    "status": "failed",
+    "status": "passed",
     "target_backend": "nextstat_mams"
   }
 }

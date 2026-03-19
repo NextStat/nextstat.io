@@ -41,6 +41,17 @@ CASE_CATALOG: list[dict[str, str]] = [
     },
 ]
 
+CASE_BACKEND_OVERRIDES: dict[tuple[str, str], dict[str, float]] = {
+    (
+        "hier_random_intercept_non_centered",
+        "nextstat_mams",
+    ): {
+        # This supported hierarchical stress case mixes best with a shorter
+        # explicit trajectory length than the generic sqrt(d) default.
+        "init_l": 2.0,
+    },
+}
+
 
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
@@ -65,6 +76,10 @@ def _case_meta(case_id: str) -> dict[str, str]:
         if row["case"] == case_id:
             return row
     raise KeyError(case_id)
+
+
+def _case_backend_overrides(case: str, backend: str) -> dict[str, float]:
+    return dict(CASE_BACKEND_OVERRIDES.get((case, backend), {}))
 
 
 def _write_stub_failed(
@@ -171,6 +186,9 @@ def main() -> int:
                     "--n-groups", str(int(args.n_groups)),
                     "--n-per-group", str(int(args.n_per_group)),
                 ]
+                overrides = _case_backend_overrides(case, backend)
+                if "init_l" in overrides:
+                    cmd.extend(["--init-l", str(float(overrides["init_l"]))])
                 if args.deterministic:
                     cmd.append("--deterministic")
 
@@ -253,6 +271,7 @@ def main() -> int:
                         "ess_per_grad": _safe_float(metrics.get("ess_per_grad")),
                         "ess_per_sec": _safe_float(metrics.get("ess_per_sec")),
                         "max_r_hat": _safe_float(metrics.get("max_r_hat")),
+                        "config_overrides": overrides or None,
                     }
                 )
                 print(f"{status} (wall={_safe_float(metrics.get('wall_time_s'))}s)")

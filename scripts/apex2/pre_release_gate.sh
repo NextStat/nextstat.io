@@ -65,6 +65,8 @@ surface_report="tmp/release_surface_matrix_report.json"
 surface_report_md="tmp/release_surface_matrix_report.md"
 release_manifest="tmp/release_manifest.json"
 release_manifest_md="tmp/release_manifest.md"
+repo_validation_bundle_json="tmp/repo_validation_bundle.json"
+repo_validation_bundle_md="tmp/repo_validation_bundle.md"
 release_candidate_bundle_dir="tmp/release_candidate_bundle"
 release_dry_run_dir="tmp/release_full_fidelity_simulation"
 release_dry_run_report="tmp/release_full_fidelity_simulation_report.json"
@@ -193,6 +195,15 @@ record_step "governance" "hep_surface_matrix" ok "hep_surface_matrix"
 echo "OK. HEP surface matrix is up to date."
 echo
 
+echo "Validating repo-wide surface matrix..."
+if ! "${py}" scripts/repo_surface_matrix.py --check; then
+  fail_gate "governance" "repo_surface_matrix" "${exit_governance}" \
+    "Repo-wide surface matrix validation failed."
+fi
+record_step "governance" "repo_surface_matrix" ok "repo_surface_matrix"
+echo "OK. Repo-wide surface matrix is up to date."
+echo
+
 echo "Validating HEP validation bundle (141/141 stable)..."
 if ! PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.hep_validation_bundle --check; then
   fail_gate "governance" "hep_validation_bundle" "${exit_governance}" \
@@ -201,6 +212,27 @@ fi
 record_step "governance" "hep_validation_bundle" ok "hep_validation_bundle"
 echo "OK. HEP validation bundle check passed."
 echo
+
+echo "Validating repo-wide validation bundle (RWS-09)..."
+if ! PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.repo_validation_bundle --check; then
+  fail_gate "governance" "repo_validation_bundle" "${exit_governance}" \
+    "Repo-wide validation bundle check failed."
+fi
+record_step "governance" "repo_validation_bundle" ok "repo_validation_bundle"
+echo "OK. Repo-wide validation bundle check passed."
+
+echo "Rendering repo-wide validation bundle..."
+if ! PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.repo_validation_bundle \
+  --out-json "${repo_validation_bundle_json}" \
+  --out-md "${repo_validation_bundle_md}"; then
+  fail_gate "governance" "repo_validation_bundle_render" "${exit_governance}" \
+    "Repo-wide validation bundle render failed."
+fi
+record_step "governance" "repo_validation_bundle_render" ok "repo_validation_bundle_render"
+echo "OK. Repo validation bundle: ${repo_validation_bundle_json}"
+echo "OK. Repo validation bundle (md): ${repo_validation_bundle_md}"
+echo
+
 echo "Rendering release manifest..."
 if ! PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.release_manifest \
   --release-tag "${release_tag}" \

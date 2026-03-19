@@ -11,34 +11,49 @@
       "case": "eight_schools",
       "configs": [
         {
+          "benchmark_seed": 42,
+          "cold_start_seed": 42,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 43,
+          "reported_draws_source": "warm_start",
           "seed": 42,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 43
         },
         {
+          "benchmark_seed": 0,
+          "cold_start_seed": 0,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 1,
+          "reported_draws_source": "warm_start",
           "seed": 0,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 1
         },
         {
+          "benchmark_seed": 123,
+          "cold_start_seed": 123,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 124,
+          "reported_draws_source": "warm_start",
           "seed": 123,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 124
         }
       ],
       "ess_per_grad": [
@@ -98,34 +113,49 @@
       "case": "eight_schools",
       "configs": [
         {
+          "benchmark_seed": 42,
+          "cold_start_seed": 42,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 43,
+          "reported_draws_source": "warm_start",
           "seed": 42,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 43
         },
         {
+          "benchmark_seed": 0,
+          "cold_start_seed": 0,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 1,
+          "reported_draws_source": "warm_start",
           "seed": 0,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 1
         },
         {
+          "benchmark_seed": 123,
+          "cold_start_seed": 123,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 124,
+          "reported_draws_source": "warm_start",
           "seed": 123,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 124
         }
       ],
       "ess_per_grad": [
@@ -185,34 +215,49 @@
       "case": "glm_logistic",
       "configs": [
         {
+          "benchmark_seed": 42,
+          "cold_start_seed": 42,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 43,
+          "reported_draws_source": "warm_start",
           "seed": 42,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 43
         },
         {
+          "benchmark_seed": 0,
+          "cold_start_seed": 0,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 1,
+          "reported_draws_source": "warm_start",
           "seed": 0,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 1
         },
         {
+          "benchmark_seed": 123,
+          "cold_start_seed": 123,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 124,
+          "reported_draws_source": "warm_start",
           "seed": 123,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 124
         }
       ],
       "ess_per_grad": [
@@ -272,34 +317,49 @@
       "case": "glm_logistic",
       "configs": [
         {
+          "benchmark_seed": 42,
+          "cold_start_seed": 42,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 43,
+          "reported_draws_source": "warm_start",
           "seed": 42,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 43
         },
         {
+          "benchmark_seed": 0,
+          "cold_start_seed": 0,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 1,
+          "reported_draws_source": "warm_start",
           "seed": 0,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 1
         },
         {
+          "benchmark_seed": 123,
+          "cold_start_seed": 123,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 124,
+          "reported_draws_source": "warm_start",
           "seed": 123,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 124
         }
       ],
       "ess_per_grad": [
@@ -359,34 +419,49 @@
       "case": "neal_funnel_2d",
       "configs": [
         {
+          "benchmark_seed": 42,
+          "cold_start_seed": 42,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 43,
+          "reported_draws_source": "warm_start",
           "seed": 42,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 43
         },
         {
+          "benchmark_seed": 0,
+          "cold_start_seed": 0,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 1,
+          "reported_draws_source": "warm_start",
           "seed": 0,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 1
         },
         {
+          "benchmark_seed": 123,
+          "cold_start_seed": 123,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 124,
+          "reported_draws_source": "warm_start",
           "seed": 123,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 124
         }
       ],
       "ess_per_grad": [
@@ -446,34 +521,49 @@
       "case": "neal_funnel_2d",
       "configs": [
         {
+          "benchmark_seed": 42,
+          "cold_start_seed": 42,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 43,
+          "reported_draws_source": "warm_start",
           "seed": 42,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 43
         },
         {
+          "benchmark_seed": 0,
+          "cold_start_seed": 0,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 1,
+          "reported_draws_source": "warm_start",
           "seed": 0,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 1
         },
         {
+          "benchmark_seed": 123,
+          "cold_start_seed": 123,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 124,
+          "reported_draws_source": "warm_start",
           "seed": 123,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 124
         }
       ],
       "ess_per_grad": [
@@ -533,34 +623,49 @@
       "case": "std_normal_10d",
       "configs": [
         {
+          "benchmark_seed": 42,
+          "cold_start_seed": 42,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 43,
+          "reported_draws_source": "warm_start",
           "seed": 42,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 43
         },
         {
+          "benchmark_seed": 0,
+          "cold_start_seed": 0,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 1,
+          "reported_draws_source": "warm_start",
           "seed": 0,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 1
         },
         {
+          "benchmark_seed": 123,
+          "cold_start_seed": 123,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 124,
+          "reported_draws_source": "warm_start",
           "seed": 123,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 124
         }
       ],
       "ess_per_grad": [
@@ -620,34 +725,49 @@
       "case": "std_normal_10d",
       "configs": [
         {
+          "benchmark_seed": 42,
+          "cold_start_seed": 42,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 43,
+          "reported_draws_source": "warm_start",
           "seed": 42,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 43
         },
         {
+          "benchmark_seed": 0,
+          "cold_start_seed": 0,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 1,
+          "reported_draws_source": "warm_start",
           "seed": 0,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 1
         },
         {
+          "benchmark_seed": 123,
+          "cold_start_seed": 123,
           "dataset_seed": 12345,
           "n_chains": 4,
           "n_groups": null,
           "n_per_group": null,
           "n_samples": 2000,
           "n_warmup": 3500,
+          "reported_draws_seed": 124,
+          "reported_draws_source": "warm_start",
           "seed": 123,
-          "target_accept": 0.985
+          "target_accept": 0.985,
+          "warm_start_seed": 124
         }
       ],
       "ess_per_grad": [
@@ -700,7 +820,7 @@
   ],
   "config": {
     "dataset_seed": 12345,
-    "deterministic": true,
+    "deterministic": false,
     "n_chains": 4,
     "n_samples": 2000,
     "n_warmup": 3500,
@@ -709,7 +829,7 @@
     "run_timeout_s": 300.0,
     "target_accept": 0.985
   },
-  "generated_at": "2026-03-12T00:30:02Z",
+  "generated_at": "2026-03-18T20:10:54Z",
   "parity": {
     "fail_z": 12.0,
     "method": "mean_zscore",
@@ -995,6 +1115,16 @@
     "warn_z": 8.0
   },
   "schema_version": "nextstat.mams_multiseed_summary.v1",
+  "seed_semantics": {
+    "benchmark_seed_alias_field": "config.benchmark_seed",
+    "benchmark_seed_field": "config.seed",
+    "cold_start_seed_field": "config.cold_start_seed",
+    "reported_draws_seed_field": "config.reported_draws_seed",
+    "reported_draws_source": "warm_start",
+    "reported_draws_source_field": "config.reported_draws_source",
+    "warm_start_seed_field": "config.warm_start_seed",
+    "warm_start_seed_offset": 1
+  },
   "seeds": [
     42,
     0,

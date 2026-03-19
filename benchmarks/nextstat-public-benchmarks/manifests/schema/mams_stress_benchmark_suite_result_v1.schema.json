@@ -66,6 +66,7 @@
           "path": { "type": "string", "minLength": 1 },
           "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
           "status": { "type": "string", "enum": ["ok", "warn", "failed"] },
+          "config_overrides": { "type": ["object", "null"], "additionalProperties": true },
           "wall_time_s": { "type": ["number", "null"], "minimum": 0 },
           "n_grad_evals": { "type": ["integer", "null"], "minimum": 0 },
           "min_ess_bulk": { "type": ["number", "null"], "minimum": 0 },

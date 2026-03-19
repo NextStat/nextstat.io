@@ -2,14 +2,19 @@
   "backend": "nextstat_nuts",
   "case": "neal_funnel_10d_centered",
   "config": {
+    "benchmark_seed": 42,
+    "cold_start_seed": 42,
     "dataset_seed": 12345,
     "n_chains": 4,
     "n_groups": null,
     "n_per_group": null,
     "n_samples": 2000,
     "n_warmup": 3500,
+    "reported_draws_seed": 43,
+    "reported_draws_source": "warm_start",
     "seed": 42,
-    "target_accept": 0.985
+    "target_accept": 0.985,
+    "warm_start_seed": 43
   },
   "dataset": {
     "id": "neal_funnel_10d_centered",
@@ -19,25 +24,25 @@
   "environment": {
     "cpu": "AMD EPYC 7502P 32-Core Processor",
     "machine": "x86_64",
-    "nextstat_version": "0.9.9",
+    "nextstat_version": "0.10.1",
     "node": "nextstat-bench",
     "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
-    "python_full": "3.12.3 (main, Jan 22 2026, 20:57:42) [GCC 13.3.0]",
+    "python_full": "3.12.3 (main, Mar  3 2026, 12:15:18) [GCC 13.3.0]",
     "python_version": "3.12.3",
     "rustc": "rustc 1.93.0 (254b59607 2026-01-19)",
     "system": "Linux"
   },
   "meta": {
-    "nextstat_version": "0.9.9",
+    "nextstat_version": "0.10.1",
     "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
     "python": "3.12.3"
   },
   "metrics": {
     "accept_rate": 0.7464596643998018,
-    "cold_start_s": 1.5767793008126318,
+    "cold_start_s": 1.7607232560403645,
     "ess_per_grad": 1.4025832431213941e-05,
-    "ess_per_sec": 9.146015990749232,
-    "ess_per_sec_warm": 7.008593664625897,
+    "ess_per_sec": 8.190525484138956,
+    "ess_per_sec_warm": 6.6353314701882065,
     "jit_overhead_s": 0.0,
     "max_r_hat": 1.2874443365813615,
     "min_ess_bulk": 14.421248699114724,
@@ -130,16 +135,16 @@
       ],
       "status": "ok"
     },
-    "wall_time_s": 1.5767793008126318,
-    "warm_start_s": 2.0576522750779986
+    "wall_time_s": 1.7607232560403645,
+    "warm_start_s": 2.1734029059298337
   },
   "schema_version": "nextstat.mams_benchmark_result.v1",
   "status": "ok",
   "suite": "mams",
   "timing": {
-    "cold_start_s": 1.5767793008126318,
+    "cold_start_s": 1.7607232560403645,
     "jit_overhead_s": 0.0,
-    "wall_time_s": 1.5767793008126318,
-    "warm_start_s": 2.0576522750779986
+    "wall_time_s": 1.7607232560403645,
+    "warm_start_s": 2.1734029059298337
   }
 }
