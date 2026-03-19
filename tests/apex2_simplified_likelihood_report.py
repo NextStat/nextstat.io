@@ -95,12 +95,36 @@ EXPORT_PUBLIC_CASE_CATALOG_SCHEMA_PATH = export_public_case_catalog_schema_path(
 
 
 def _measure_wall_s(fn, *, repeat: int) -> float:
+    times = _measure_wall_samples(fn, repeat=repeat)
+    return min(times)
+
+
+def _measure_wall_samples(fn, *, repeat: int) -> list[float]:
     times: list[float] = []
     for _ in range(max(1, repeat)):
         t0 = time.perf_counter()
         fn()
         times.append(time.perf_counter() - t0)
-    return min(times)
+    return times
+
+
+def _median(values: list[float]) -> float:
+    ordered = sorted(float(value) for value in values)
+    n = len(ordered)
+    mid = n // 2
+    if n % 2 == 1:
+        return ordered[mid]
+    return 0.5 * (ordered[mid - 1] + ordered[mid])
+
+
+def _wall_stats(values: list[float]) -> dict[str, Any]:
+    ordered = sorted(float(value) for value in values)
+    return {
+        "samples_s": ordered,
+        "min_s": ordered[0],
+        "median_s": _median(ordered),
+        "max_s": ordered[-1],
+    }
 
 
 def _load_model(workspace_json: str) -> nextstat.HistFactoryModel:
@@ -782,6 +806,7 @@ def _export_matrix_case_report(
     full_scan: dict[str, Any],
     full_limit: dict[str, Any],
     full_end_to_end_upper_limit_wall_s: float,
+    full_end_to_end_upper_limit_wall_stats: dict[str, Any],
 ) -> dict[str, Any]:
     with tempfile.TemporaryDirectory(prefix=f"nextstat_export_matrix_{export_case['name']}_") as tmpdir_str:
         tmpdir = Path(tmpdir_str)
@@ -835,7 +860,9 @@ def _export_matrix_case_report(
                 "1",
             )
 
-        export_wall_s = _measure_wall_s(_run_export, repeat=export_repeat)
+        export_wall_samples = _measure_wall_samples(_run_export, repeat=export_repeat)
+        export_wall_s = min(export_wall_samples)
+        export_wall_stats = _wall_stats(export_wall_samples)
         exported_workspace = _load_json(simplified_path)
         exported_report = _load_json(export_report_path)
         exported_json = json.dumps(exported_workspace, sort_keys=True)
@@ -872,7 +899,7 @@ def _export_matrix_case_report(
             rtol=limit_rtol,
             max_iter=limit_max_iter,
         )
-        exported_end_to_end_upper_limit_wall_s = _measure_wall_s(
+        exported_end_to_end_upper_limit_wall_samples = _measure_wall_samples(
             lambda: _upper_limit_metrics(
                 _load_model(exported_json),
                 alpha=alpha,
@@ -882,6 +909,10 @@ def _export_matrix_case_report(
                 max_iter=limit_max_iter,
             ),
             repeat=upper_limit_repeat,
+        )
+        exported_end_to_end_upper_limit_wall_s = min(exported_end_to_end_upper_limit_wall_samples)
+        exported_end_to_end_upper_limit_wall_stats = _wall_stats(
+            exported_end_to_end_upper_limit_wall_samples
         )
 
         delta_mu_hat = exported_fit["mu_hat"] - full_fit["mu_hat"]
@@ -894,6 +925,13 @@ def _export_matrix_case_report(
         total_end_to_end_upper_limit_speedup = _safe_ratio(
             full_end_to_end_upper_limit_wall_s,
             total_end_to_end_upper_limit_wall_s,
+        )
+        median_estimated_total_end_to_end_upper_limit_wall_s = (
+            export_wall_stats["median_s"] + exported_end_to_end_upper_limit_wall_stats["median_s"]
+        )
+        median_estimated_total_end_to_end_upper_limit_speedup = _safe_ratio(
+            float(full_end_to_end_upper_limit_wall_stats["median_s"]),
+            median_estimated_total_end_to_end_upper_limit_wall_s,
         )
         output_summary = exported_report["output"]
         report_fidelity = exported_report["diagnostics"]["fidelity"]
@@ -962,11 +1000,20 @@ def _export_matrix_case_report(
                 "passes": fidelity_passes,
             },
             "bench": {
+                "full_end_to_end_upper_limit_wall_s_stats": full_end_to_end_upper_limit_wall_stats,
                 "export_wall_s": export_wall_s,
+                "export_wall_s_stats": export_wall_stats,
                 "exported_end_to_end_upper_limit_wall_s": exported_end_to_end_upper_limit_wall_s,
+                "exported_end_to_end_upper_limit_wall_s_stats": exported_end_to_end_upper_limit_wall_stats,
                 "net_end_to_end_upper_limit_wall_s": total_end_to_end_upper_limit_wall_s,
+                "median_estimated_net_end_to_end_upper_limit_wall_s": (
+                    median_estimated_total_end_to_end_upper_limit_wall_s
+                ),
                 "speedup": {
                     "net_end_to_end_upper_limit": total_end_to_end_upper_limit_speedup,
+                    "median_estimated_net_end_to_end_upper_limit": (
+                        median_estimated_total_end_to_end_upper_limit_speedup
+                    ),
                 },
             },
             "gates": {
@@ -1007,7 +1054,7 @@ def _export_matrix_report(
             rtol=limit_rtol,
             max_iter=limit_max_iter,
         )
-        full_end_to_end_upper_limit_wall_s = _measure_wall_s(
+        full_end_to_end_upper_limit_wall_samples = _measure_wall_samples(
             lambda: _upper_limit_metrics(
                 _load_model(full_json),
                 alpha=alpha,
@@ -1017,6 +1064,10 @@ def _export_matrix_report(
                 max_iter=limit_max_iter,
             ),
             repeat=upper_limit_repeat,
+        )
+        full_end_to_end_upper_limit_wall_s = min(full_end_to_end_upper_limit_wall_samples)
+        full_end_to_end_upper_limit_wall_stats = _wall_stats(
+            full_end_to_end_upper_limit_wall_samples
         )
         reports.append(
             _export_matrix_case_report(
@@ -1033,6 +1084,7 @@ def _export_matrix_report(
                 full_scan=full_scan,
                 full_limit=full_limit,
                 full_end_to_end_upper_limit_wall_s=full_end_to_end_upper_limit_wall_s,
+                full_end_to_end_upper_limit_wall_stats=full_end_to_end_upper_limit_wall_stats,
             )
         )
 
@@ -1064,6 +1116,10 @@ def _export_matrix_report(
         ),
         "min_net_end_to_end_upper_limit_speedup": min(
             case["bench"]["speedup"]["net_end_to_end_upper_limit"] for case in reports
+        ),
+        "min_median_estimated_net_end_to_end_upper_limit_speedup": min(
+            case["bench"]["speedup"]["median_estimated_net_end_to_end_upper_limit"]
+            for case in reports
         ),
     }
     return {
@@ -1300,6 +1356,9 @@ def main() -> int:
         report["summary"]["export_matrix_min_net_end_to_end_upper_limit_speedup"] = export_matrix[
             "summary"
         ]["min_net_end_to_end_upper_limit_speedup"]
+        report["summary"][
+            "export_matrix_min_median_estimated_net_end_to_end_upper_limit_speedup"
+        ] = export_matrix["summary"]["min_median_estimated_net_end_to_end_upper_limit_speedup"]
         if export_matrix["summary"]["status"] != "ok":
             report["summary"]["status"] = "fail"
 
@@ -1323,6 +1382,10 @@ def main() -> int:
         print_args.append(
             "export_net_e2e_ul_speedup="
             f"{report['summary']['export_matrix_min_net_end_to_end_upper_limit_speedup']:.2f}x"
+        )
+        print_args.append(
+            "export_net_e2e_ul_speedup_median_est="
+            f"{report['summary']['export_matrix_min_median_estimated_net_end_to_end_upper_limit_speedup']:.2f}x"
         )
         if args.include_export_public_cases:
             print_args.append(

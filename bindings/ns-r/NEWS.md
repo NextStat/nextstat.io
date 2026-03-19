@@ -1,4 +1,4 @@
-# nextstat 0.9.0
+# nextstat 0.10.1
 
 Initial CRAN submission.
 
@@ -19,7 +19,7 @@ Initial CRAN submission.
 ## Infrastructure
 
 - Rust backend via extendr (static library linked into the R shared object).
-- `configure` script validates Rust toolchain (>= 1.85) at install time.
+- `configure` script validates Rust toolchain (>= 1.93) at install time.
 - testthat test suite (4 test files covering all 11 exported functions).
 - Getting-started vignette with runnable examples.
 - Self-contained vendored Rust workspace under `src/` for reproducible

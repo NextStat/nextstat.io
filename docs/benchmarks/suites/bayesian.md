@@ -1,8 +1,8 @@
 ---
-title: "Benchmark Suite: Bayesian (ESS/sec)"
-description: "Bayesian inference benchmark suite for NextStat: ESS/sec (bulk + tail), wall-time per effective draw, warmup/adaptation behavior, and SBC calibration — with honest comparisons vs Stan and PyMC under fully specified settings."
-status: draft
-last_updated: 2026-03-12
+title: "Benchmark Suite: Bayesian (ESS/sec vs CmdStan + optional PyMC)"
+description: "Bayesian inference benchmark suite for NextStat: ESS/sec (bulk + tail), wall-time per effective draw, warmup/adaptation behavior, and SBC calibration — with a committed CmdStan-backed public proof subset and an optional PyMC harness path."
+status: stable
+last_updated: 2026-03-19
 keywords:
   - NUTS sampler benchmark
   - ESS per second
@@ -15,7 +15,7 @@ keywords:
   - NextStat NUTS
 ---
 
-# Bayesian Benchmark Suite (ESS/sec vs Stan + PyMC)
+# Bayesian Benchmark Suite (ESS/sec vs CmdStan + optional PyMC)
 
 This suite benchmarks Bayesian inference workflows with metrics that matter:
 
@@ -27,6 +27,27 @@ The primary goal is to avoid “apples vs oranges” comparisons by publishing:
 - the exact model + priors
 - the exact inference settings
 - the exact diagnostics and ESS computation policy
+
+## Current promoted public proof subset
+
+The current public SOTA claim for Bayesian is anchored by the committed
+`results_v10` CmdStan-backed multiseed bundle:
+
+- `benchmarks/nextstat-public-benchmarks/suites/bayesian/results_v10/bayesian_multiseed_summary.json`
+- `benchmarks/nextstat-public-benchmarks/suites/bayesian/results_v10/derived_metrics.json`
+
+That promoted subset covers:
+
+- `histfactory_simple_8p`
+- `glm_logistic_regression`
+- `hier_random_intercept_non_centered`
+- `eight_schools_non_centered`
+
+with `nextstat` vs `cmdstanpy` across seeds `{42, 0, 123}` and zero committed
+`warn` / `failed` rows in the promoted multiseed summary.
+
+PyMC remains a supported optional harness path, but it is not part of the
+current promoted public proof subset.
 
 Internal sampler-parity coverage for stable product surface work also uses a
 NextStat-only head-to-head harness:
@@ -110,11 +131,19 @@ For the generic sampler-matrix harness:
 - sampler-matrix artifacts are internal discovery evidence, not standalone product-regression verdicts
 - any discovery gate in that harness must be documented as policy, not implied to equal core diagnostics
 
+## Named competitor baselines
+
+| Case | NextStat method | Competitor | Library version |
+| --- | --- | --- | --- |
+| HistFactory simple (8p) | `sample(model, method="nuts")` | CmdStan NUTS | CmdStan ≥ 2.35 |
+| GLM logistic regression (6p) | `sample(model, method="nuts")` | CmdStan NUTS | CmdStan ≥ 2.35 |
+| Hierarchical random intercept NCP (22p) | `sample(model, method="nuts")` | CmdStan NUTS | CmdStan ≥ 2.35 |
+| Eight Schools NCP (10p) | `sample(model, method="nuts")` | CmdStan NUTS | CmdStan ≥ 2.35 |
+| GLM logistic regression (6p) | `sample(model, method="nuts")` | PyMC NUTS | PyMC ≥ 5.0 |
+
 ## What is compared
 
-Planned comparisons:
-
-- NextStat NUTS implementation (Rust core) vs Stan vs PyMC (where feasible)
+- NextStat NUTS implementation (Rust core) vs CmdStan NUTS vs PyMC NUTS (where feasible)
 
 ## What is measured
 

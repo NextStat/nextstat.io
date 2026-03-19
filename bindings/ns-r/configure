@@ -3,7 +3,7 @@
 # Checks that a Rust toolchain (cargo) is available before attempting to build.
 
 CARGO="${CARGO:-cargo}"
-MIN_RUST_VERSION="1.85"
+MIN_RUST_VERSION="1.93"
 
 check_cargo() {
   if ! command -v "$CARGO" >/dev/null 2>&1; then

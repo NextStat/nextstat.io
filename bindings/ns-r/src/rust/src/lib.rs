@@ -21,6 +21,13 @@ fn histfactory_model_from_json(json_str: &str) -> extendr_api::Result<ns_transla
     match format {
         ns_translate::hs3::detect::WorkspaceFormat::Hs3 => ns_translate::hs3::convert::from_hs3_default(json_str)
             .map_err(|e| Error::Other(format!("HS3 loading failed: {e}"))),
+        ns_translate::hs3::detect::WorkspaceFormat::SimplifiedLikelihood => {
+            let workspace: ns_translate::simplified::schema::SimplifiedLikelihoodWorkspace =
+                serde_json::from_str(json_str)
+                    .map_err(|e| Error::Other(format!("invalid simplified-likelihood JSON: {e}")))?;
+            ns_translate::simplified::convert::simplified_to_model(&workspace)
+                .map_err(|e| Error::Other(format!("failed to build simplified-likelihood model: {e}")))
+        }
         ns_translate::hs3::detect::WorkspaceFormat::Pyhf
         | ns_translate::hs3::detect::WorkspaceFormat::Unknown => {
             let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(json_str)

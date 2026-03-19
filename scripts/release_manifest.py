@@ -132,6 +132,7 @@ def build_manifest(release_tag: str, mode: str) -> dict[str, Any]:
                 "simplified-likelihood-exporter-surface-report",
                 "m15-reporting-stable-surface-report",
                 "hep-validation-bundle",
+                "repo-validation-bundle",
                 "wheels-*",
                 "sdist",
                 "cli-wheels-*",
@@ -139,6 +140,9 @@ def build_manifest(release_tag: str, mode: str) -> dict[str, Any]:
                 "cli-*",
                 "whitepaper",
                 "validation-pack",
+                "sota-claim-matrix-report",
+                "public-sota-bundle",
+                "v1-sota-policy-report",
                 "release-candidate-bundle",
             ],
             "github_release_asset_globs": [

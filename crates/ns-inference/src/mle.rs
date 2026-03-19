@@ -1889,7 +1889,8 @@ mod tests {
     #[test]
     #[ignore = "internal timing report; run explicitly"]
     fn selected_model_smoke_tail_timing_report() {
-        let model = load_model_from_fixture("atlas_public_dual_sr_vr_dual_cr_gaussian_workspace.json");
+        let model =
+            load_model_from_fixture("atlas_public_dual_sr_vr_dual_cr_gaussian_workspace.json");
         let channels = vec![
             "SRLow".to_string(),
             "SRHigh".to_string(),
@@ -1906,9 +1907,8 @@ mod tests {
         let warm_start = full_fit.parameters.clone();
 
         let t0 = Instant::now();
-        let fit_from_result = mle
-            .fit_from(&selected_model, &warm_start)
-            .expect("selected full fit should succeed");
+        let fit_from_result =
+            mle.fit_from(&selected_model, &warm_start).expect("selected full fit should succeed");
         let fit_from_total_s = t0.elapsed().as_secs_f64();
 
         let t0 = Instant::now();
@@ -2034,7 +2034,8 @@ mod tests {
             );
         }
 
-        for (idx, (lhs, rhs)) in full.uncertainties.iter().zip(smoke.uncertainties.iter()).enumerate()
+        for (idx, (lhs, rhs)) in
+            full.uncertainties.iter().zip(smoke.uncertainties.iter()).enumerate()
         {
             assert!(
                 (lhs - rhs).abs() <= 1e-10,

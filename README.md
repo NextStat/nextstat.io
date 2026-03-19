@@ -91,16 +91,37 @@ the maturity signal.
 - generate ICH M15 JSON bundle surfaces on top of the validation stack
 - reuse machine-readable provenance and schema-checked output contracts
 
+### Econometrics and causal inference
+
+- run panel fixed effects, DiD (TWFE + staggered), event study, IV/2SLS, and AIPW
+- named competitor baselines: statsmodels, linearmodels, pyfixest
+- published benchmark page with explicit estimator boundary documentation
+- AIPW remains available, but without an external parity baseline it is not part of the current competitor-backed SOTA subset.
+
+### Bayesian sampling
+
+- sample posteriors with NUTS, WALNUTS, and MAMS on the governed public CPU surface
+- published CmdStan-backed NUTS ESS/sec and repeatability evidence on canonical benchmark models
+- explicit sampler references, health thresholds, and reproducible benchmark methodology
+
+### Time series and state-space
+
+- Kalman local-level filtering, smoothing, and EM against pykalman/statsmodels
+- GARCH(1,1) estimation against arch
+- committed public snapshot with `4/4 ok`, `0 warn`, `0 failed` competitor-backed cases
+
 ### General statistics and adjacent domains
 
-- sample posteriors with NUTS and Bayesian helper workflows
 - fit GLMs and hierarchical models
-- estimate and forecast with state-space / Kalman workflows
-- run econometrics and causal-inference helpers
 - fit survival models
 
-> These surfaces do not yet carry published support matrices or release gates.
-> Treat them as functional but without the same stability contract as HEP or pharma.
+> Survival and other adjacent analytical surfaces do not yet carry published support matrices or release gates.
+
+> GPU acceleration is a documented source-build public path for the narrow shipped CUDA WALNUTS subset and the published GPU parity contract. It is not part of the default wheel contract.
+
+> R bindings are a stable source-build public interface for the documented asymptotic HistFactory, GLM, PK/NLME, and time-series surface. GPU, neural PDFs, and the broader Python-first surface remain out of scope for R.
+
+> WASM is a stable source-build public interface for the browser playground and its documented HistFactory/GLM subset. It is not the full native product surface.
 
 ## Quickstart
 
@@ -114,6 +135,31 @@ pip install "nextstat[bayes]"   # ArviZ / Bayesian helpers
 pip install "nextstat[viz]"     # plotting extras
 pip install "nextstat[all]"     # everything
 ```
+
+### Install (R, source build)
+
+```bash
+mkdir -p tmp/r-lib
+R CMD INSTALL --library=tmp/r-lib bindings/ns-r
+```
+
+More:
+
+- [R Bindings Reference](docs/references/r-bindings.md)
+
+### Build the WASM playground (source build)
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.108
+
+make playground-build-wasm
+make playground-serve
+```
+
+More:
+
+- [WASM Playground Reference](docs/references/wasm-playground.md)
 
 ### Try HistFactory in 30 seconds
 
@@ -140,6 +186,8 @@ More:
 
 - [CLI Reference](docs/references/cli.md)
 - [Python API](docs/references/python-api.md)
+- [R Bindings Reference](docs/references/r-bindings.md)
+- [WASM Playground Reference](docs/references/wasm-playground.md)
 - [HistFactory stable support matrix](docs/benchmarks/histfactory-support-matrix-2026-03-17.md)
 
 ### Stable-first GVM in 5 minutes

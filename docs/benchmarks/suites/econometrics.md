@@ -1,8 +1,8 @@
 ---
 title: "Benchmark Suite: Econometrics (Panel / Causal Inference)"
 description: "Econometrics benchmark suite for NextStat: Panel FE fit scaling, DiD TWFE + event study wall-time, IV/2SLS two-stage cost, and AIPW doubly-robust estimator performance with cluster-count scaling."
-status: draft
-last_updated: 2026-02-15
+status: stable
+last_updated: 2026-03-19
 keywords:
   - panel fixed effects benchmark
   - difference-in-differences performance
@@ -26,9 +26,43 @@ This suite benchmarks NextStat's econometrics and causal inference infrastructur
 
 This page is a **runbook + methodology**. Results are published as benchmark snapshots (see [Public Benchmarks](/docs/public-benchmarks)).
 
-## What is compared
+## Named competitor baselines
 
-Planned comparisons include:
+| Case | NextStat function | Competitor | Library version |
+| --- | --- | --- | --- |
+| Panel FE | `panel_fe_fit()` | statsmodels OLS (cluster) | statsmodels ≥ 0.14 |
+| DiD TWFE | `did_twfe_fit()` | statsmodels OLS (cluster) | statsmodels ≥ 0.14 |
+| DiD Wild Bootstrap | `did_twfe_wild_cluster_bootstrap()` | pyfixest `wildboottest()` | pyfixest ≥ 0.40 |
+| DiD Staggered | `staggered_did_fit()` | pyfixest `lpdid()` | pyfixest ≥ 0.40 |
+| Event Study TWFE | `event_study_twfe_fit()` | statsmodels OLS (cluster) | statsmodels ≥ 0.14 |
+| IV 2SLS (HC1) | `iv_2sls_fit(cov="hc1")` | linearmodels `IV2SLS` | linearmodels ≥ 6.1 |
+| IV 2SLS (HAC) | `iv_2sls_fit(cov="hac")` | linearmodels `IV2SLS` (Bartlett) | linearmodels ≥ 6.1 |
+| AIPW | `aipw_fit()` | (no external parity yet) | — |
+
+## Estimator boundary: staggered-adoption DiD
+
+NextStat's `staggered_did_fit()` uses a **group-time ATT estimator** with
+not-yet-treated controls and within-group demeaning. This is algorithmically
+different from pyfixest's `lpdid()`, which implements the
+Callaway-Sant'Anna (2021) doubly-robust framework with propensity score
+reweighting.
+
+**Expected coefficient differences**: up to ~20% relative on the aggregate
+ATT, because the two estimators weight cohort-time cells differently and
+use different control group construction. This is an algorithm choice, not
+a bug.
+
+**Where parity holds (machine-precision)**:
+- Panel FE, DiD TWFE, event study TWFE — coefficient and SE differences
+  < 1e-14 relative to statsmodels with identical demeaning
+- IV 2SLS (HC1) — coefficient parity < 1e-10 relative to linearmodels
+
+**Where parity is approximate**:
+- DiD staggered (~20% coef diff vs pyfixest lpdid) — different algorithm
+- IV HAC (Newey-West) — kernel bandwidth selection differences
+- Wild cluster bootstrap — stochastic by nature, p-value agreement checked
+
+## What is compared
 
 - **NextStat (Rust core)** vs **statsmodels** (OLS/cluster robust on transformed designs)
 - **NextStat** vs **linearmodels** (`PanelOLS`, `IV2SLS`, kernel/HAC covariance)

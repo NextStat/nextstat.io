@@ -3,26 +3,26 @@
     {
       "bench": {
         "build_wall_s": {
-          "full": 0.0036041061393916607,
-          "simplified": 0.00044153397902846336
+          "full": 0.003612021915614605,
+          "simplified": 0.0004499410279095173
         },
         "end_to_end_upper_limit_wall_s": {
-          "full": 0.8133251070976257,
-          "simplified": 0.04573466721922159
+          "full": 0.818526339251548,
+          "simplified": 0.04574791993945837
         },
         "fit_wall_s": {
-          "full": 0.06068479223176837,
-          "simplified": 0.00026089511811733246
+          "full": 0.059702021069824696,
+          "simplified": 0.0002495031803846359
         },
         "speedup": {
-          "build": 8.162692591229368,
-          "end_to_end_upper_limit": 17.78355799986662,
-          "fit": 232.6022528504216,
-          "upper_limit": 18.360437912139133
+          "build": 8.027767399644603,
+          "end_to_end_upper_limit": 17.89209958255512,
+          "fit": 239.28360743854097,
+          "upper_limit": 17.83658542803582
         },
         "upper_limit_wall_s": {
-          "full": 0.8207668396644294,
-          "simplified": 0.04470301000401378
+          "full": 0.8112066900357604,
+          "simplified": 0.045479931868612766
         }
       },
       "factorization": {
@@ -125,26 +125,26 @@
     {
       "bench": {
         "build_wall_s": {
-          "full": 0.0012266039848327637,
-          "simplified": 0.00018830504268407822
+          "full": 0.0013111080043017864,
+          "simplified": 0.0001817820593714714
         },
         "end_to_end_upper_limit_wall_s": {
-          "full": 0.16107291774824262,
-          "simplified": 0.015545617789030075
+          "full": 0.16574660316109657,
+          "simplified": 0.015195883810520172
         },
         "fit_wall_s": {
-          "full": 0.010798801202327013,
-          "simplified": 0.00011495314538478851
+          "full": 0.01177547313272953,
+          "simplified": 0.00011553429067134857
         },
         "speedup": {
-          "build": 6.513920006330648,
-          "end_to_end_upper_limit": 10.361306956993717,
-          "fit": 93.9408936239164,
-          "upper_limit": 10.531381522549786
+          "build": 7.212526961324269,
+          "end_to_end_upper_limit": 10.907335514525949,
+          "fit": 101.92188885485353,
+          "upper_limit": 11.500057507997205
         },
         "upper_limit_wall_s": {
-          "full": 0.16035776399075985,
-          "simplified": 0.015226659830659628
+          "full": 0.17134038032963872,
+          "simplified": 0.014899089001119137
         }
       },
       "factorization": {
@@ -246,53 +246,23 @@
     }
   ],
   "environment": {
-    "cwd": "/tmp/apex2_simplified_likelihood_repo_20260319T181827Z",
+    "cwd": "/tmp/apex2_simplified_likelihood_repo_20260311T204927Z",
     "hostname": "nextstat-bench",
     "nextstat_version": "0.10.1",
     "platform": "Linux-6.8.0-90-generic-x86_64-with-glibc2.39",
     "python": "3.12.3",
-    "timestamp": 1773945612
+    "timestamp": 1773263602
   },
   "export_matrix": {
     "cases": [
       {
         "analysis_id": "atlas.public.dual_sr_dual_cr_gaussian.export.stable.example",
         "bench": {
-          "export_wall_s": 0.009867817629128695,
-          "export_wall_s_stats": {
-            "max_s": 0.009867817629128695,
-            "median_s": 0.009867817629128695,
-            "min_s": 0.009867817629128695,
-            "samples_s": [
-              0.009867817629128695
-            ]
-          },
-          "exported_end_to_end_upper_limit_wall_s": 0.012185543775558472,
-          "exported_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.012188609689474106,
-            "median_s": 0.01218770770356059,
-            "min_s": 0.012185543775558472,
-            "samples_s": [
-              0.012185543775558472,
-              0.01218770770356059,
-              0.012188609689474106
-            ]
-          },
-          "full_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.11087510315701365,
-            "median_s": 0.10041621001437306,
-            "min_s": 0.09911716589704156,
-            "samples_s": [
-              0.09911716589704156,
-              0.10041621001437306,
-              0.11087510315701365
-            ]
-          },
-          "median_estimated_net_end_to_end_upper_limit_wall_s": 0.022055525332689285,
-          "net_end_to_end_upper_limit_wall_s": 0.022053361404687166,
+          "export_wall_s": 0.04301696503534913,
+          "exported_end_to_end_upper_limit_wall_s": 0.011799389030784369,
+          "net_end_to_end_upper_limit_wall_s": 0.0548163540661335,
           "speedup": {
-            "median_estimated_net_end_to_end_upper_limit": 4.552882259645958,
-            "net_end_to_end_upper_limit": 4.494424413503487
+            "net_end_to_end_upper_limit": 1.9266417121762913
           }
         },
         "case_kind": "public_reinterpretation_style",
@@ -368,8 +338,8 @@
         "output": {
           "bins_count": 6,
           "full_nuisance_count": 6,
-          "json_bytes": 4747,
-          "json_sha256": "f40a87b042dc4387f00d046f948c2130cdab53d16b131107ef13f5a64186fa97",
+          "json_bytes": 4748,
+          "json_sha256": "1d4ba7965244541637990d8caae400efe582cb79a200cf17460730f097aa4c57",
           "reduced_nuisance_count": 4,
           "reduction_ratio": 0.6666666666666666,
           "schema_version": "nextstat_simplified_likelihood_v0",
@@ -386,7 +356,7 @@
           "nuisance_count_reduced": 4,
           "qmu_delta_smoke": 0.0,
           "relative_background_cov_residual": 1.2769734928302262e-05,
-          "upper_limit_ratio_smoke": 1.000696463864931
+          "upper_limit_ratio_smoke": 0.9990389235944258
         },
         "source_fit_schema_version": "nextstat_fit_result_v0",
         "source_workspace_format": "pyhf",
@@ -405,41 +375,11 @@
       {
         "analysis_id": "atlas.public.dual_sr_vr_dual_cr_gaussian.export.stable.example",
         "bench": {
-          "export_wall_s": 0.01051619416102767,
-          "export_wall_s_stats": {
-            "max_s": 0.01051619416102767,
-            "median_s": 0.01051619416102767,
-            "min_s": 0.01051619416102767,
-            "samples_s": [
-              0.01051619416102767
-            ]
-          },
-          "exported_end_to_end_upper_limit_wall_s": 0.014570730738341808,
-          "exported_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.014805705286562443,
-            "median_s": 0.01476896507665515,
-            "min_s": 0.014570730738341808,
-            "samples_s": [
-              0.014570730738341808,
-              0.01476896507665515,
-              0.014805705286562443
-            ]
-          },
-          "full_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.12037316616624594,
-            "median_s": 0.11583835911005735,
-            "min_s": 0.11218115082010627,
-            "samples_s": [
-              0.11218115082010627,
-              0.11583835911005735,
-              0.12037316616624594
-            ]
-          },
-          "median_estimated_net_end_to_end_upper_limit_wall_s": 0.02528515923768282,
-          "net_end_to_end_upper_limit_wall_s": 0.025086924899369478,
+          "export_wall_s": 0.04648030921816826,
+          "exported_end_to_end_upper_limit_wall_s": 0.01476057106629014,
+          "net_end_to_end_upper_limit_wall_s": 0.0612408802844584,
           "speedup": {
-            "median_estimated_net_end_to_end_upper_limit": 4.58127860778594,
-            "net_end_to_end_upper_limit": 4.471697957007308
+            "net_end_to_end_upper_limit": 1.9063922871235959
           }
         },
         "case_kind": "public_reinterpretation_style",
@@ -516,7 +456,7 @@
           "bins_count": 7,
           "full_nuisance_count": 6,
           "json_bytes": 5633,
-          "json_sha256": "9982d8d68d8a30bda4cdc3b0a64c0168f43bb2f0557682e203e706b31d1ca241",
+          "json_sha256": "dd311dffa53de7e19adc46ffaa0470e883a256a24c9411eba59924b02a6ad2f0",
           "reduced_nuisance_count": 5,
           "reduction_ratio": 0.8333333333333334,
           "schema_version": "nextstat_simplified_likelihood_v0",
@@ -533,7 +473,7 @@
           "nuisance_count_reduced": 5,
           "qmu_delta_smoke": 0.0,
           "relative_background_cov_residual": 1.1027502745450187e-15,
-          "upper_limit_ratio_smoke": 0.9980323240830671
+          "upper_limit_ratio_smoke": 0.9970544918998527
         },
         "source_fit_schema_version": "nextstat_fit_result_v0",
         "source_workspace_format": "pyhf",
@@ -552,41 +492,11 @@
       {
         "analysis_id": "atlas.public.sr_cr_gaussian.export.stable.example",
         "bench": {
-          "export_wall_s": 0.009802130982279778,
-          "export_wall_s_stats": {
-            "max_s": 0.009802130982279778,
-            "median_s": 0.009802130982279778,
-            "min_s": 0.009802130982279778,
-            "samples_s": [
-              0.009802130982279778
-            ]
-          },
-          "exported_end_to_end_upper_limit_wall_s": 0.007264300249516964,
-          "exported_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.00779073778539896,
-            "median_s": 0.007715573068708181,
-            "min_s": 0.007264300249516964,
-            "samples_s": [
-              0.007264300249516964,
-              0.007715573068708181,
-              0.00779073778539896
-            ]
-          },
-          "full_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.03848645789548755,
-            "median_s": 0.03808998083695769,
-            "min_s": 0.03794578183442354,
-            "samples_s": [
-              0.03794578183442354,
-              0.03808998083695769,
-              0.03848645789548755
-            ]
-          },
-          "median_estimated_net_end_to_end_upper_limit_wall_s": 0.01751770405098796,
-          "net_end_to_end_upper_limit_wall_s": 0.01706643123179674,
+          "export_wall_s": 0.022638710215687752,
+          "exported_end_to_end_upper_limit_wall_s": 0.007523453328758478,
+          "net_end_to_end_upper_limit_wall_s": 0.03016216354444623,
           "speedup": {
-            "median_estimated_net_end_to_end_upper_limit": 2.1743706096467306,
-            "net_end_to_end_upper_limit": 2.2234163264154576
+            "net_end_to_end_upper_limit": 1.2558515460968596
           }
         },
         "case_kind": "public_reinterpretation_style",
@@ -662,8 +572,8 @@
         "output": {
           "bins_count": 4,
           "full_nuisance_count": 4,
-          "json_bytes": 3626,
-          "json_sha256": "a34353104511dd2eafabe669b58efda77b4c2901e8186fb742d5aa4baadfdfaf",
+          "json_bytes": 3627,
+          "json_sha256": "52250ec348b2b9ea64a055088121d73456206ce6ae085bd520dedc67e8ee3a51",
           "reduced_nuisance_count": 3,
           "reduction_ratio": 0.75,
           "schema_version": "nextstat_simplified_likelihood_v0",
@@ -678,9 +588,9 @@
           "max_rel_yield_delta": 0.6383025732317764,
           "nuisance_count_full": 4,
           "nuisance_count_reduced": 3,
-          "qmu_delta_smoke": 0.004034091537192766,
+          "qmu_delta_smoke": 0.0039973440496368084,
           "relative_background_cov_residual": 2.00391273892895e-06,
-          "upper_limit_ratio_smoke": 0.9935670456584629
+          "upper_limit_ratio_smoke": 0.9939733103745158
         },
         "source_fit_schema_version": "nextstat_fit_result_v0",
         "source_workspace_format": "pyhf",
@@ -699,41 +609,11 @@
       {
         "analysis_id": "atlas.public.triple_sr_vr_dual_cr_gaussian.export.stable.example",
         "bench": {
-          "export_wall_s": 0.011444400064647198,
-          "export_wall_s_stats": {
-            "max_s": 0.011444400064647198,
-            "median_s": 0.011444400064647198,
-            "min_s": 0.011444400064647198,
-            "samples_s": [
-              0.011444400064647198
-            ]
-          },
-          "exported_end_to_end_upper_limit_wall_s": 0.018265090882778168,
-          "exported_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.024113640189170837,
-            "median_s": 0.01980705512687564,
-            "min_s": 0.018265090882778168,
-            "samples_s": [
-              0.018265090882778168,
-              0.01980705512687564,
-              0.024113640189170837
-            ]
-          },
-          "full_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.15671984292566776,
-            "median_s": 0.14689319394528866,
-            "min_s": 0.14146898593753576,
-            "samples_s": [
-              0.14146898593753576,
-              0.14689319394528866,
-              0.15671984292566776
-            ]
-          },
-          "median_estimated_net_end_to_end_upper_limit_wall_s": 0.03125145519152284,
-          "net_end_to_end_upper_limit_wall_s": 0.029709490947425365,
+          "export_wall_s": 0.04648030921816826,
+          "exported_end_to_end_upper_limit_wall_s": 0.01476057106629014,
+          "net_end_to_end_upper_limit_wall_s": 0.0612408802844584,
           "speedup": {
-            "median_estimated_net_end_to_end_upper_limit": 4.700363328525399,
-            "net_end_to_end_upper_limit": 4.761743854443104
+            "net_end_to_end_upper_limit": 1.9063922871235959
           }
         },
         "case_kind": "public_reinterpretation_style",
@@ -810,7 +690,7 @@
           "bins_count": 9,
           "full_nuisance_count": 6,
           "json_bytes": 6516,
-          "json_sha256": "2518843976681e47aea0010ca5a44724c95581b240412ff0e01c6f7b6874e1a6",
+          "json_sha256": "975d192945d60caebf5a53b8b1a985124065ab2173083f525685a0e5b5bf8ddc",
           "reduced_nuisance_count": 5,
           "reduction_ratio": 0.8333333333333334,
           "schema_version": "nextstat_simplified_likelihood_v0",
@@ -827,7 +707,7 @@
           "nuisance_count_reduced": 5,
           "qmu_delta_smoke": 0.0,
           "relative_background_cov_residual": 1.5447594255011406e-15,
-          "upper_limit_ratio_smoke": 0.9991038285030529
+          "upper_limit_ratio_smoke": 0.9978349120433018
         },
         "source_fit_schema_version": "nextstat_fit_result_v0",
         "source_workspace_format": "pyhf",
@@ -846,41 +726,11 @@
       {
         "analysis_id": "cms.public.dual_sr_cr_gaussian.export.stable.example",
         "bench": {
-          "export_wall_s": 0.01185231888666749,
-          "export_wall_s_stats": {
-            "max_s": 0.01185231888666749,
-            "median_s": 0.01185231888666749,
-            "min_s": 0.01185231888666749,
-            "samples_s": [
-              0.01185231888666749
-            ]
-          },
-          "exported_end_to_end_upper_limit_wall_s": 0.009254120755940676,
-          "exported_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.010144984815269709,
-            "median_s": 0.009756973944604397,
-            "min_s": 0.009254120755940676,
-            "samples_s": [
-              0.009254120755940676,
-              0.009756973944604397,
-              0.010144984815269709
-            ]
-          },
-          "full_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.07874722080305219,
-            "median_s": 0.07694673584774137,
-            "min_s": 0.07493486162275076,
-            "samples_s": [
-              0.07493486162275076,
-              0.07694673584774137,
-              0.07874722080305219
-            ]
-          },
-          "median_estimated_net_end_to_end_upper_limit_wall_s": 0.021609292831271887,
-          "net_end_to_end_upper_limit_wall_s": 0.021106439642608166,
+          "export_wall_s": 0.03608323307707906,
+          "exported_end_to_end_upper_limit_wall_s": 0.009829516056925058,
+          "net_end_to_end_upper_limit_wall_s": 0.045912749134004116,
           "speedup": {
-            "median_estimated_net_end_to_end_upper_limit": 3.5608169341103055,
-            "net_end_to_end_upper_limit": 3.55033169457333
+            "net_end_to_end_upper_limit": 1.6702208664254055
           }
         },
         "case_kind": "public_reinterpretation_style",
@@ -957,7 +807,7 @@
           "bins_count": 5,
           "full_nuisance_count": 6,
           "json_bytes": 3963,
-          "json_sha256": "ffa7927ff20dfd711c0b590a0094d8d9704d887b2703d094132becfc0f03d3fe",
+          "json_sha256": "d9a9f7b0cf97c1bd5f75948326e75ad1310690fc3fed3b509c496af7b0de3750",
           "reduced_nuisance_count": 3,
           "reduction_ratio": 0.5,
           "schema_version": "nextstat_simplified_likelihood_v0",
@@ -974,7 +824,7 @@
           "nuisance_count_reduced": 3,
           "qmu_delta_smoke": 0.0,
           "relative_background_cov_residual": 5.657866033419936e-05,
-          "upper_limit_ratio_smoke": 0.9926469017022546
+          "upper_limit_ratio_smoke": 0.9927154997976527
         },
         "source_fit_schema_version": "nextstat_fit_result_v0",
         "source_workspace_format": "pyhf",
@@ -993,41 +843,11 @@
       {
         "analysis_id": "cms.public.sr_cr_asymmetric_gaussian.export.stable.example",
         "bench": {
-          "export_wall_s": 0.009427426848560572,
-          "export_wall_s_stats": {
-            "max_s": 0.009427426848560572,
-            "median_s": 0.009427426848560572,
-            "min_s": 0.009427426848560572,
-            "samples_s": [
-              0.009427426848560572
-            ]
-          },
-          "exported_end_to_end_upper_limit_wall_s": 0.005756311118602753,
-          "exported_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.005871374160051346,
-            "median_s": 0.0058593410067260265,
-            "min_s": 0.005756311118602753,
-            "samples_s": [
-              0.005756311118602753,
-              0.0058593410067260265,
-              0.005871374160051346
-            ]
-          },
-          "full_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.027479044627398252,
-            "median_s": 0.024037884082645178,
-            "min_s": 0.023868906777352095,
-            "samples_s": [
-              0.023868906777352095,
-              0.024037884082645178,
-              0.027479044627398252
-            ]
-          },
-          "median_estimated_net_end_to_end_upper_limit_wall_s": 0.015286767855286598,
-          "net_end_to_end_upper_limit_wall_s": 0.015183737967163324,
+          "export_wall_s": 0.02204764587804675,
+          "exported_end_to_end_upper_limit_wall_s": 0.005820015445351601,
+          "net_end_to_end_upper_limit_wall_s": 0.02786766132339835,
           "speedup": {
-            "median_estimated_net_end_to_end_upper_limit": 1.5724634736526202,
-            "net_end_to_end_upper_limit": 1.5720046558345186
+            "net_end_to_end_upper_limit": 0.8777103422927768
           }
         },
         "case_kind": "public_reinterpretation_style",
@@ -1103,8 +923,8 @@
         "output": {
           "bins_count": 4,
           "full_nuisance_count": 3,
-          "json_bytes": 3311,
-          "json_sha256": "e0ee3a576f838261029972eefdd71cf537eaec7a13c5904102b4f00a51921eea",
+          "json_bytes": 3312,
+          "json_sha256": "8843ef147b5ec8c90f68413aec633d31fd51941db3b4d4490ccddac1ca4fc012",
           "reduced_nuisance_count": 2,
           "reduction_ratio": 0.6666666666666666,
           "schema_version": "nextstat_simplified_likelihood_v0",
@@ -1119,9 +939,9 @@
           "max_rel_yield_delta": 0.7722670580806399,
           "nuisance_count_full": 3,
           "nuisance_count_reduced": 2,
-          "qmu_delta_smoke": 0.00670482499579864,
+          "qmu_delta_smoke": 0.0065393392750046075,
           "relative_background_cov_residual": 1.3009526417667756e-15,
-          "upper_limit_ratio_smoke": 0.9860371938360875
+          "upper_limit_ratio_smoke": 0.991007868115399
         },
         "source_fit_schema_version": "nextstat_fit_result_v0",
         "source_workspace_format": "pyhf",
@@ -1140,41 +960,11 @@
       {
         "analysis_id": "cms.public.sr_cr.export.stable.example",
         "bench": {
-          "export_wall_s": 0.010629011783748865,
-          "export_wall_s_stats": {
-            "max_s": 0.010629011783748865,
-            "median_s": 0.010629011783748865,
-            "min_s": 0.010629011783748865,
-            "samples_s": [
-              0.010629011783748865
-            ]
-          },
-          "exported_end_to_end_upper_limit_wall_s": 0.006301445886492729,
-          "exported_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.006365930661559105,
-            "median_s": 0.006323288660496473,
-            "min_s": 0.006301445886492729,
-            "samples_s": [
-              0.006301445886492729,
-              0.006323288660496473,
-              0.006365930661559105
-            ]
-          },
-          "full_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.02693355828523636,
-            "median_s": 0.026547532062977552,
-            "min_s": 0.026347794104367495,
-            "samples_s": [
-              0.026347794104367495,
-              0.026547532062977552,
-              0.02693355828523636
-            ]
-          },
-          "median_estimated_net_end_to_end_upper_limit_wall_s": 0.01695230044424534,
-          "net_end_to_end_upper_limit_wall_s": 0.016930457670241594,
+          "export_wall_s": 0.022479441948235035,
+          "exported_end_to_end_upper_limit_wall_s": 0.006001055706292391,
+          "net_end_to_end_upper_limit_wall_s": 0.028480497654527426,
           "speedup": {
-            "median_estimated_net_end_to_end_upper_limit": 1.5660135419549759,
-            "net_end_to_end_upper_limit": 1.5562363769219665
+            "net_end_to_end_upper_limit": 0.9147416386115276
           }
         },
         "case_kind": "public_reinterpretation_style",
@@ -1250,8 +1040,8 @@
         "output": {
           "bins_count": 4,
           "full_nuisance_count": 3,
-          "json_bytes": 3249,
-          "json_sha256": "fe9a0cc04ac85f6a9fca5d096d32556b758016edb5a3be1f7a50183467bfa341",
+          "json_bytes": 3248,
+          "json_sha256": "ac7c0fa018ab63f34aa277db5f799aead1270dbfda92f59b0b08d1b062ea7aa5",
           "reduced_nuisance_count": 2,
           "reduction_ratio": 0.6666666666666666,
           "schema_version": "nextstat_simplified_likelihood_v0",
@@ -1266,9 +1056,9 @@
           "max_rel_yield_delta": 0.7725845393909543,
           "nuisance_count_full": 3,
           "nuisance_count_reduced": 2,
-          "qmu_delta_smoke": 0.004439509871452491,
+          "qmu_delta_smoke": 0.004409274167340271,
           "relative_background_cov_residual": 2.7404117368874692e-15,
-          "upper_limit_ratio_smoke": 0.9941096020124535
+          "upper_limit_ratio_smoke": 0.998254037538193
         },
         "source_fit_schema_version": "nextstat_fit_result_v0",
         "source_workspace_format": "pyhf",
@@ -1287,41 +1077,11 @@
       {
         "analysis_id": "cms.public.sr_dual_cr_gaussian.export.stable.example",
         "bench": {
-          "export_wall_s": 0.009617384057492018,
-          "export_wall_s_stats": {
-            "max_s": 0.009617384057492018,
-            "median_s": 0.009617384057492018,
-            "min_s": 0.009617384057492018,
-            "samples_s": [
-              0.009617384057492018
-            ]
-          },
-          "exported_end_to_end_upper_limit_wall_s": 0.009543069638311863,
-          "exported_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.0095679578371346,
-            "median_s": 0.009550805203616619,
-            "min_s": 0.009543069638311863,
-            "samples_s": [
-              0.009543069638311863,
-              0.009550805203616619,
-              0.0095679578371346
-            ]
-          },
-          "full_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.07842843420803547,
-            "median_s": 0.07475881185382605,
-            "min_s": 0.06845678389072418,
-            "samples_s": [
-              0.06845678389072418,
-              0.07475881185382605,
-              0.07842843420803547
-            ]
-          },
-          "median_estimated_net_end_to_end_upper_limit_wall_s": 0.019168189261108637,
-          "net_end_to_end_upper_limit_wall_s": 0.01916045369580388,
+          "export_wall_s": 0.03461181512102485,
+          "exported_end_to_end_upper_limit_wall_s": 0.009611473884433508,
+          "net_end_to_end_upper_limit_wall_s": 0.044223289005458355,
           "speedup": {
-            "median_estimated_net_end_to_end_upper_limit": 3.900149922116441,
-            "net_end_to_end_upper_limit": 3.5728164362682158
+            "net_end_to_end_upper_limit": 1.5808319659542889
           }
         },
         "case_kind": "public_reinterpretation_style",
@@ -1398,7 +1158,7 @@
           "bins_count": 4,
           "full_nuisance_count": 6,
           "json_bytes": 3633,
-          "json_sha256": "ddc9eb2118bc25abf8cad88e1ef72c39110ec9cb323e4830a23f19c8bba50149",
+          "json_sha256": "2103ea3819e64a255d1fc6d52f2dbc5f05d3c3ed2af2b27ea7cd614f42bf7ae2",
           "reduced_nuisance_count": 3,
           "reduction_ratio": 0.5,
           "schema_version": "nextstat_simplified_likelihood_v0",
@@ -1413,9 +1173,9 @@
           "max_rel_yield_delta": 0.5085623688106994,
           "nuisance_count_full": 6,
           "nuisance_count_reduced": 3,
-          "qmu_delta_smoke": 0.0035890017949081615,
+          "qmu_delta_smoke": 0.003628560137119763,
           "relative_background_cov_residual": 0.0006293525262510284,
-          "upper_limit_ratio_smoke": 0.992814983735711
+          "upper_limit_ratio_smoke": 0.9903525046382189
         },
         "source_fit_schema_version": "nextstat_fit_result_v0",
         "source_workspace_format": "pyhf",
@@ -1434,41 +1194,11 @@
       {
         "analysis_id": "cms.public.sr_vr_dual_cr_gaussian.export.stable.example",
         "bench": {
-          "export_wall_s": 0.009901763871312141,
-          "export_wall_s_stats": {
-            "max_s": 0.009901763871312141,
-            "median_s": 0.009901763871312141,
-            "min_s": 0.009901763871312141,
-            "samples_s": [
-              0.009901763871312141
-            ]
-          },
-          "exported_end_to_end_upper_limit_wall_s": 0.010009793099015951,
-          "exported_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.010364169254899025,
-            "median_s": 0.01004913030192256,
-            "min_s": 0.010009793099015951,
-            "samples_s": [
-              0.010009793099015951,
-              0.01004913030192256,
-              0.010364169254899025
-            ]
-          },
-          "full_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.086339364759624,
-            "median_s": 0.08573715016245842,
-            "min_s": 0.08332790620625019,
-            "samples_s": [
-              0.08332790620625019,
-              0.08573715016245842,
-              0.086339364759624
-            ]
-          },
-          "median_estimated_net_end_to_end_upper_limit_wall_s": 0.0199508941732347,
-          "net_end_to_end_upper_limit_wall_s": 0.019911556970328093,
+          "export_wall_s": 0.03474442195147276,
+          "exported_end_to_end_upper_limit_wall_s": 0.010097745340317488,
+          "net_end_to_end_upper_limit_wall_s": 0.04484216729179025,
           "speedup": {
-            "median_estimated_net_end_to_end_upper_limit": 4.297408898969544,
-            "net_end_to_end_upper_limit": 4.184901579038957
+            "net_end_to_end_upper_limit": 1.9760145143886485
           }
         },
         "case_kind": "public_reinterpretation_style",
@@ -1545,7 +1275,7 @@
           "bins_count": 5,
           "full_nuisance_count": 6,
           "json_bytes": 3957,
-          "json_sha256": "5d79ba1dced00843cf4928180961ff1759496fcaacfee8a3ae63bb930c0f65bf",
+          "json_sha256": "b5ff45d27a0654c5d10d247f1abfbc1b6fac34b17f3d9d0377adf77a5be36c28",
           "reduced_nuisance_count": 3,
           "reduction_ratio": 0.5,
           "schema_version": "nextstat_simplified_likelihood_v0",
@@ -1560,9 +1290,9 @@
           "max_rel_yield_delta": 0.6199666350509617,
           "nuisance_count_full": 6,
           "nuisance_count_reduced": 3,
-          "qmu_delta_smoke": 0.007810336320754053,
+          "qmu_delta_smoke": 0.007733131640463853,
           "relative_background_cov_residual": 0.0012632762622113746,
-          "upper_limit_ratio_smoke": 0.9891724905825608
+          "upper_limit_ratio_smoke": 0.9886234357224118
         },
         "source_fit_schema_version": "nextstat_fit_result_v0",
         "source_workspace_format": "pyhf",
@@ -1581,41 +1311,11 @@
       {
         "analysis_id": "synthetic_covariance_large.export_matrix",
         "bench": {
-          "export_wall_s": 0.08425659406930208,
-          "export_wall_s_stats": {
-            "max_s": 0.08425659406930208,
-            "median_s": 0.08425659406930208,
-            "min_s": 0.08425659406930208,
-            "samples_s": [
-              0.08425659406930208
-            ]
-          },
-          "exported_end_to_end_upper_limit_wall_s": 0.0453191832639277,
-          "exported_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.04865571018308401,
-            "median_s": 0.045327038038522005,
-            "min_s": 0.0453191832639277,
-            "samples_s": [
-              0.0453191832639277,
-              0.045327038038522005,
-              0.04865571018308401
-            ]
-          },
-          "full_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.8145412211306393,
-            "median_s": 0.8132875240407884,
-            "min_s": 0.813104129396379,
-            "samples_s": [
-              0.813104129396379,
-              0.8132875240407884,
-              0.8145412211306393
-            ]
-          },
-          "median_estimated_net_end_to_end_upper_limit_wall_s": 0.1295836321078241,
-          "net_end_to_end_upper_limit_wall_s": 0.12957577733322978,
+          "export_wall_s": 0.26378157176077366,
+          "exported_end_to_end_upper_limit_wall_s": 0.04559595603495836,
+          "net_end_to_end_upper_limit_wall_s": 0.309377527795732,
           "speedup": {
-            "median_estimated_net_end_to_end_upper_limit": 6.276159348304632,
-            "net_end_to_end_upper_limit": 6.2751244571377
+            "net_end_to_end_upper_limit": 2.6158195091097296
           }
         },
         "case_kind": "synthetic",
@@ -1691,8 +1391,8 @@
         "output": {
           "bins_count": 24,
           "full_nuisance_count": 128,
-          "json_bytes": 16854,
-          "json_sha256": "ee6294d278f04c6db13e085201f13ec8f797a72e2b2dccc110188ed4f95919b5",
+          "json_bytes": 16839,
+          "json_sha256": "bb9d8851093bbcd2539b176268e21854f196cb7c629b19ea48c06cbed0d7d469",
           "reduced_nuisance_count": 8,
           "reduction_ratio": 0.0625,
           "schema_version": "nextstat_simplified_likelihood_v0",
@@ -1709,7 +1409,7 @@
           "nuisance_count_reduced": 8,
           "qmu_delta_smoke": 0.0,
           "relative_background_cov_residual": 5.029290709743024e-14,
-          "upper_limit_ratio_smoke": 1.0000001198357669
+          "upper_limit_ratio_smoke": 1.0
         },
         "source_fit_schema_version": "nextstat_fit_result_v0",
         "source_workspace_format": "pyhf",
@@ -1728,41 +1428,11 @@
       {
         "analysis_id": "synthetic_covariance_medium.export_matrix",
         "bench": {
-          "export_wall_s": 0.02773365704342723,
-          "export_wall_s_stats": {
-            "max_s": 0.02773365704342723,
-            "median_s": 0.02773365704342723,
-            "min_s": 0.02773365704342723,
-            "samples_s": [
-              0.02773365704342723
-            ]
-          },
-          "exported_end_to_end_upper_limit_wall_s": 0.01570408372208476,
-          "exported_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.015770422760397196,
-            "median_s": 0.01570696011185646,
-            "min_s": 0.01570408372208476,
-            "samples_s": [
-              0.01570408372208476,
-              0.01570696011185646,
-              0.015770422760397196
-            ]
-          },
-          "full_end_to_end_upper_limit_wall_s_stats": {
-            "max_s": 0.16748917615041137,
-            "median_s": 0.16610465617850423,
-            "min_s": 0.166072404012084,
-            "samples_s": [
-              0.166072404012084,
-              0.16610465617850423,
-              0.16748917615041137
-            ]
-          },
-          "median_estimated_net_end_to_end_upper_limit_wall_s": 0.04344061715528369,
-          "net_end_to_end_upper_limit_wall_s": 0.04343774076551199,
+          "export_wall_s": 0.06269105710089207,
+          "exported_end_to_end_upper_limit_wall_s": 0.015677967108786106,
+          "net_end_to_end_upper_limit_wall_s": 0.07836902420967817,
           "speedup": {
-            "median_estimated_net_end_to_end_upper_limit": 3.8237176876365093,
-            "net_end_to_end_upper_limit": 3.8232283973649834
+            "net_end_to_end_upper_limit": 2.1792428549098894
           }
         },
         "case_kind": "synthetic",
@@ -1838,8 +1508,8 @@
         "output": {
           "bins_count": 12,
           "full_nuisance_count": 72,
-          "json_bytes": 8230,
-          "json_sha256": "d130f724ea2889ee2a5732f8f1ef069704dbb652898329295f9a1bcb266b36e5",
+          "json_bytes": 8215,
+          "json_sha256": "0e29c35dcaba7390a3db3b4ab66b2ca85d85e6495d17ff9a24d83c0519ae6d08",
           "reduced_nuisance_count": 6,
           "reduction_ratio": 0.08333333333333333,
           "schema_version": "nextstat_simplified_likelihood_v0",
@@ -1856,7 +1526,7 @@
           "nuisance_count_reduced": 6,
           "qmu_delta_smoke": 0.0,
           "relative_background_cov_residual": 1.0475818875467234e-13,
-          "upper_limit_ratio_smoke": 0.9999996627961293
+          "upper_limit_ratio_smoke": 1.0
         },
         "source_fit_schema_version": "nextstat_fit_result_v0",
         "source_workspace_format": "pyhf",
@@ -1873,7 +1543,7 @@
         }
       }
     ],
-    "cli_binary": "../apex2_simplified_likelihood_target_20260319T181827Z/release/nextstat",
+    "cli_binary": "../apex2_simplified_likelihood_target_20260311T204927Z/release/nextstat",
     "summary": {
       "all_fidelity_gates_pass": true,
       "all_performance_gates_pass": true,
@@ -1885,17 +1555,16 @@
       ],
       "max_abs_q_mu_diff": 0.09618848026584459,
       "max_upper_limit_ratio_deviation": 0.011190668120821257,
-      "min_median_estimated_net_end_to_end_upper_limit_speedup": 1.5660135419549759,
-      "min_net_end_to_end_upper_limit_speedup": 1.5562363769219665,
+      "min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
       "public_reinterpretation_style_case_count": 9,
       "public_reinterpretation_style_case_names": [
         "atlas_public_dual_sr_dual_cr_gaussian_export_stable_example",
         "atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example",
-        "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
         "atlas_public_sr_cr_gaussian_export_stable_example",
-        "cms_public_sr_cr_export_stable_example",
-        "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+        "atlas_public_triple_sr_vr_dual_cr_gaussian_export_stable_example",
         "cms_public_dual_sr_cr_gaussian_export_stable_example",
+        "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+        "cms_public_sr_cr_export_stable_example",
         "cms_public_sr_dual_cr_gaussian_export_stable_example",
         "cms_public_sr_vr_dual_cr_gaussian_export_stable_example"
       ],
@@ -2202,9 +1871,9 @@
     "all_performance_gates_pass": true,
     "all_schema_valid": true,
     "bench": {
-      "min_speedup_end_to_end_upper_limit": 10.361306956993717,
-      "min_speedup_fit": 93.9408936239164,
-      "min_speedup_upper_limit": 10.531381522549786
+      "min_speedup_end_to_end_upper_limit": 10.907335514525949,
+      "min_speedup_fit": 101.92188885485353,
+      "min_speedup_upper_limit": 11.500057507997205
     },
     "case_count": 2,
     "export_matrix_case_count": 11,
@@ -2213,8 +1882,7 @@
       "synthetic"
     ],
     "export_matrix_included": true,
-    "export_matrix_min_median_estimated_net_end_to_end_upper_limit_speedup": 1.5660135419549759,
-    "export_matrix_min_net_end_to_end_upper_limit_speedup": 1.5562363769219665,
+    "export_matrix_min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
     "export_matrix_public_reinterpretation_style_case_count": 9,
     "export_matrix_status": "ok",
     "max_abs_q_mu_diff": 2.393811229239873e-07,

@@ -1,14 +1,32 @@
 ---
 title: "R Bindings Reference"
-status: experimental
-last_updated: 2026-02-10
+status: stable
+last_updated: 2026-03-19
 ---
 
 # R Bindings Reference
 
 The `nextstat` R package provides a native R interface to the NextStat Rust core via staticlib FFI (`bindings/ns-r/`). Built with [extendr](https://extendr.github.io/).
 
-**Status:** Experimental. The API is intentionally small and may change.
+**Status:** Stable for the documented source-build surface in this repository.
+
+## Stable source-build boundary
+
+The current stable R surface covers:
+
+- asymptotic HistFactory inference: `nextstat_fit()`, `nextstat_hypotest()`, `nextstat_upper_limit()`
+- GLMs: `nextstat_glm_logistic()`, `nextstat_glm_poisson()`, `nextstat_glm_negbin()`
+- time series: `nextstat_kalman()`, `nextstat_garch()`, `nextstat_sv()`
+- population PK/NLME: `ns_foce()`, `nlme_foce()`, `ns_saem()`, `nlme_saem()`
+- PK/PD helpers and diagnostics: `ns_emax()`, `ns_sigmoid_emax()`, `ns_idr()`, `ns_vpc()`, `ns_gof()`
+- core helpers: `ns_normal_logpdf()`, `ns_ols_fit()`
+
+Out of scope for the current R stable boundary:
+
+- GPU acceleration
+- neural PDFs / ONNX surfaces
+- toy-based inference
+- the broader Python-first helper surface
 
 ## Installation
 
@@ -25,6 +43,17 @@ R CMD INSTALL --library=tmp/r-lib bindings/ns-r
 - Rust toolchain (`cargo`) — the Rust staticlib is compiled during `R CMD INSTALL`.
 - C compiler toolchain compatible with R.
 - R ≥ 4.0.
+
+## Verification
+
+The canonical repo-source verification path is:
+
+```bash
+mkdir -p tmp/r-lib tmp/r-test-lib
+R CMD INSTALL --library=tmp/r-lib bindings/ns-r
+Rscript -e 'install.packages("testthat", repos="https://cloud.r-project.org", lib="tmp/r-test-lib")'
+Rscript -e '.libPaths(c("tmp/r-test-lib", "tmp/r-lib", .libPaths())); library(testthat); library(nextstat); f <- list.files("bindings/ns-r/tests/testthat", pattern="^test-.*[.][Rr]$", full.names=TRUE); invisible(lapply(f, testthat::test_file))'
+```
 
 ## Functions
 
@@ -87,6 +116,6 @@ To add a new function:
 
 ## Limitations
 
-- GPU acceleration is not yet exposed to R.
-- HistFactory inference is exposed, but currently limited to asymptotic CLs (`nextstat_fit`, `nextstat_hypotest`, `nextstat_upper_limit`); toy-based inference is not yet exposed.
+- GPU acceleration is not exposed to R.
+- HistFactory inference is limited to the asymptotic CLs surface (`nextstat_fit`, `nextstat_hypotest`, `nextstat_upper_limit`); toy-based inference is not exposed.
 - ONNX-backed neural PDFs require the `neural` Cargo feature, which is not enabled in the default R build.

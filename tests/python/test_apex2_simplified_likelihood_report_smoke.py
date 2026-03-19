@@ -224,7 +224,6 @@ def test_apex2_simplified_likelihood_report_export_matrix_smoke():
         "1",
         "--export-repeat",
         "1",
-        "--deterministic",
         "--include-export-matrix",
         "--nextstat-cli",
         str(nextstat_cli),
@@ -246,6 +245,16 @@ def test_apex2_simplified_likelihood_report_export_matrix_smoke():
     assert case["validation"]["export_report_schema_valid"] is True
     assert case["output"]["schema_version"] == "nextstat_simplified_likelihood_v0"
     assert case["output"]["uncertainty_model_kind"] == "basis"
+    assert case["bench"]["speedup"]["median_estimated_net_end_to_end_upper_limit"] >= 0.0
+    assert case["bench"]["full_end_to_end_upper_limit_wall_s_stats"]["samples_s"]
+    assert case["bench"]["export_wall_s_stats"]["samples_s"] == [case["bench"]["export_wall_s"]]
+    assert case["bench"]["exported_end_to_end_upper_limit_wall_s_stats"]["samples_s"] == [
+        case["bench"]["exported_end_to_end_upper_limit_wall_s"]
+    ]
+    assert (
+        case["bench"]["speedup"]["median_estimated_net_end_to_end_upper_limit"]
+        == case["bench"]["speedup"]["net_end_to_end_upper_limit"]
+    )
 
     if jsonschema is not None:
         jsonschema.validate(instance=generated, schema=schema)
@@ -301,7 +310,6 @@ def test_apex2_simplified_likelihood_report_export_matrix_with_public_cases_smok
         "1",
         "--export-repeat",
         "1",
-        "--deterministic",
         "--include-export-matrix",
         "--include-export-public-cases",
         "--nextstat-cli",
@@ -315,6 +323,7 @@ def test_apex2_simplified_likelihood_report_export_matrix_with_public_cases_smok
     assert summary["case_count"] == 10
     assert summary["synthetic_case_count"] >= 1
     assert summary["public_reinterpretation_style_case_count"] == 9
+    assert summary["min_median_estimated_net_end_to_end_upper_limit_speedup"] >= 0.0
     assert set(summary["case_kinds"]) == {"synthetic", "public_reinterpretation_style"}
 
     public_cases = [
@@ -336,6 +345,10 @@ def test_apex2_simplified_likelihood_report_export_matrix_with_public_cases_smok
     assert {case["experiment"] for case in public_cases} == {"ATLAS", "CMS"}
     assert all(case["validation"]["runtime_export_ok"] is True for case in public_cases)
     assert all(case["output"]["schema_version"] == "nextstat_simplified_likelihood_v0" for case in public_cases)
+    assert all(
+        case["bench"]["speedup"]["median_estimated_net_end_to_end_upper_limit"] >= 0.0
+        for case in public_cases
+    )
 
     if jsonschema is not None:
         jsonschema.validate(instance=generated, schema=schema)

@@ -230,6 +230,30 @@ def stage_release_assets(dist_root: Path, out_dir: Path) -> list[Path]:
             "hep-validation-bundle/hep_validation_bundle.md",
             "hep-validation-bundle/tmp/hep_validation_bundle.md",
         ]),
+        ("sota_claim_matrix_report.json", [
+            "sota-claim-matrix-report/tmp/sota_claim_matrix_report.json",
+            "sota-claim-matrix-report/sota_claim_matrix_report.json",
+        ]),
+        ("sota_claim_matrix_report.md", [
+            "sota-claim-matrix-report/tmp/sota_claim_matrix_report.md",
+            "sota-claim-matrix-report/sota_claim_matrix_report.md",
+        ]),
+        ("public_sota_bundle.json", [
+            "public-sota-bundle/tmp/public_sota_bundle.json",
+            "public-sota-bundle/public_sota_bundle.json",
+        ]),
+        ("public_sota_bundle.md", [
+            "public-sota-bundle/tmp/public_sota_bundle.md",
+            "public-sota-bundle/public_sota_bundle.md",
+        ]),
+        ("v1_sota_policy_report.json", [
+            "v1-sota-policy-report/tmp/v1_sota_policy_report.json",
+            "v1-sota-policy-report/v1_sota_policy_report.json",
+        ]),
+        ("v1_sota_policy_report.md", [
+            "v1-sota-policy-report/tmp/v1_sota_policy_report.md",
+            "v1-sota-policy-report/v1_sota_policy_report.md",
+        ]),
     ]
 
     # Repo-wide governance artifacts (staged from repo root, not CI artifacts)

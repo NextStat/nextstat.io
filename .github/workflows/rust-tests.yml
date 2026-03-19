@@ -110,6 +110,63 @@ jobs:
       - name: Run ns-unbinned wasm smoke test (ignored)
         run: cargo test -p ns-unbinned --test wasm_smoke -- --ignored --nocapture
 
+  wasm-playground-build:
+    name: WASM Playground Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-bindgen CLI
+        run: cargo install wasm-bindgen-cli --version 0.2.108 --locked
+
+      - name: Build public WASM playground bundle
+        run: bash scripts/playground_build_wasm.sh
+
+      - name: Verify WASM playground bundle outputs
+        run: |
+          test -f playground/pkg/ns_wasm.js
+          test -f playground/pkg/ns_wasm_bg.wasm
+
+  r-bindings-smoke:
+    name: R Bindings Smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install R test dependency
+        run: Rscript -e 'install.packages("testthat", repos="https://cloud.r-project.org")'
+
+      - name: Build and install R bindings
+        run: |
+          mkdir -p tmp/r-lib
+          R CMD INSTALL --library=tmp/r-lib bindings/ns-r
+
+      - name: Run R bindings smoke suite
+        run: |
+          Rscript -e '.libPaths(c("tmp/r-lib", .libPaths())); library(testthat); library(nextstat); f <- list.files("bindings/ns-r/tests/testthat", pattern="^test-.*[.][Rr]$", full.names=TRUE); invisible(lapply(f, testthat::test_file))'
+
   clippy:
     name: Clippy
     runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || fromJSON('["self-hosted","linux","x64","bench"]') }}

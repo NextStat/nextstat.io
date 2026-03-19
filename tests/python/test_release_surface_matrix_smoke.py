@@ -77,10 +77,19 @@ def test_pre_release_gate_and_docs_reference_release_surface_outputs() -> None:
 
     assert "tmp/release_surface_matrix_report.json" in gate
     assert "tmp/release_surface_matrix_report.md" in gate
+    assert "tmp/sota_claim_matrix_report.json" in gate
+    assert "tmp/sota_claim_matrix_report.md" in gate
+    assert "tmp/public_sota_bundle.json" in gate
+    assert "tmp/public_sota_bundle.md" in gate
+    assert "tmp/v1_sota_policy_report.json" in gate
+    assert "tmp/v1_sota_policy_report.md" in gate
     assert "tmp/apex2_pre_release_gate_summary.json" in gate
     assert "tmp/apex2_pre_release_gate_summary.md" in gate
     assert "scripts.release_surface_matrix" in gate
     assert "scripts/repo_surface_matrix.py" in gate
+    assert "scripts.sota_claim_matrix" in gate
+    assert "scripts.public_sota_bundle" in gate
+    assert "scripts.v1_sota_policy" in gate
     assert "tmp/release_manifest.json" in gate
     assert "tmp/release_manifest.md" in gate
     assert "tmp/release_full_fidelity_simulation_report.json" in gate
@@ -99,6 +108,8 @@ def test_pre_release_gate_and_docs_reference_release_surface_outputs() -> None:
     assert "tmp/release_manifest.json" in contributing
     assert "tmp/release_full_fidelity_simulation_report.json" in contributing
     assert "tmp/release_candidate_bundle" in contributing
+    assert "tmp/public_sota_bundle.json" in contributing
+    assert "tmp/v1_sota_policy_report.json" in contributing
 
     assert "/docs/releases/release-runbook" in benchmark_index
     assert "/docs/releases/benchmark-artifact-policy" in benchmark_index
@@ -110,6 +121,12 @@ def test_pre_release_gate_and_docs_reference_release_surface_outputs() -> None:
     assert "tmp/apex2_pre_release_gate_summary.md" in runbook
     assert "tmp/release_manifest.json" in runbook
     assert "tmp/release_manifest.md" in runbook
+    assert "tmp/sota_claim_matrix_report.json" in runbook
+    assert "tmp/sota_claim_matrix_report.md" in runbook
+    assert "tmp/public_sota_bundle.json" in runbook
+    assert "tmp/public_sota_bundle.md" in runbook
+    assert "tmp/v1_sota_policy_report.json" in runbook
+    assert "tmp/v1_sota_policy_report.md" in runbook
     assert "tmp/release_full_fidelity_simulation_report.json" in runbook
     assert "tmp/release_full_fidelity_simulation_report.md" in runbook
     assert "scripts/release_full_fidelity_simulation.py" in runbook

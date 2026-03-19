@@ -1,20 +1,23 @@
 ---
-title: "Benchmark Suite: Time Series (Kalman / State Space)"
-description: "Time series benchmark suite for NextStat: Kalman filter/smoother throughput, EM convergence cost, forecasting latency, and state-dimension scaling for state-space models."
-status: draft
-last_updated: 2026-02-08
+title: "Benchmark Suite: Time Series (Kalman / State Space / GARCH)"
+description: "Time series benchmark suite for NextStat: Kalman filter/smoother throughput, EM convergence cost, GARCH parameter estimation, and forecasting latency with named competitor baselines (pykalman, statsmodels, arch)."
+status: stable
+last_updated: 2026-03-19
 keywords:
   - Kalman filter benchmark
   - state space model performance
   - EM algorithm convergence
+  - GARCH benchmark
   - time series forecasting latency
   - Kalman smoother throughput
   - statsmodels comparison
+  - pykalman comparison
+  - arch comparison
   - scientific time series
   - NextStat time series
 ---
 
-# Time Series Benchmark Suite (Kalman / State Space)
+# Time Series Benchmark Suite (Kalman / State Space / GARCH)
 
 This suite benchmarks NextStat's time series and state-space model infrastructure:
 
@@ -22,15 +25,44 @@ This suite benchmarks NextStat's time series and state-space model infrastructur
 - Kalman smoother (RTS) throughput
 - EM convergence cost (iterations × NLL evaluations)
 - Forecasting latency per horizon step
+- GARCH(1,1) parameter estimation
 
 This page is a **runbook + methodology**. Results are published as benchmark snapshots (see [Public Benchmarks](/docs/public-benchmarks)).
 
+## Current promoted public proof subset
+
+The current committed public proof subset is anchored by:
+
+- `benchmarks/nextstat-public-benchmarks/manifests/snapshots/timeseries-publisher-20260319T195703Z/timeseries/timeseries_suite.json`
+
+That snapshot contains four committed competitor-backed cases:
+
+- `kalman_local_level_500`
+- `kalman_local_level_5000`
+- `garch11_1000`
+- `garch11_5000`
+
+with `4/4 ok`, `0 warn`, `0 failed`, and `parity_status="ok"` on every
+committed case.
+
+The current promoted subset uses `pykalman` for the Kalman local-level proof
+path and `arch` for the GARCH proof path. `statsmodels` remains a documented
+reference and methodology fallback for the Kalman MLE / EM boundary.
+
+## Named competitor baselines
+
+| Case | NextStat function | Competitor | Library version |
+| --- | --- | --- | --- |
+| Kalman filter (local level) | `kalman_filter()` | pykalman `KalmanFilter` | pykalman ≥ 0.9.7 |
+| Kalman smoother (RTS) | `kalman_smooth()` | pykalman `KalmanFilter.smooth()` | pykalman ≥ 0.9.7 |
+| Kalman EM | `kalman_em()` | statsmodels `UnobservedComponents` | statsmodels ≥ 0.14 |
+| GARCH(1,1) | `garch_fit()` | arch `arch_model()` | arch ≥ 7.0 |
+
 ## What is compared
 
-Planned comparisons include:
-
-- **NextStat (Rust core)** vs **statsmodels** (`UnobservedComponents`, `KalmanFilter`)
-- Optional: **PyKalman** and **filterpy** for filter/smoother throughput
+- **NextStat (Rust core)** vs **pykalman** (Kalman filter/smoother/EM parity)
+- **NextStat** vs **statsmodels** (`UnobservedComponents`, `KalmanFilter` — MLE fallback)
+- **NextStat** vs **arch** (GARCH(1,1) parameter estimation)
 
 ## What is measured
 
@@ -60,6 +92,26 @@ Measures:
 
 - per-step forecast cost at varying horizon lengths
 - confidence interval computation overhead
+
+### 5) GARCH(1,1) parameter estimation
+
+Measures:
+
+- MLE fit wall-time for varying return series lengths
+- parameter parity (omega, alpha, beta) vs arch
+- log-likelihood parity vs arch
+
+## Parity methodology
+
+**Where parity holds (machine-precision)**:
+- Kalman filter log-likelihood and state estimates — < 1e-6 relative to
+  pykalman/statsmodels with identical state-space specification
+- Kalman EM estimated Q and R — < 1e-6 relative to pykalman
+
+**Where parity is approximate**:
+- GARCH(1,1) — parameter differences depend on optimizer convergence
+  tolerance and starting values. Log-likelihood parity < 1e-4 relative to arch.
+- EM convergence iteration count — sensitive to tolerance and initialization
 
 ## Scaling axes (what we vary)
 

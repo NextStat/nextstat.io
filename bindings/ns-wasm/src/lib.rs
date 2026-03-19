@@ -46,6 +46,15 @@ mod wasm_exports {
                     .map_err(|e| js_err(format!("Failed to load HS3: {e}")))?;
                 (None, model)
             }
+            ns_translate::hs3::detect::WorkspaceFormat::SimplifiedLikelihood => {
+                let spec: ns_translate::simplified::schema::SimplifiedLikelihoodWorkspace =
+                    serde_json::from_str(json)
+                        .map_err(|e| js_err(format!("Failed to parse simplified likelihood JSON: {e}")))?;
+                let measurement_name = Some(spec.metadata.analysis_id.clone());
+                let model = ns_translate::simplified::convert::simplified_to_model(&spec)
+                    .map_err(|e| js_err(format!("Failed to load simplified likelihood workspace: {e}")))?;
+                (measurement_name, model)
+            }
             ns_translate::hs3::detect::WorkspaceFormat::Pyhf
             | ns_translate::hs3::detect::WorkspaceFormat::Unknown => {
                 let ws: Workspace = serde_json::from_str(json).map_err(|e| {
@@ -1321,6 +1330,7 @@ mod wasm_exports {
         let error_model = ns_inference::pk::ErrorModel::Additive(input.sigma);
         let theta_init = input.theta_true.iter().map(|&v| v * 1.1).collect::<Vec<_>>();
         let omega_init = input.omega_true.iter().map(|&v| v * 1.1).collect::<Vec<_>>();
+        let doses = vec![input.dose; input.n_subjects];
 
         let (
             theta_est,
@@ -1339,6 +1349,7 @@ mod wasm_exports {
                     max_inner_iter: input.max_inner_iter,
                     tol: 1e-3,
                     interaction: true,
+                    ..Default::default()
                 };
                 let est = ns_inference::foce::FoceEstimator::new(cfg);
                 let r = est
@@ -1347,7 +1358,7 @@ mod wasm_exports {
                         &y,
                         &subject_idx,
                         input.n_subjects,
-                        input.dose,
+                        &doses,
                         input.bioav,
                         error_model,
                         &theta_init,
@@ -1371,7 +1382,7 @@ mod wasm_exports {
                         &y,
                         &subject_idx,
                         input.n_subjects,
-                        input.dose,
+                        &doses,
                         input.bioav,
                         error_model,
                         &theta_init,

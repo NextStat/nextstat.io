@@ -58,6 +58,12 @@ Pharma release evidence policy:
    - `tmp/root_suite_compare_report.json` when applicable
    - `tmp/release_surface_matrix_report.json`
    - `tmp/release_surface_matrix_report.md`
+   - `tmp/sota_claim_matrix_report.json`
+   - `tmp/sota_claim_matrix_report.md`
+   - `tmp/public_sota_bundle.json`
+   - `tmp/public_sota_bundle.md`
+   - `tmp/v1_sota_policy_report.json`
+   - `tmp/v1_sota_policy_report.md`
    - `tmp/release_manifest.json`
    - `tmp/release_manifest.md`
    - `tmp/release_full_fidelity_simulation_report.json`
@@ -87,6 +93,12 @@ The pre-release gate emits:
 - `tmp/apex2_pre_release_gate_summary.md`
 - `tmp/release_surface_matrix_report.json`
 - `tmp/release_surface_matrix_report.md`
+- `tmp/sota_claim_matrix_report.json`
+- `tmp/sota_claim_matrix_report.md`
+- `tmp/public_sota_bundle.json`
+- `tmp/public_sota_bundle.md`
+- `tmp/v1_sota_policy_report.json`
+- `tmp/v1_sota_policy_report.md`
 - `tmp/release_full_fidelity_simulation_report.json`
 - `tmp/release_full_fidelity_simulation_report.md`
 

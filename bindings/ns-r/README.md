@@ -1,6 +1,6 @@
 # `nextstat` (R bindings)
 
-This directory contains an **experimental** R package that links NextStat’s Rust core into R.
+This directory contains the stable repo-source R package that links NextStat’s Rust core into R.
 
 ## Local install (dev)
 
@@ -112,4 +112,4 @@ sv <- nextstat_sv(rets)
 - The package uses **extendr** (no hand-written `.Call` C wrappers); the Rust staticlib is linked into `nextstat.so` during install.
 - Vendored Rust crates for CRAN tarball self-containment are synced from root via `bash scripts/nsr_vendor_sync.sh` (or `make nsr-vendor-sync`).
 - For clean local CRAN-style logs, run `make nsr-cran-check-clean` (requires `pandoc`, `checkbashisms`, and R suggests: `testthat`, `knitr`, `rmarkdown`).
-- Current API is intentionally small; it’s meant as a starting point.
+- Current stable boundary is the documented source-build surface in `docs/references/r-bindings.md`.

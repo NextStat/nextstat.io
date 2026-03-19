@@ -2,6 +2,12 @@
 
 GPU-accelerated paths must produce results within specified tolerance of the CPU reference.
 
+The public GPU claim is intentionally narrow. It is supported through the
+documented source-build path in `docs/tutorials/installation-quickstart.md`;
+it is not part of the default wheel contract. The current promoted public GPU
+subset is the shipped CUDA WALNUTS surface plus the published parity and CI
+contract documented here.
+
 ## Tolerance Tiers
 
 | Tier | Metric | CUDA (f64) | Metal (f32) |

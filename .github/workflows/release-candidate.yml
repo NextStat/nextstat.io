@@ -837,6 +837,51 @@ jobs:
           set -euo pipefail
           python3 scripts/repo_surface_matrix.py --check
 
+      - name: Validate public SOTA claim matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m scripts.sota_claim_matrix --check
+
+      - name: Build public SOTA claim matrix report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m scripts.sota_claim_matrix \
+            --out-json tmp/sota_claim_matrix_report.json \
+            --out-md tmp/sota_claim_matrix_report.md
+
+      - name: Validate public SOTA bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m scripts.public_sota_bundle --check
+
+      - name: Build public SOTA bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m scripts.public_sota_bundle \
+            --out-json tmp/public_sota_bundle.json \
+            --out-md tmp/public_sota_bundle.md
+
+      - name: Validate v1.0 SOTA policy
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m scripts.v1_sota_policy \
+            --release-tag "${{ inputs.release_tag }}" \
+            --check
+
+      - name: Build v1.0 SOTA policy report
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m scripts.v1_sota_policy \
+            --release-tag "${{ inputs.release_tag }}" \
+            --out-json tmp/v1_sota_policy_report.json \
+            --out-md tmp/v1_sota_policy_report.md
+
       - name: Build HEP validation bundle
         shell: bash
         run: |
@@ -896,3 +941,27 @@ jobs:
           path: |
             tmp/repo_validation_bundle.json
             tmp/repo_validation_bundle.md
+
+      - name: Upload public SOTA claim matrix report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sota-claim-matrix-report
+          path: |
+            tmp/sota_claim_matrix_report.json
+            tmp/sota_claim_matrix_report.md
+
+      - name: Upload public SOTA bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-sota-bundle
+          path: |
+            tmp/public_sota_bundle.json
+            tmp/public_sota_bundle.md
+
+      - name: Upload v1.0 SOTA policy report
+        uses: actions/upload-artifact@v4
+        with:
+          name: v1-sota-policy-report
+          path: |
+            tmp/v1_sota_policy_report.json
+            tmp/v1_sota_policy_report.md

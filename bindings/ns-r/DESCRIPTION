@@ -1,7 +1,7 @@
 Package: nextstat
 Type: Package
 Title: High-Performance Statistical Inference via Rust
-Version: 0.9.0
+Version: 0.10.1
 Authors@R: c(
     person("NextStat", "Contributors", email = "dev@nextstat.io", role = c("aut", "cre"))
   )
@@ -19,7 +19,7 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 NeedsCompilation: yes
-SystemRequirements: Rust toolchain (>= 1.85, cargo), a C compiler
+SystemRequirements: Rust toolchain (>= 1.93, cargo), a C compiler
     toolchain compatible with R.
 Suggests:
     testthat (>= 3.0.0),

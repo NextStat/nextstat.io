@@ -3,7 +3,9 @@ use super::convert::{simplified_to_model, simplified_to_workspace};
 use super::export::{
     SimplifiedLikelihoodAlignedFitResult, SimplifiedLikelihoodDeriveConfig,
     SimplifiedLikelihoodDeriveMetadata, build_simplified_likelihood_export_report,
-    derive_simplified_likelihood_core, validate_simplified_likelihood_derive_config,
+    build_simplified_likelihood_export_report_with_workspace_bytes,
+    derive_simplified_likelihood_core, serialize_canonical_simplified_likelihood_workspace_pretty,
+    validate_simplified_likelihood_derive_config,
 };
 use super::factorize::factorize_covariance_workspace;
 use super::schema::{
@@ -11,6 +13,7 @@ use super::schema::{
     SimplifiedUncertaintyModel,
 };
 use super::validate::validate_simplified_likelihood;
+use sha2::{Digest, Sha256};
 
 fn assert_vec_close(actual: &[f64], expected: &[f64]) {
     assert_eq!(actual.len(), expected.len(), "vector length mismatch");
@@ -476,8 +479,11 @@ fn test_derive_simplified_likelihood_core_from_workspace_reduces_to_requested_ba
     assert_eq!(report.output.reduced_nuisance_count, retained_rank);
     assert_eq!(report.output.reduction_ratio, 0.5);
     assert_eq!(report.reduction.constraint_covariance_source, "aligned_fit_covariance");
-    assert_eq!(report.diagnostics.factorization.unwrap().retained_rank, retained_rank);
-    assert_eq!(report.diagnostics.fidelity.unwrap().nuisance_count_reduced, Some(retained_rank));
+    assert_eq!(report.diagnostics.factorization.as_ref().unwrap().retained_rank, retained_rank);
+    assert_eq!(
+        report.diagnostics.fidelity.as_ref().unwrap().nuisance_count_reduced,
+        Some(retained_rank)
+    );
     assert_eq!(
         report.explicit_boundaries,
         vec![
@@ -486,6 +492,26 @@ fn test_derive_simplified_likelihood_core_from_workspace_reduces_to_requested_ba
             "derived_from_workspace preserves reduced nuisance coordinates, not source-level nuisance identities"
                 .to_string(),
         ]
+    );
+
+    let serialized_workspace =
+        serialize_canonical_simplified_likelihood_workspace_pretty(&derived.workspace)
+            .expect("derived workspace should serialize canonically");
+    let precomputed_report = build_simplified_likelihood_export_report_with_workspace_bytes(
+        &config,
+        &metadata,
+        &derived,
+        &serialized_workspace,
+    )
+    .expect("precomputed workspace bytes should emit export report");
+    assert_eq!(
+        serde_json::to_value(&precomputed_report).expect("precomputed report should serialize"),
+        serde_json::to_value(&report).expect("report should serialize")
+    );
+    assert_eq!(precomputed_report.output.json_bytes, serialized_workspace.len());
+    assert_eq!(
+        precomputed_report.output.json_sha256,
+        format!("{:x}", Sha256::digest(&serialized_workspace))
     );
 }
 

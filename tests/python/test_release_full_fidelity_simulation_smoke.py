@@ -33,6 +33,9 @@ def test_release_candidate_workflow_uploads_are_parsed() -> None:
 
     assert "simplified-likelihood-exporter-surface-report" in names
     assert "validation-pack" in names
+    assert "sota-claim-matrix-report" in names
+    assert "public-sota-bundle" in names
+    assert "v1-sota-policy-report" in names
     assert "release-candidate-bundle" in names
     assert "wheels-${{ matrix.target }}" in names
 
@@ -48,6 +51,8 @@ def test_release_full_fidelity_simulation_stages_canonical_release_assets(tmp_pa
     assert "promotion_evidence.json" in staged_names
     assert "validation_report.json" in staged_names
     assert "m15_bundle_manifest.json" in staged_names
+    assert "public_sota_bundle.json" in staged_names
+    assert "v1_sota_policy_report.json" in staged_names
     assert any(name.endswith(".whl") for name in staged_names)
     assert any(name.endswith(".tar.gz") for name in staged_names)
     assert (staged_root / "export_benchmark_snapshot_report.json").exists()
@@ -55,6 +60,9 @@ def test_release_full_fidelity_simulation_stages_canonical_release_assets(tmp_pa
 
     inventory = report["workflow_artifacts"]
     assert "simplified-likelihood-exporter-surface-report" in inventory
+    assert "sota-claim-matrix-report" in inventory
+    assert "public-sota-bundle" in inventory
+    assert "v1-sota-policy-report" in inventory
     assert any(
         item.endswith(
             "simplified-likelihood-exporter-surface-report/benchmarks/artifacts/simplified_likelihood_export_benchmarks/nextstat-bench/current/export_benchmark_snapshot_report.json"

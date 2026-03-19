@@ -1403,33 +1403,22 @@ dependencies = [
 
 [[package]]
 name = "ns-ad"
-version = "0.9.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "criterion",
  "env_logger",
  "log",
  "ndarray",
- "ns-core 0.9.0",
+ "ns-core",
  "num-traits",
  "proptest",
  "thiserror 2.0.18",
 ]
 
 [[package]]
-name = "ns-ad"
-version = "0.9.6"
-dependencies = [
- "log",
- "ndarray",
- "ns-core 0.9.6",
- "num-traits",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "ns-compute"
-version = "0.9.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "block",
@@ -1439,7 +1428,7 @@ dependencies = [
  "log",
  "metal",
  "ndarray",
- "ns-core 0.9.0",
+ "ns-core",
  "ns-unbinned",
  "objc",
  "proptest",
@@ -1450,22 +1439,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "ns-compute"
-version = "0.9.6"
-dependencies = [
- "log",
- "ndarray",
- "ns-core 0.9.6",
- "rayon",
- "sha2",
- "statrs",
- "thiserror 2.0.18",
- "wide 1.1.1",
-]
-
-[[package]]
 name = "ns-core"
-version = "0.9.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "criterion",
@@ -1478,18 +1453,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "ns-core"
-version = "0.9.6"
-dependencies = [
- "log",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "ns-inference"
-version = "0.9.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "argmin",
@@ -1500,35 +1465,11 @@ dependencies = [
  "log",
  "nalgebra",
  "ndarray",
- "ns-ad 0.9.0",
- "ns-compute 0.9.0",
- "ns-core 0.9.0",
- "ns-prob 0.9.0",
- "ns-translate 0.9.0",
- "rand",
- "rand_distr",
- "rayon",
- "serde",
- "serde_json",
- "statrs",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "ns-inference"
-version = "0.9.6"
-dependencies = [
- "argmin",
- "argmin-math",
- "getrandom 0.3.4",
- "log",
- "nalgebra",
- "ndarray",
- "ns-ad 0.9.6",
- "ns-compute 0.9.6",
- "ns-core 0.9.6",
- "ns-prob 0.9.6",
- "ns-translate 0.9.6",
+ "ns-ad",
+ "ns-compute",
+ "ns-core",
+ "ns-prob",
+ "ns-translate",
  "rand",
  "rand_distr",
  "rayon",
@@ -1540,26 +1481,18 @@ dependencies = [
 
 [[package]]
 name = "ns-prob"
-version = "0.9.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "criterion",
- "ns-core 0.9.0",
+ "ns-core",
  "proptest",
- "statrs",
-]
-
-[[package]]
-name = "ns-prob"
-version = "0.9.6"
-dependencies = [
- "ns-core 0.9.6",
  "statrs",
 ]
 
 [[package]]
 name = "ns-root"
-version = "0.9.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "criterion",
@@ -1578,7 +1511,7 @@ dependencies = [
 
 [[package]]
 name = "ns-translate"
-version = "0.9.0"
+version = "0.10.1"
 dependencies = [
  "approx",
  "arrow",
@@ -1587,9 +1520,9 @@ dependencies = [
  "json-patch",
  "log",
  "memmap2",
- "ns-ad 0.9.0",
- "ns-compute 0.9.0",
- "ns-core 0.9.0",
+ "ns-ad",
+ "ns-compute",
+ "ns-core",
  "ns-root",
  "ns-unbinned",
  "parquet",
@@ -1604,37 +1537,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "ns-translate"
-version = "0.9.6"
-dependencies = [
- "json-patch",
- "log",
- "ns-ad 0.9.6",
- "ns-compute 0.9.6",
- "ns-core 0.9.6",
- "rayon",
- "roxmltree",
- "serde",
- "serde_json",
- "serde_yaml_ng",
- "sha2",
- "statrs",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "ns-unbinned"
-version = "0.9.0"
+version = "0.10.1"
 dependencies = [
  "anyhow",
  "approx",
  "arrow",
  "bytes",
  "criterion",
- "ns-core 0.9.0",
- "ns-inference 0.9.0",
+ "ns-core",
+ "ns-inference",
  "ns-root",
- "ns-translate 0.9.0",
+ "ns-translate",
  "ort",
  "parquet",
  "rand",
@@ -1657,13 +1571,13 @@ dependencies = [
 
 [[package]]
 name = "nsr"
-version = "0.9.0"
+version = "0.10.1"
 dependencies = [
  "extendr-api",
  "nalgebra",
- "ns-core 0.9.6",
- "ns-inference 0.9.6",
- "ns-translate 0.9.6",
+ "ns-core",
+ "ns-inference",
+ "ns-translate",
  "rayon",
  "serde_json",
 ]

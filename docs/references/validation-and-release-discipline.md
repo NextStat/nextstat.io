@@ -198,6 +198,9 @@ The public quality system is intentionally executable. The core commands are:
 | `pytest ...` | correctness/contracts | Python, CLI, server, schema, and release-process checks |
 | `python3 -m scripts.release_surface_matrix --check` | governance | validates the release inventory |
 | `python3 -m scripts.hep_surface_matrix --check` | governance | validates the HEP maturity inventory |
+| `python3 -m scripts.sota_claim_matrix --check` | governance/claim | validates the narrow public SOTA boundary against docs and references |
+| `python3 -m scripts.public_sota_bundle --check` | governance/claim | validates the end-to-end public SOTA evidence bundle |
+| `python3 -m scripts.v1_sota_policy --release-tag vX.Y.Z --check` | governance/release | validates the v1.0-ready policy boundary for the current release tag |
 | `python3 -m scripts.hep_validation_bundle --check` | governance/evidence | validates the canonical HEP bundle contract |
 | `make validation-pack` | regulated evidence | deterministic validation report and qualification-facing artifacts |
 | `make apex2-pre-release-gate` | prerelease | governance/perf summary, release reports, local dry-run |
@@ -210,6 +213,12 @@ The canonical prerelease outputs are:
 | `tmp/apex2_pre_release_gate_summary.json` | machine-readable overall prerelease outcome |
 | `tmp/apex2_pre_release_gate_summary.md` | maintainer-readable summary |
 | `tmp/release_surface_matrix_report.json` | required/advisory/manual surface coverage |
+| `tmp/sota_claim_matrix_report.json` | machine-readable public SOTA claim boundary |
+| `tmp/sota_claim_matrix_report.md` | maintainer-readable SOTA boundary summary |
+| `tmp/public_sota_bundle.json` | machine-readable public SOTA evidence bundle |
+| `tmp/public_sota_bundle.md` | maintainer-readable public SOTA bundle |
+| `tmp/v1_sota_policy_report.json` | machine-readable v1.0-ready policy result |
+| `tmp/v1_sota_policy_report.md` | maintainer-readable v1.0-ready policy summary |
 | `tmp/release_manifest.json` | candidate publish contract |
 | `tmp/release_full_fidelity_simulation_report.json` | local release staging result |
 | `tmp/release_candidate_bundle/` | candidate asset bundle for review |

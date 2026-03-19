@@ -121,10 +121,12 @@ jobs:
       - name: Download CLI release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: NextStat/nextstat.io
         run: |
           set -euo pipefail
           mkdir -p dist
           gh release download "${GITHUB_REF_NAME}" \
+            --repo "${GH_REPO}" \
             --pattern 'nextstat_cli-*.whl' \
             --pattern 'nextstat_cli-*.tar.gz' \
             --dir dist
@@ -170,10 +172,12 @@ jobs:
       - name: Download nextstat release assets
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: NextStat/nextstat.io
         run: |
           set -euo pipefail
           mkdir -p dist
           gh release download "${GITHUB_REF_NAME}" \
+            --repo "${GH_REPO}" \
             --pattern 'nextstat-*.whl' \
             --pattern 'nextstat-*.tar.gz' \
             --dir dist

@@ -14,9 +14,9 @@ members = [
 ]
 
 [workspace.package]
-version = "0.9.0"
+version = "0.10.1"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.93"
 authors = ["NextStat Contributors"]
 license = "AGPL-3.0-or-later OR LicenseRef-Commercial"
 repository = "https://github.com/NextStat/nextstat.io"
@@ -26,14 +26,14 @@ categories = ["science", "mathematics"]
 
 [workspace.dependencies]
 # Internal crates vendored into bindings/ns-r/crates for CRAN tarball buildability.
-ns-core = { path = "crates/ns-core", version = "0.9.0" }
-ns-compute = { path = "crates/ns-compute", version = "0.9.0" }
-ns-ad = { path = "crates/ns-ad", version = "0.9.0" }
-ns-prob = { path = "crates/ns-prob", version = "0.9.0" }
-ns-root = { path = "crates/ns-root", version = "0.9.0" }
-ns-translate = { path = "crates/ns-translate", version = "0.9.0", default-features = false }
-ns-inference = { path = "crates/ns-inference", version = "0.9.0", default-features = false }
-ns-unbinned = { path = "crates/ns-unbinned", version = "0.9.0" }
+ns-core = { path = "crates/ns-core", version = "0.10.1" }
+ns-compute = { path = "crates/ns-compute", version = "0.10.1" }
+ns-ad = { path = "crates/ns-ad", version = "0.10.1" }
+ns-prob = { path = "crates/ns-prob", version = "0.10.1" }
+ns-root = { path = "crates/ns-root", version = "0.10.1" }
+ns-translate = { path = "crates/ns-translate", version = "0.10.1", default-features = false }
+ns-inference = { path = "crates/ns-inference", version = "0.10.1", default-features = false }
+ns-unbinned = { path = "crates/ns-unbinned", version = "0.10.1" }
 
 # Shared external dependencies used by vendored workspace crates.
 thiserror = "2.0"

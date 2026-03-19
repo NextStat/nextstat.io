@@ -252,6 +252,9 @@ After approval, a maintainer will merge your PR into `main`.
 - [ ] Follow the canonical release runbook: `docs/releases/release-runbook.md`
 - [ ] Review `tmp/apex2_pre_release_gate_summary.json` and `tmp/apex2_pre_release_gate_summary.md`
 - [ ] Review `tmp/release_surface_matrix_report.json` and `tmp/release_surface_matrix_report.md`
+- [ ] Review `tmp/sota_claim_matrix_report.json` and `tmp/sota_claim_matrix_report.md`
+- [ ] Review `tmp/public_sota_bundle.json` and `tmp/public_sota_bundle.md`
+- [ ] Review `tmp/v1_sota_policy_report.json` and `tmp/v1_sota_policy_report.md`
 - [ ] Review `tmp/release_manifest.json` and `tmp/release_manifest.md`
 - [ ] Review `tmp/release_full_fidelity_simulation_report.json` and `tmp/release_full_fidelity_simulation_report.md`
 - [ ] Review `tmp/release_candidate_bundle/`

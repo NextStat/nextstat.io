@@ -621,17 +621,43 @@
         "speedup"
       ],
       "properties": {
+        "full_end_to_end_upper_limit_wall_s_stats": { "$ref": "#/$defs/wall_s_stats" },
         "export_wall_s": { "type": "number", "minimum": 0.0 },
+        "export_wall_s_stats": { "$ref": "#/$defs/wall_s_stats" },
         "exported_end_to_end_upper_limit_wall_s": { "type": "number", "minimum": 0.0 },
+        "exported_end_to_end_upper_limit_wall_s_stats": { "$ref": "#/$defs/wall_s_stats" },
         "net_end_to_end_upper_limit_wall_s": { "type": "number", "minimum": 0.0 },
+        "median_estimated_net_end_to_end_upper_limit_wall_s": {
+          "type": "number",
+          "minimum": 0.0
+        },
         "speedup": {
           "type": "object",
           "additionalProperties": false,
           "required": ["net_end_to_end_upper_limit"],
           "properties": {
-            "net_end_to_end_upper_limit": { "type": "number", "minimum": 0.0 }
+            "net_end_to_end_upper_limit": { "type": "number", "minimum": 0.0 },
+            "median_estimated_net_end_to_end_upper_limit": {
+              "type": "number",
+              "minimum": 0.0
+            }
           }
         }
+      }
+    },
+    "wall_s_stats": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["samples_s", "min_s", "median_s", "max_s"],
+      "properties": {
+        "samples_s": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "number", "minimum": 0.0 }
+        },
+        "min_s": { "type": "number", "minimum": 0.0 },
+        "median_s": { "type": "number", "minimum": 0.0 },
+        "max_s": { "type": "number", "minimum": 0.0 }
       }
     },
     "export_gates": {
@@ -738,7 +764,11 @@
         "all_performance_gates_pass": { "type": "boolean" },
         "max_abs_q_mu_diff": { "type": "number", "minimum": 0.0 },
         "max_upper_limit_ratio_deviation": { "type": "number", "minimum": 0.0 },
-        "min_net_end_to_end_upper_limit_speedup": { "type": "number", "minimum": 0.0 }
+        "min_net_end_to_end_upper_limit_speedup": { "type": "number", "minimum": 0.0 },
+        "min_median_estimated_net_end_to_end_upper_limit_speedup": {
+          "type": "number",
+          "minimum": 0.0
+        }
       }
     },
     "export_matrix": {
@@ -826,6 +856,10 @@
           "minimum": 0
         },
         "export_matrix_min_net_end_to_end_upper_limit_speedup": {
+          "type": "number",
+          "minimum": 0.0
+        },
+        "export_matrix_min_median_estimated_net_end_to_end_upper_limit_speedup": {
           "type": "number",
           "minimum": 0.0
         },

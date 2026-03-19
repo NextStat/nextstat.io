@@ -157,6 +157,22 @@ pub fn build_simplified_likelihood_export_report(
     metadata: &SimplifiedLikelihoodDeriveMetadata,
     derived: &SimplifiedLikelihoodDerivedCore,
 ) -> Result<SimplifiedLikelihoodExportReport> {
+    let serialized_workspace =
+        serialize_canonical_simplified_likelihood_workspace_pretty(&derived.workspace)?;
+    build_simplified_likelihood_export_report_with_workspace_bytes(
+        config,
+        metadata,
+        derived,
+        &serialized_workspace,
+    )
+}
+
+pub fn build_simplified_likelihood_export_report_with_workspace_bytes(
+    config: &SimplifiedLikelihoodDeriveConfig,
+    metadata: &SimplifiedLikelihoodDeriveMetadata,
+    derived: &SimplifiedLikelihoodDerivedCore,
+    serialized_workspace: &[u8],
+) -> Result<SimplifiedLikelihoodExportReport> {
     let diagnostics = derived.workspace.diagnostics.clone().ok_or_else(|| {
         Error::Validation(
             "derived simplified-likelihood workspace must include diagnostics before export report generation"
@@ -182,14 +198,6 @@ pub fn build_simplified_likelihood_export_report(
                 .to_string(),
         )
     })?;
-    let canonical_workspace_value =
-        canonicalize_json_value(&serde_json::to_value(&derived.workspace).map_err(|err| {
-            Error::Validation(format!("failed to convert derived workspace into JSON value: {err}"))
-        })?);
-    let serialized_workspace =
-        serde_json::to_vec_pretty(&canonical_workspace_value).map_err(|err| {
-            Error::Validation(format!("failed to serialize derived workspace: {err}"))
-        })?;
     let reduced_nuisance_count = match &derived.workspace.uncertainty_model {
         SimplifiedUncertaintyModel::Basis { components } => components.len(),
         SimplifiedUncertaintyModel::Covariance { total_covariance, .. } => total_covariance.len(),
@@ -251,12 +259,23 @@ pub fn build_simplified_likelihood_export_report(
             reduced_nuisance_count,
             reduction_ratio,
             json_bytes: serialized_workspace.len(),
-            json_sha256: format!("{:x}", Sha256::digest(&serialized_workspace)),
+            json_sha256: format!("{:x}", Sha256::digest(serialized_workspace)),
         },
         diagnostics,
         unsupported_semantics: config.unsupported_semantics.clone(),
         explicit_boundaries,
     })
+}
+
+pub fn serialize_canonical_simplified_likelihood_workspace_pretty(
+    workspace: &SimplifiedLikelihoodWorkspace,
+) -> Result<Vec<u8>> {
+    let canonical_workspace_value =
+        canonicalize_json_value(&serde_json::to_value(workspace).map_err(|err| {
+            Error::Validation(format!("failed to convert derived workspace into JSON value: {err}"))
+        })?);
+    serde_json::to_vec_pretty(&canonical_workspace_value)
+        .map_err(|err| Error::Validation(format!("failed to serialize derived workspace: {err}")))
 }
 
 fn canonicalize_json_value(value: &serde_json::Value) -> serde_json::Value {

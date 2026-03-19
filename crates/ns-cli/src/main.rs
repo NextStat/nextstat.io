@@ -5987,16 +5987,19 @@ fn cmd_simplify_workspace(
     derived.workspace.diagnostics.get_or_insert_with(Default::default).fidelity = Some(fidelity);
 
     ns_translate::simplified::validate::validate_simplified_likelihood(&derived.workspace)?;
+    let workspace_json = serde_json::to_value(&derived.workspace)?;
+    let workspace_bytes = canonical_json_bytes(&workspace_json)?;
     let export_report =
-        ns_translate::simplified::export::build_simplified_likelihood_export_report(
+        ns_translate::simplified::export::build_simplified_likelihood_export_report_with_workspace_bytes(
             &derive_config,
             &metadata,
             &derived,
+            &workspace_bytes,
         )?;
     if let Some(report_path) = report {
         write_json(Some(report_path), &serde_json::to_value(&export_report)?)?;
     }
-    write_json(output, &serde_json::to_value(&derived.workspace)?)?;
+    write_json_bytes(output, &workspace_bytes)?;
     Ok(())
 }
 
@@ -13447,8 +13450,7 @@ fn load_workspace_and_model(
 
     tracing::info!(path = %input.display(), "loading workspace");
     let json = std::fs::read_to_string(input)?;
-    reject_non_pyhf_json_input("this command", ns_translate::detect::detect_format(&json))?;
-    let workspace: ns_translate::pyhf::Workspace = serde_json::from_str(&json)?;
+    let workspace = parse_pyhf_workspace_or_reject("this command", &json)?;
     let model = match interp_defaults {
         InterpDefaults::Pyhf => ns_translate::pyhf::HistFactoryModel::from_workspace_with_settings(
             &workspace,
@@ -13459,6 +13461,19 @@ fn load_workspace_and_model(
     };
     tracing::info!(parameters = model.parameters().len(), "workspace loaded");
     Ok((workspace, model))
+}
+
+fn parse_pyhf_workspace_or_reject(
+    command_label: &str,
+    json: &str,
+) -> Result<ns_translate::pyhf::Workspace> {
+    match serde_json::from_str::<ns_translate::pyhf::Workspace>(json) {
+        Ok(workspace) => Ok(workspace),
+        Err(parse_err) => {
+            reject_non_pyhf_json_input(command_label, ns_translate::detect::detect_format(json))?;
+            Err(parse_err.into())
+        }
+    }
 }
 
 fn normalize_json_for_determinism(mut value: serde_json::Value) -> serde_json::Value {
@@ -13686,23 +13701,36 @@ fn canonicalize_json(value: &serde_json::Value) -> serde_json::Value {
     }
 }
 
-fn write_json(output: Option<&PathBuf>, value: &serde_json::Value) -> Result<()> {
+fn canonical_json_bytes(value: &serde_json::Value) -> Result<Vec<u8>> {
     let value = canonicalize_json(value);
-    if let Some(path) = output {
-        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-            let ext_lower = ext.to_ascii_lowercase();
-            if matches!(ext_lower.as_str(), "png" | "pdf" | "svg" | "jpeg" | "jpg") {
-                tracing::warn!(
-                    "output path has image extension .{ext_lower} but this command writes JSON; \
-                     use `nextstat viz render --kind ... --input <artifact.json> --output {p}` \
-                     to produce an image",
-                    p = path.display(),
-                );
-            }
+    Ok(serde_json::to_vec_pretty(&value)?)
+}
+
+fn warn_if_json_output_looks_like_image(path: &PathBuf) {
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        let ext_lower = ext.to_ascii_lowercase();
+        if matches!(ext_lower.as_str(), "png" | "pdf" | "svg" | "jpeg" | "jpg") {
+            tracing::warn!(
+                "output path has image extension .{ext_lower} but this command writes JSON; \
+                 use `nextstat viz render --kind ... --input <artifact.json> --output {p}` \
+                 to produce an image",
+                p = path.display(),
+            );
         }
-        std::fs::write(path, serde_json::to_string_pretty(&value)?)?;
+    }
+}
+
+fn write_json(output: Option<&PathBuf>, value: &serde_json::Value) -> Result<()> {
+    let bytes = canonical_json_bytes(value)?;
+    write_json_bytes(output, &bytes)
+}
+
+fn write_json_bytes(output: Option<&PathBuf>, bytes: &[u8]) -> Result<()> {
+    if let Some(path) = output {
+        warn_if_json_output_looks_like_image(path);
+        std::fs::write(path, bytes)?;
     } else {
-        println!("{}", serde_json::to_string_pretty(&value)?);
+        println!("{}", std::str::from_utf8(bytes)?);
     }
     Ok(())
 }
@@ -13736,8 +13764,8 @@ fn write_json_file(path: &std::path::Path, value: &serde_json::Value) -> Result<
     {
         std::fs::create_dir_all(parent)?;
     }
-    let value = canonicalize_json(value);
-    std::fs::write(path, serde_json::to_string_pretty(&value)?)?;
+    let bytes = canonical_json_bytes(value)?;
+    std::fs::write(path, bytes)?;
     Ok(())
 }
 
@@ -18368,6 +18396,41 @@ mod tests {
             .join("2026-03-18_simplified-likelihood-exporter-medium-public-lane-v0.catalog.json")
     }
 
+    fn public_export_case_catalog_path() -> PathBuf {
+        repo_root()
+            .join("docs")
+            .join("specs")
+            .join("apex2_simplified_likelihood_export_public_case_catalog_v0.example.json")
+    }
+
+    fn medium_public_catalog_case(case_name: &str) -> Value {
+        let catalog: Value = serde_json::from_slice(
+            &std::fs::read(medium_public_lane_catalog_path()).expect("catalog should be readable"),
+        )
+        .expect("catalog JSON should deserialize");
+        catalog["cases"]
+            .as_array()
+            .expect("catalog cases should be an array")
+            .iter()
+            .find(|case| case["case_id"].as_str() == Some(case_name))
+            .cloned()
+            .unwrap_or_else(|| panic!("catalog case {case_name} should exist"))
+    }
+
+    fn public_export_catalog_case(case_name: &str) -> Value {
+        let catalog: Value = serde_json::from_slice(
+            &std::fs::read(public_export_case_catalog_path()).expect("catalog should be readable"),
+        )
+        .expect("catalog JSON should deserialize");
+        catalog["cases"]
+            .as_array()
+            .expect("catalog cases should be an array")
+            .iter()
+            .find(|case| case["case_id"].as_str() == Some(case_name))
+            .cloned()
+            .unwrap_or_else(|| panic!("catalog case {case_name} should exist"))
+    }
+
     fn medium_public_timing_derive_config(
     ) -> ns_translate::simplified::export::SimplifiedLikelihoodDeriveConfig {
         serde_json::from_value(serde_json::json!({
@@ -18472,6 +18535,285 @@ mod tests {
             }
         }))
         .expect("catalog case derive config should deserialize")
+    }
+
+    fn run_medium_public_export_timing_report(
+        input: PathBuf,
+        derive_config: ns_translate::simplified::export::SimplifiedLikelihoodDeriveConfig,
+        metadata: ns_translate::simplified::export::SimplifiedLikelihoodDeriveMetadata,
+        label: &str,
+    ) {
+        let t_total = Instant::now();
+
+        let t0 = Instant::now();
+        let (workspace, model) =
+            load_workspace_and_model(&input, 1, InterpDefaults::Root).expect("workspace should load");
+        let load_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let mle = ns_inference::MaximumLikelihoodEstimator::new();
+        let fit = mle.fit(&model).expect("fit should succeed");
+        let prep_fit_s = t0.elapsed().as_secs_f64();
+
+        let fit_json = FitResultJson {
+            schema_version: Some("nextstat_fit_result_v0".to_string()),
+            parameter_names: model.parameters().iter().map(|p| p.name.clone()).collect(),
+            bestfit: fit.parameters.clone(),
+            uncertainties: fit.uncertainties.clone(),
+            covariance: fit.covariance.clone(),
+            nll: fit.nll,
+            converged: fit.converged,
+            n_iter: fit.n_iter,
+            n_fev: fit.n_fev,
+            n_gev: fit.n_gev,
+        };
+
+        let t0 = Instant::now();
+        let aligned_fit =
+            aligned_fit_result_from_fit_json(&model, &fit_json).expect("aligned fit should succeed");
+        let aligned_fit_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let mut derived = ns_translate::simplified::export::derive_simplified_likelihood_core(
+            &workspace,
+            &model,
+            &aligned_fit,
+            &derive_config,
+            &metadata,
+        )
+        .expect("derive core should succeed");
+        let derive_core_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let selected_model = model
+            .with_fit_channel_selection(Some(&derive_config.selection.channels), None)
+            .expect("selected model should build");
+        let selected_model_build_s = t0.elapsed().as_secs_f64();
+        let mut workspace_for_conversion = derived.workspace.clone();
+        workspace_for_conversion.diagnostics.get_or_insert_with(Default::default).fidelity =
+            Some(ns_translate::simplified::schema::SimplifiedFidelityDiagnostics {
+                nuisance_count_full: Some(derived.full_nuisance_count),
+                nuisance_count_reduced: Some(match &derived.workspace.uncertainty_model {
+                    ns_translate::simplified::schema::SimplifiedUncertaintyModel::Basis {
+                        components,
+                    } => components.len(),
+                    ns_translate::simplified::schema::SimplifiedUncertaintyModel::Covariance {
+                        total_covariance,
+                        ..
+                    } => total_covariance.len(),
+                }),
+                bins_count: Some(derived.workspace.bins.len()),
+                relative_background_cov_residual: Some(0.0),
+                max_abs_expected_delta_at_nominal: Some(0.0),
+                max_abs_expected_delta_random_draws: Some(0.0),
+                qmu_delta_smoke: Some(0.0),
+                upper_limit_ratio_smoke: Some(1.0),
+                max_abs_yield_delta: Some(0.0),
+                max_rel_yield_delta: Some(0.0),
+            });
+        let t0 = Instant::now();
+        let simplified_model = ns_translate::simplified::convert::simplified_to_model(
+            &workspace_for_conversion,
+        )
+        .expect("simplified model should build");
+        let simplified_model_build_s = t0.elapsed().as_secs_f64();
+        let qmu_test_mu = derive_config.fidelity_smoke.qmu_test_mu;
+        let upper_limit_cl = derive_config.fidelity_smoke.upper_limit_cl;
+        let selected_warm_start = aligned_fit.parameters.clone();
+        let simplified_warm_start = simplified_model_warm_start(
+            &simplified_model,
+            &derived.workspace.poi.name,
+            aligned_fit.parameters[model.poi_index().expect("model should define a POI")],
+        )
+        .expect("simplified warm start should build");
+
+        let t0 = Instant::now();
+        let _selected_smoke = fitted_wald_smoke_summary_with_start(
+            &mle,
+            &selected_model,
+            Some(selected_warm_start.as_slice()),
+            qmu_test_mu,
+            upper_limit_cl,
+        )
+        .expect("selected smoke should succeed");
+        let selected_smoke_total_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let _selected_minimum = mle
+            .fit_minimum_from(&selected_model, selected_warm_start.as_slice())
+            .expect("selected minimum should succeed");
+        let selected_minimum_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let _simplified_smoke = fitted_wald_smoke_summary_with_start(
+            &mle,
+            &simplified_model,
+            Some(simplified_warm_start.as_slice()),
+            qmu_test_mu,
+            upper_limit_cl,
+        )
+        .expect("simplified smoke should succeed");
+        let simplified_smoke_total_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let _simplified_minimum = mle
+            .fit_minimum_from(&simplified_model, simplified_warm_start.as_slice())
+            .expect("simplified minimum should succeed");
+        let simplified_minimum_s = t0.elapsed().as_secs_f64();
+
+        let selected_flat_indices =
+            flat_indices_from_simplified_bins(&model, &derived.workspace.bins)
+                .expect("flat indices should build");
+
+        let t0 = Instant::now();
+        let mut full_params = aligned_fit.parameters.clone();
+        full_params[model.poi_index().expect("model should define a POI")] = qmu_test_mu;
+        let full_expected_all = model
+            .expected_data(&full_params)
+            .expect("full expected data should build");
+        let full_expected = select_expected_entries(&full_expected_all, &selected_flat_indices)
+            .expect("selected expected entries should build");
+        let simplified_expected = {
+            let mut params: Vec<f64> =
+                simplified_model.parameters().iter().map(|parameter| parameter.init).collect();
+            for (idx, parameter) in simplified_model.parameters().iter().enumerate() {
+                params[idx] = if parameter.name == derived.workspace.poi.name {
+                    qmu_test_mu
+                } else {
+                    0.0
+                };
+            }
+            simplified_model
+                .expected_data(&params)
+                .expect("simplified expected data should build")
+        };
+        let _max_abs_expected_delta_at_nominal = full_expected
+            .iter()
+            .zip(simplified_expected.iter())
+            .map(|(full, simplified)| (full - simplified).abs())
+            .fold(0.0_f64, f64::max);
+        let nominal_delta_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let _relative_background_cov_residual = relative_covariance_residual(
+            &derived.total_background_covariance,
+            &derived.retained_background_covariance,
+        )
+        .expect("relative covariance residual should build");
+        let covariance_residual_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let _max_abs_expected_delta_random_draws = max_abs_random_draw_delta(
+            &derived.total_background_covariance,
+            &derived.retained_background_covariance,
+            derive_config.fidelity_smoke.random_draws,
+        )
+        .expect("random draw delta should build");
+        let random_draw_delta_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let fidelity =
+            build_simplified_likelihood_fidelity(&model, &aligned_fit, &derive_config, &derived)
+                .expect("fidelity should succeed");
+        let fidelity_s = t0.elapsed().as_secs_f64();
+        derived.workspace.diagnostics.get_or_insert_with(Default::default).fidelity = Some(fidelity);
+
+        let t0 = Instant::now();
+        ns_translate::simplified::validate::validate_simplified_likelihood(&derived.workspace)
+            .expect("validation should succeed");
+        let validate_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let workspace_json = serde_json::to_value(&derived.workspace)
+            .expect("workspace JSON conversion should succeed");
+        let workspace_json_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let workspace_bytes =
+            canonical_json_bytes(&workspace_json).expect("workspace serialization should succeed");
+        let workspace_serialize_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let export_report =
+            ns_translate::simplified::export::build_simplified_likelihood_export_report_with_workspace_bytes(
+                &derive_config,
+                &metadata,
+                &derived,
+                &workspace_bytes,
+            )
+            .expect("export report should succeed");
+        let export_report_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let report_json =
+            serde_json::to_value(&export_report).expect("report JSON conversion should succeed");
+        let report_json_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let report_bytes = serde_json::to_vec_pretty(&report_json)
+            .expect("report serialization should succeed");
+        let report_serialize_s = t0.elapsed().as_secs_f64();
+
+        let total_s = t_total.elapsed().as_secs_f64();
+        let exporter_total_s = total_s - prep_fit_s;
+        eprintln!(
+            "{label} load={load_s:.6}s prep_fit={prep_fit_s:.6}s align_fit={aligned_fit_s:.6}s derive_core={derive_core_s:.6}s selected_model_build={selected_model_build_s:.6}s simplified_model_build={simplified_model_build_s:.6}s nominal_delta={nominal_delta_s:.6}s covariance_residual={covariance_residual_s:.6}s random_draw_delta={random_draw_delta_s:.6}s fidelity={fidelity_s:.6}s selected_smoke_total={selected_smoke_total_s:.6}s selected_minimum={selected_minimum_s:.6}s selected_post_minimum_est={:.6}s simplified_smoke_total={simplified_smoke_total_s:.6}s simplified_minimum={simplified_minimum_s:.6}s simplified_post_minimum_est={:.6}s validate={validate_s:.6}s export_report={export_report_s:.6}s workspace_json={workspace_json_s:.6}s workspace_serialize={workspace_serialize_s:.6}s report_json={report_json_s:.6}s report_serialize={report_serialize_s:.6}s exporter_total={exporter_total_s:.6}s total_with_fit={total_s:.6}s workspace_bytes={} report_bytes={}",
+            (selected_smoke_total_s - selected_minimum_s).max(0.0),
+            (simplified_smoke_total_s - simplified_minimum_s).max(0.0),
+            workspace_bytes.len(),
+            report_bytes.len(),
+        );
+    }
+
+    fn run_load_workspace_and_model_timing_report(
+        input: PathBuf,
+        threads: usize,
+        interp_defaults: InterpDefaults,
+        label: &str,
+    ) {
+        let t_total = Instant::now();
+
+        let t0 = Instant::now();
+        setup_runtime(threads, false);
+        let setup_runtime_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let json = std::fs::read_to_string(&input).expect("workspace JSON should be readable");
+        let read_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let format = ns_translate::detect::detect_format(&json);
+        reject_non_pyhf_json_input("this command", format).expect("workspace should be pyhf JSON");
+        let detect_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let workspace: ns_translate::pyhf::Workspace =
+            serde_json::from_str(&json).expect("workspace JSON should deserialize");
+        let parse_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let model = match interp_defaults {
+            InterpDefaults::Pyhf => ns_translate::pyhf::HistFactoryModel::from_workspace_with_settings(
+                &workspace,
+                ns_translate::pyhf::NormSysInterpCode::Code1,
+                ns_translate::pyhf::HistoSysInterpCode::Code0,
+            )
+            .expect("pyhf-default model should build"),
+            InterpDefaults::Root => {
+                ns_translate::pyhf::HistFactoryModel::from_workspace(&workspace)
+                    .expect("root-default model should build")
+            }
+        };
+        let model_build_s = t0.elapsed().as_secs_f64();
+
+        let total_s = t_total.elapsed().as_secs_f64();
+        eprintln!(
+            "{label} setup_runtime={setup_runtime_s:.6}s read={read_s:.6}s detect={detect_s:.6}s parse={parse_s:.6}s model_build={model_build_s:.6}s load_total={total_s:.6}s bytes={} channels={} measurements={} parameters={}",
+            json.len(),
+            workspace.channels.len(),
+            workspace.measurements.len(),
+            model.parameters().len(),
+        );
     }
 
     #[test]
@@ -18731,6 +19073,47 @@ mod tests {
     }
 
     #[test]
+    fn parse_pyhf_workspace_or_reject_accepts_valid_pyhf_workspace() {
+        let json = std::fs::read_to_string(fixture_path("simple_workspace.json"))
+            .expect("simple workspace fixture should be readable");
+        let workspace =
+            parse_pyhf_workspace_or_reject("timing test", &json).expect("pyhf workspace should parse");
+        assert!(!workspace.channels.is_empty(), "workspace should include channels");
+        assert!(
+            !workspace.measurements.is_empty(),
+            "workspace should include measurements"
+        );
+    }
+
+    #[test]
+    fn parse_pyhf_workspace_or_reject_rejects_hs3_with_scope_message() {
+        let json = std::fs::read_to_string(fixture_path("workspace-postFit_PTV.json"))
+            .expect("HS3 fixture should be readable");
+        let err = parse_pyhf_workspace_or_reject("timing test", &json)
+            .expect_err("HS3 should be rejected for pyhf-only parsing");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("pyhf JSON input") && msg.contains("HS3"),
+            "unexpected HS3 rejection message: {msg}"
+        );
+    }
+
+    #[test]
+    fn parse_pyhf_workspace_or_reject_rejects_simplified_with_scope_message() {
+        let json = std::fs::read_to_string(
+            repo_root().join("docs/specs/hep/simplified_likelihood_v0.example.json"),
+        )
+        .expect("simplified-likelihood example should be readable");
+        let err = parse_pyhf_workspace_or_reject("timing test", &json)
+            .expect_err("simplified-likelihood JSON should be rejected for pyhf-only parsing");
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("pyhf JSON input") && msg.contains("simplified-likelihood JSON"),
+            "unexpected simplified-likelihood rejection message: {msg}"
+        );
+    }
+
+    #[test]
     #[ignore = "internal timing report; run explicitly"]
     fn simplified_likelihood_medium_public_export_timing_report() {
         let input = fixture_path("atlas_public_dual_sr_vr_dual_cr_gaussian_workspace.json");
@@ -18741,19 +19124,200 @@ mod tests {
             reference: "internal://timing-report".to_string(),
             description: Some("Internal timing report for medium-public exporter lane".to_string()),
         };
+        run_medium_public_export_timing_report(
+            input,
+            derive_config,
+            metadata,
+            "sl-medium-public-export-timing-report",
+        );
+    }
 
-        let t_total = Instant::now();
+    #[test]
+    #[ignore = "internal canonical ATLAS medium-public timing report; run explicitly"]
+    fn simplified_likelihood_medium_public_atlas_dual_sr_vr_dual_cr_export_timing_report() {
+        let case =
+            medium_public_catalog_case("atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example");
+        let input = repo_root().join(
+            case["workspace_json_path"]
+                .as_str()
+                .expect("workspace_json_path should be a string"),
+        );
+        let derive_config = derive_config_for_catalog_case(&case);
+        let metadata = ns_translate::simplified::export::SimplifiedLikelihoodDeriveMetadata {
+            experiment: case["experiment"]
+                .as_str()
+                .expect("experiment should be a string")
+                .to_string(),
+            analysis_id: format!(
+                "{}.timing.canonical-atlas-hotspot",
+                case["analysis_id"]
+                    .as_str()
+                    .expect("analysis_id should be a string")
+            ),
+            reference: "internal://timing-canonical-atlas-hotspot".to_string(),
+            description: Some(format!(
+                "Internal timing report for canonical ATLAS hotspot {}",
+                case["case_id"].as_str().expect("case_id should be a string")
+            )),
+        };
+        run_medium_public_export_timing_report(
+            input,
+            derive_config,
+            metadata,
+            "sl-medium-public-canonical-atlas-hotspot-export-timing-report",
+        );
+    }
 
-        let t0 = Instant::now();
+    #[test]
+    #[ignore = "internal floor-case timing report; run explicitly"]
+    fn simplified_likelihood_medium_public_floor_case_export_timing_report() {
+        let case = medium_public_catalog_case("cms_public_dual_sr_cr_gaussian_export_stable_example");
+        let input = repo_root().join(
+            case["workspace_json_path"]
+                .as_str()
+                .expect("workspace_json_path should be a string"),
+        );
+        let derive_config = derive_config_for_catalog_case(&case);
+        let metadata = ns_translate::simplified::export::SimplifiedLikelihoodDeriveMetadata {
+            experiment: case["experiment"].as_str().expect("experiment should be a string").to_string(),
+            analysis_id: format!(
+                "{}.timing.floor",
+                case["analysis_id"].as_str().expect("analysis_id should be a string")
+            ),
+            reference: "internal://timing-floor-case".to_string(),
+            description: Some(format!(
+                "Internal timing report for floor case {}",
+                case["case_id"].as_str().expect("case_id should be a string")
+            )),
+        };
+        run_medium_public_export_timing_report(
+            input,
+            derive_config,
+            metadata,
+            "sl-medium-public-floor-export-timing-report",
+        );
+    }
+
+    #[test]
+    #[ignore = "internal sr/cr floor timing report; run explicitly"]
+    fn simplified_likelihood_public_sr_cr_floor_timing_report() {
+        for (case_id, label_suffix) in [
+            (
+                "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+                "cms-asym",
+            ),
+            ("cms_public_sr_cr_export_stable_example", "cms"),
+            ("atlas_public_sr_cr_gaussian_export_stable_example", "atlas"),
+        ] {
+            let case = public_export_catalog_case(case_id);
+            let input = repo_root().join(
+                case["workspace_json_path"]
+                    .as_str()
+                    .expect("workspace_json_path should be a string"),
+            );
+            let derive_config = derive_config_for_catalog_case(&case);
+            let metadata = ns_translate::simplified::export::SimplifiedLikelihoodDeriveMetadata {
+                experiment: case["experiment"]
+                    .as_str()
+                    .expect("experiment should be a string")
+                    .to_string(),
+                analysis_id: format!(
+                    "{}.timing.sr-cr-floor",
+                    case["analysis_id"]
+                        .as_str()
+                        .expect("analysis_id should be a string")
+                ),
+                reference: "internal://timing-sr-cr-floor-case".to_string(),
+                description: Some(format!(
+                    "Internal timing report for sr/cr floor case {}",
+                    case["case_id"].as_str().expect("case_id should be a string")
+                )),
+            };
+            run_medium_public_export_timing_report(
+                input,
+                derive_config,
+                metadata,
+                &format!("sl-public-sr-cr-floor-export-timing-report[{label_suffix}]"),
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "internal load timing report for sr/cr floor cases; run explicitly"]
+    fn simplified_likelihood_public_sr_cr_load_timing_report() {
+        for (case_id, label_suffix) in [
+            (
+                "cms_public_sr_cr_asymmetric_gaussian_export_stable_example",
+                "cms-asym",
+            ),
+            ("cms_public_sr_cr_export_stable_example", "cms"),
+            ("atlas_public_sr_cr_gaussian_export_stable_example", "atlas"),
+        ] {
+            let case = public_export_catalog_case(case_id);
+            let input = repo_root().join(
+                case["workspace_json_path"]
+                    .as_str()
+                    .expect("workspace_json_path should be a string"),
+            );
+            run_load_workspace_and_model_timing_report(
+                input,
+                1,
+                InterpDefaults::Root,
+                &format!("sl-public-sr-cr-load-timing-report[{label_suffix}]"),
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "internal load timing report for canonical ATLAS medium-public hotspot; run explicitly"]
+    fn simplified_likelihood_medium_public_atlas_dual_sr_vr_dual_cr_load_timing_report() {
+        let case =
+            medium_public_catalog_case("atlas_public_dual_sr_vr_dual_cr_gaussian_export_stable_example");
+        let input = repo_root().join(
+            case["workspace_json_path"]
+                .as_str()
+                .expect("workspace_json_path should be a string"),
+        );
+        run_load_workspace_and_model_timing_report(
+            input,
+            1,
+            InterpDefaults::Root,
+            "sl-medium-public-canonical-atlas-hotspot-load-timing-report",
+        );
+    }
+
+    #[test]
+    #[ignore = "internal simplified-smoke backend probe for sr/cr floor case; run explicitly"]
+    fn simplified_likelihood_public_sr_cr_simplified_smoke_backend_probe() {
+        let case = public_export_catalog_case("cms_public_sr_cr_export_stable_example");
+        let input = repo_root().join(
+            case["workspace_json_path"]
+                .as_str()
+                .expect("workspace_json_path should be a string"),
+        );
+        let derive_config = derive_config_for_catalog_case(&case);
+        let metadata = ns_translate::simplified::export::SimplifiedLikelihoodDeriveMetadata {
+            experiment: case["experiment"]
+                .as_str()
+                .expect("experiment should be a string")
+                .to_string(),
+            analysis_id: format!(
+                "{}.timing.simplified-smoke-backend",
+                case["analysis_id"]
+                    .as_str()
+                    .expect("analysis_id should be a string")
+            ),
+            reference: "internal://timing-simplified-smoke-backend".to_string(),
+            description: Some(format!(
+                "Internal backend probe for simplified smoke path of {}",
+                case["case_id"].as_str().expect("case_id should be a string")
+            )),
+        };
+
         let (workspace, model) =
             load_workspace_and_model(&input, 1, InterpDefaults::Root).expect("workspace should load");
-        let load_s = t0.elapsed().as_secs_f64();
-
-        let t0 = Instant::now();
         let mle = ns_inference::MaximumLikelihoodEstimator::new();
         let fit = mle.fit(&model).expect("fit should succeed");
-        let prep_fit_s = t0.elapsed().as_secs_f64();
-
         let fit_json = FitResultJson {
             schema_version: Some("nextstat_fit_result_v0".to_string()),
             parameter_names: model.parameters().iter().map(|p| p.name.clone()).collect(),
@@ -18766,14 +19330,9 @@ mod tests {
             n_fev: fit.n_fev,
             n_gev: fit.n_gev,
         };
-
-        let t0 = Instant::now();
         let aligned_fit =
             aligned_fit_result_from_fit_json(&model, &fit_json).expect("aligned fit should succeed");
-        let aligned_fit_s = t0.elapsed().as_secs_f64();
-
-        let t0 = Instant::now();
-        let mut derived = ns_translate::simplified::export::derive_simplified_likelihood_core(
+        let derived = ns_translate::simplified::export::derive_simplified_likelihood_core(
             &workspace,
             &model,
             &aligned_fit,
@@ -18781,13 +19340,6 @@ mod tests {
             &metadata,
         )
         .expect("derive core should succeed");
-        let derive_core_s = t0.elapsed().as_secs_f64();
-
-        let t0 = Instant::now();
-        let selected_model = model
-            .with_fit_channel_selection(Some(&derive_config.selection.channels), None)
-            .expect("selected model should build");
-        let selected_model_build_s = t0.elapsed().as_secs_f64();
         let mut workspace_for_conversion = derived.workspace.clone();
         workspace_for_conversion.diagnostics.get_or_insert_with(Default::default).fidelity =
             Some(ns_translate::simplified::schema::SimplifiedFidelityDiagnostics {
@@ -18810,157 +19362,350 @@ mod tests {
                 max_abs_yield_delta: Some(0.0),
                 max_rel_yield_delta: Some(0.0),
             });
-        let t0 = Instant::now();
         let simplified_model = ns_translate::simplified::convert::simplified_to_model(
             &workspace_for_conversion,
         )
         .expect("simplified model should build");
-        let simplified_model_build_s = t0.elapsed().as_secs_f64();
-        let qmu_test_mu = derive_config.fidelity_smoke.qmu_test_mu;
-        let upper_limit_cl = derive_config.fidelity_smoke.upper_limit_cl;
-        let selected_warm_start = aligned_fit.parameters.clone();
         let simplified_warm_start = simplified_model_warm_start(
             &simplified_model,
             &derived.workspace.poi.name,
             aligned_fit.parameters[model.poi_index().expect("model should define a POI")],
         )
         .expect("simplified warm start should build");
+        let qmu_test_mu = derive_config.fidelity_smoke.qmu_test_mu;
+        let upper_limit_cl = derive_config.fidelity_smoke.upper_limit_cl;
 
         let t0 = Instant::now();
-        let _selected_smoke = fitted_wald_smoke_summary_with_start(
-            &mle,
-            &selected_model,
-            Some(selected_warm_start.as_slice()),
-            qmu_test_mu,
-            upper_limit_cl,
-        )
-        .expect("selected smoke should succeed");
-        let selected_smoke_total_s = t0.elapsed().as_secs_f64();
-
-        let t0 = Instant::now();
-        let _selected_minimum = mle
-            .fit_minimum_from(&selected_model, selected_warm_start.as_slice())
-            .expect("selected minimum should succeed");
-        let selected_minimum_s = t0.elapsed().as_secs_f64();
-
-        let t0 = Instant::now();
-        let _simplified_smoke = fitted_wald_smoke_summary_with_start(
+        let generic_smoke = fitted_wald_smoke_summary_with_start(
             &mle,
             &simplified_model,
             Some(simplified_warm_start.as_slice()),
             qmu_test_mu,
             upper_limit_cl,
         )
-        .expect("simplified smoke should succeed");
-        let simplified_smoke_total_s = t0.elapsed().as_secs_f64();
+        .expect("generic simplified smoke should succeed");
+        let generic_total_s = t0.elapsed().as_secs_f64();
 
         let t0 = Instant::now();
-        let _simplified_minimum = mle
-            .fit_minimum_from(&simplified_model, simplified_warm_start.as_slice())
-            .expect("simplified minimum should succeed");
-        let simplified_minimum_s = t0.elapsed().as_secs_f64();
-
-        let selected_flat_indices =
-            flat_indices_from_simplified_bins(&model, &derived.workspace.bins)
-                .expect("flat indices should build");
-
-        let t0 = Instant::now();
-        let mut full_params = aligned_fit.parameters.clone();
-        full_params[model.poi_index().expect("model should define a POI")] = qmu_test_mu;
-        let full_expected_all = model
-            .expected_data(&full_params)
-            .expect("full expected data should build");
-        let full_expected = select_expected_entries(&full_expected_all, &selected_flat_indices)
-            .expect("selected expected entries should build");
-        let simplified_expected = {
-            let mut params: Vec<f64> =
-                simplified_model.parameters().iter().map(|parameter| parameter.init).collect();
-            for (idx, parameter) in simplified_model.parameters().iter().enumerate() {
-                params[idx] = if parameter.name == derived.workspace.poi.name {
-                    qmu_test_mu
-                } else {
-                    0.0
-                };
-            }
-            simplified_model
-                .expected_data(&params)
-                .expect("simplified expected data should build")
-        };
-        let _max_abs_expected_delta_at_nominal = full_expected
-            .iter()
-            .zip(simplified_expected.iter())
-            .map(|(full, simplified)| (full - simplified).abs())
-            .fold(0.0_f64, f64::max);
-        let nominal_delta_s = t0.elapsed().as_secs_f64();
-
-        let t0 = Instant::now();
-        let _relative_background_cov_residual = relative_covariance_residual(
-            &derived.total_background_covariance,
-            &derived.retained_background_covariance,
+        let histfactory_fit = mle
+            .fit_histfactory(&simplified_model)
+            .expect("histfactory simplified fit should succeed");
+        let histfactory_total_s = t0.elapsed().as_secs_f64();
+        let poi_idx =
+            simplified_model.poi_index().expect("simplified model should define a POI");
+        let histfactory_smoke = wald_smoke_summary(
+            histfactory_fit.parameters[poi_idx],
+            histfactory_fit.uncertainties[poi_idx],
+            qmu_test_mu,
+            upper_limit_cl,
         )
-        .expect("relative covariance residual should build");
-        let covariance_residual_s = t0.elapsed().as_secs_f64();
+        .expect("histfactory simplified smoke should succeed");
 
-        let t0 = Instant::now();
-        let _max_abs_expected_delta_random_draws = max_abs_random_draw_delta(
-            &derived.total_background_covariance,
-            &derived.retained_background_covariance,
-            derive_config.fidelity_smoke.random_draws,
-        )
-        .expect("random draw delta should build");
-        let random_draw_delta_s = t0.elapsed().as_secs_f64();
-
-        let t0 = Instant::now();
-        let fidelity =
-            build_simplified_likelihood_fidelity(&model, &aligned_fit, &derive_config, &derived)
-                .expect("fidelity should succeed");
-        let fidelity_s = t0.elapsed().as_secs_f64();
-        derived.workspace.diagnostics.get_or_insert_with(Default::default).fidelity = Some(fidelity);
-
-        let t0 = Instant::now();
-        ns_translate::simplified::validate::validate_simplified_likelihood(&derived.workspace)
-            .expect("validation should succeed");
-        let validate_s = t0.elapsed().as_secs_f64();
-
-        let t0 = Instant::now();
-        let export_report =
-            ns_translate::simplified::export::build_simplified_likelihood_export_report(
-                &derive_config,
-                &metadata,
-                &derived,
-            )
-            .expect("export report should succeed");
-        let export_report_s = t0.elapsed().as_secs_f64();
-
-        let t0 = Instant::now();
-        let workspace_json = serde_json::to_value(&derived.workspace)
-            .expect("workspace JSON conversion should succeed");
-        let workspace_json_s = t0.elapsed().as_secs_f64();
-
-        let t0 = Instant::now();
-        let workspace_bytes = serde_json::to_vec_pretty(&workspace_json)
-            .expect("workspace serialization should succeed");
-        let workspace_serialize_s = t0.elapsed().as_secs_f64();
-
-        let t0 = Instant::now();
-        let report_json =
-            serde_json::to_value(&export_report).expect("report JSON conversion should succeed");
-        let report_json_s = t0.elapsed().as_secs_f64();
-
-        let t0 = Instant::now();
-        let report_bytes = serde_json::to_vec_pretty(&report_json)
-            .expect("report serialization should succeed");
-        let report_serialize_s = t0.elapsed().as_secs_f64();
-
-        let total_s = t_total.elapsed().as_secs_f64();
-        let exporter_total_s = total_s - prep_fit_s;
         eprintln!(
-            "sl-medium-public-export-timing-report load={load_s:.6}s prep_fit={prep_fit_s:.6}s align_fit={aligned_fit_s:.6}s derive_core={derive_core_s:.6}s selected_model_build={selected_model_build_s:.6}s simplified_model_build={simplified_model_build_s:.6}s nominal_delta={nominal_delta_s:.6}s covariance_residual={covariance_residual_s:.6}s random_draw_delta={random_draw_delta_s:.6}s fidelity={fidelity_s:.6}s selected_smoke_total={selected_smoke_total_s:.6}s selected_minimum={selected_minimum_s:.6}s selected_post_minimum_est={:.6}s simplified_smoke_total={simplified_smoke_total_s:.6}s simplified_minimum={simplified_minimum_s:.6}s simplified_post_minimum_est={:.6}s validate={validate_s:.6}s export_report={export_report_s:.6}s workspace_json={workspace_json_s:.6}s workspace_serialize={workspace_serialize_s:.6}s report_json={report_json_s:.6}s report_serialize={report_serialize_s:.6}s exporter_total={exporter_total_s:.6}s total_with_fit={total_s:.6}s workspace_bytes={} report_bytes={}",
-            (selected_smoke_total_s - selected_minimum_s).max(0.0),
-            (simplified_smoke_total_s - simplified_minimum_s).max(0.0),
-            workspace_bytes.len(),
-            report_bytes.len(),
+            "sl-public-sr-cr-simplified-smoke-backend-probe case={} generic_total={generic_total_s:.6}s histfactory_total={histfactory_total_s:.6}s qmu_delta={:.6} ul_ratio={:.6} simplified_params={}",
+            case["case_id"].as_str().expect("case_id should be a string"),
+            (generic_smoke.q_mu - histfactory_smoke.q_mu).abs(),
+            histfactory_smoke.upper_limit / generic_smoke.upper_limit.max(1e-12),
+            simplified_model.n_params(),
         );
+    }
+
+    #[test]
+    #[ignore = "internal simplified-smoke warm-start probe for sr/cr floor case; run explicitly"]
+    fn simplified_likelihood_public_sr_cr_simplified_smoke_warm_start_probe() {
+        let case = public_export_catalog_case("cms_public_sr_cr_export_stable_example");
+        let input = repo_root().join(
+            case["workspace_json_path"]
+                .as_str()
+                .expect("workspace_json_path should be a string"),
+        );
+        let derive_config = derive_config_for_catalog_case(&case);
+        let metadata = ns_translate::simplified::export::SimplifiedLikelihoodDeriveMetadata {
+            experiment: case["experiment"]
+                .as_str()
+                .expect("experiment should be a string")
+                .to_string(),
+            analysis_id: format!(
+                "{}.timing.simplified-smoke-warm-start",
+                case["analysis_id"]
+                    .as_str()
+                    .expect("analysis_id should be a string")
+            ),
+            reference: "internal://timing-simplified-smoke-warm-start".to_string(),
+            description: Some(format!(
+                "Internal warm-start probe for simplified smoke path of {}",
+                case["case_id"].as_str().expect("case_id should be a string")
+            )),
+        };
+
+        let (workspace, model) =
+            load_workspace_and_model(&input, 1, InterpDefaults::Root).expect("workspace should load");
+        let mle = ns_inference::MaximumLikelihoodEstimator::new();
+        let fit = mle.fit(&model).expect("fit should succeed");
+        let fit_json = FitResultJson {
+            schema_version: Some("nextstat_fit_result_v0".to_string()),
+            parameter_names: model.parameters().iter().map(|p| p.name.clone()).collect(),
+            bestfit: fit.parameters.clone(),
+            uncertainties: fit.uncertainties.clone(),
+            covariance: fit.covariance.clone(),
+            nll: fit.nll,
+            converged: fit.converged,
+            n_iter: fit.n_iter,
+            n_fev: fit.n_fev,
+            n_gev: fit.n_gev,
+        };
+        let aligned_fit =
+            aligned_fit_result_from_fit_json(&model, &fit_json).expect("aligned fit should succeed");
+        let derived = ns_translate::simplified::export::derive_simplified_likelihood_core(
+            &workspace,
+            &model,
+            &aligned_fit,
+            &derive_config,
+            &metadata,
+        )
+        .expect("derive core should succeed");
+        let mut workspace_for_conversion = derived.workspace.clone();
+        workspace_for_conversion.diagnostics.get_or_insert_with(Default::default).fidelity =
+            Some(ns_translate::simplified::schema::SimplifiedFidelityDiagnostics {
+                nuisance_count_full: Some(derived.full_nuisance_count),
+                nuisance_count_reduced: Some(match &derived.workspace.uncertainty_model {
+                    ns_translate::simplified::schema::SimplifiedUncertaintyModel::Basis {
+                        components,
+                    } => components.len(),
+                    ns_translate::simplified::schema::SimplifiedUncertaintyModel::Covariance {
+                        total_covariance,
+                        ..
+                    } => total_covariance.len(),
+                }),
+                bins_count: Some(derived.workspace.bins.len()),
+                relative_background_cov_residual: Some(0.0),
+                max_abs_expected_delta_at_nominal: Some(0.0),
+                max_abs_expected_delta_random_draws: Some(0.0),
+                qmu_delta_smoke: Some(0.0),
+                upper_limit_ratio_smoke: Some(1.0),
+                max_abs_yield_delta: Some(0.0),
+                max_rel_yield_delta: Some(0.0),
+            });
+        let simplified_model = ns_translate::simplified::convert::simplified_to_model(
+            &workspace_for_conversion,
+        )
+        .expect("simplified model should build");
+        let simplified_warm_start = simplified_model_warm_start(
+            &simplified_model,
+            &derived.workspace.poi.name,
+            aligned_fit.parameters[model.poi_index().expect("model should define a POI")],
+        )
+        .expect("simplified warm start should build");
+        let qmu_test_mu = derive_config.fidelity_smoke.qmu_test_mu;
+        let upper_limit_cl = derive_config.fidelity_smoke.upper_limit_cl;
+
+        let t0 = Instant::now();
+        let cold_smoke = fitted_wald_smoke_summary(
+            &mle,
+            &simplified_model,
+            qmu_test_mu,
+            upper_limit_cl,
+        )
+        .expect("cold simplified smoke should succeed");
+        let cold_total_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let warm_smoke = fitted_wald_smoke_summary_with_start(
+            &mle,
+            &simplified_model,
+            Some(simplified_warm_start.as_slice()),
+            qmu_test_mu,
+            upper_limit_cl,
+        )
+        .expect("warm simplified smoke should succeed");
+        let warm_total_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let cold_minimum = mle
+            .fit_minimum(&simplified_model)
+            .expect("cold simplified minimum should succeed");
+        let cold_minimum_s = t0.elapsed().as_secs_f64();
+
+        let t0 = Instant::now();
+        let warm_minimum = mle
+            .fit_minimum_from(&simplified_model, simplified_warm_start.as_slice())
+            .expect("warm simplified minimum should succeed");
+        let warm_minimum_s = t0.elapsed().as_secs_f64();
+
+        eprintln!(
+            "sl-public-sr-cr-simplified-smoke-warm-start-probe case={} cold_total={cold_total_s:.6}s warm_total={warm_total_s:.6}s cold_minimum={cold_minimum_s:.6}s warm_minimum={warm_minimum_s:.6}s total_speedup={:.3} minimum_speedup={:.3} qmu_delta={:.6} ul_ratio={:.6} cold_n_iter={} warm_n_iter={} cold_n_fev={} warm_n_fev={} simplified_params={}",
+            case["case_id"].as_str().expect("case_id should be a string"),
+            cold_total_s / warm_total_s.max(1e-12),
+            cold_minimum_s / warm_minimum_s.max(1e-12),
+            (cold_smoke.q_mu - warm_smoke.q_mu).abs(),
+            warm_smoke.upper_limit / cold_smoke.upper_limit.max(1e-12),
+            cold_minimum.n_iter,
+            warm_minimum.n_iter,
+            cold_minimum.n_fev,
+            warm_minimum.n_fev,
+            simplified_model.n_params(),
+        );
+    }
+
+    #[test]
+    #[ignore = "internal simplified-smoke optimizer probe for sr/cr floor case; run explicitly"]
+    fn simplified_likelihood_public_sr_cr_simplified_smoke_optimizer_probe() {
+        let case = public_export_catalog_case("cms_public_sr_cr_export_stable_example");
+        let input = repo_root().join(
+            case["workspace_json_path"]
+                .as_str()
+                .expect("workspace_json_path should be a string"),
+        );
+        let derive_config = derive_config_for_catalog_case(&case);
+        let metadata = ns_translate::simplified::export::SimplifiedLikelihoodDeriveMetadata {
+            experiment: case["experiment"]
+                .as_str()
+                .expect("experiment should be a string")
+                .to_string(),
+            analysis_id: format!(
+                "{}.timing.simplified-smoke-optimizer",
+                case["analysis_id"]
+                    .as_str()
+                    .expect("analysis_id should be a string")
+            ),
+            reference: "internal://timing-simplified-smoke-optimizer".to_string(),
+            description: Some(format!(
+                "Internal optimizer probe for simplified smoke path of {}",
+                case["case_id"].as_str().expect("case_id should be a string")
+            )),
+        };
+
+        let (workspace, model) =
+            load_workspace_and_model(&input, 1, InterpDefaults::Root).expect("workspace should load");
+        let default_mle = ns_inference::MaximumLikelihoodEstimator::new();
+        let fit = default_mle.fit(&model).expect("fit should succeed");
+        let fit_json = FitResultJson {
+            schema_version: Some("nextstat_fit_result_v0".to_string()),
+            parameter_names: model.parameters().iter().map(|p| p.name.clone()).collect(),
+            bestfit: fit.parameters.clone(),
+            uncertainties: fit.uncertainties.clone(),
+            covariance: fit.covariance.clone(),
+            nll: fit.nll,
+            converged: fit.converged,
+            n_iter: fit.n_iter,
+            n_fev: fit.n_fev,
+            n_gev: fit.n_gev,
+        };
+        let aligned_fit = aligned_fit_result_from_fit_json(&model, &fit_json)
+            .expect("aligned fit should succeed");
+        let derived = ns_translate::simplified::export::derive_simplified_likelihood_core(
+            &workspace,
+            &model,
+            &aligned_fit,
+            &derive_config,
+            &metadata,
+        )
+        .expect("derive core should succeed");
+        let mut workspace_for_conversion = derived.workspace.clone();
+        workspace_for_conversion.diagnostics.get_or_insert_with(Default::default).fidelity =
+            Some(ns_translate::simplified::schema::SimplifiedFidelityDiagnostics {
+                nuisance_count_full: Some(derived.full_nuisance_count),
+                nuisance_count_reduced: Some(match &derived.workspace.uncertainty_model {
+                    ns_translate::simplified::schema::SimplifiedUncertaintyModel::Basis {
+                        components,
+                    } => components.len(),
+                    ns_translate::simplified::schema::SimplifiedUncertaintyModel::Covariance {
+                        total_covariance,
+                        ..
+                    } => total_covariance.len(),
+                }),
+                bins_count: Some(derived.workspace.bins.len()),
+                relative_background_cov_residual: Some(0.0),
+                max_abs_expected_delta_at_nominal: Some(0.0),
+                max_abs_expected_delta_random_draws: Some(0.0),
+                qmu_delta_smoke: Some(0.0),
+                upper_limit_ratio_smoke: Some(1.0),
+                max_abs_yield_delta: Some(0.0),
+                max_rel_yield_delta: Some(0.0),
+            });
+        let simplified_model = ns_translate::simplified::convert::simplified_to_model(
+            &workspace_for_conversion,
+        )
+        .expect("simplified model should build");
+        let simplified_warm_start = simplified_model_warm_start(
+            &simplified_model,
+            &derived.workspace.poi.name,
+            aligned_fit.parameters[model.poi_index().expect("model should define a POI")],
+        )
+        .expect("simplified warm start should build");
+        let qmu_test_mu = derive_config.fidelity_smoke.qmu_test_mu;
+        let upper_limit_cl = derive_config.fidelity_smoke.upper_limit_cl;
+
+        let baseline_t0 = Instant::now();
+        let baseline_smoke = fitted_wald_smoke_summary_with_start(
+            &default_mle,
+            &simplified_model,
+            Some(simplified_warm_start.as_slice()),
+            qmu_test_mu,
+            upper_limit_cl,
+        )
+        .expect("baseline simplified smoke should succeed");
+        let baseline_total_s = baseline_t0.elapsed().as_secs_f64();
+
+        let baseline_t0 = Instant::now();
+        let baseline_minimum = default_mle
+            .fit_minimum_from(&simplified_model, simplified_warm_start.as_slice())
+            .expect("baseline simplified minimum should succeed");
+        let baseline_minimum_s = baseline_t0.elapsed().as_secs_f64();
+
+        for (label, config) in [
+            (
+                "relaxed",
+                ns_inference::OptimizerConfig {
+                    max_iter: 200,
+                    tol: 1e-5,
+                    m: 5,
+                    smooth_bounds: false,
+                },
+            ),
+            (
+                "aggressive",
+                ns_inference::OptimizerConfig {
+                    max_iter: 100,
+                    tol: 1e-4,
+                    m: 5,
+                    smooth_bounds: false,
+                },
+            ),
+        ] {
+            let mle = ns_inference::MaximumLikelihoodEstimator::with_config(config);
+
+            let t0 = Instant::now();
+            let candidate_smoke = fitted_wald_smoke_summary_with_start(
+                &mle,
+                &simplified_model,
+                Some(simplified_warm_start.as_slice()),
+                qmu_test_mu,
+                upper_limit_cl,
+            )
+            .expect("candidate simplified smoke should succeed");
+            let candidate_total_s = t0.elapsed().as_secs_f64();
+
+            let t0 = Instant::now();
+            let candidate_minimum = mle
+                .fit_minimum_from(&simplified_model, simplified_warm_start.as_slice())
+                .expect("candidate simplified minimum should succeed");
+            let candidate_minimum_s = t0.elapsed().as_secs_f64();
+
+            eprintln!(
+                "sl-public-sr-cr-simplified-smoke-optimizer-probe case={} profile={} baseline_total={baseline_total_s:.6}s candidate_total={candidate_total_s:.6}s baseline_minimum={baseline_minimum_s:.6}s candidate_minimum={candidate_minimum_s:.6}s total_speedup={:.3} minimum_speedup={:.3} qmu_delta={:.6} ul_ratio={:.6} baseline_n_iter={} candidate_n_iter={} baseline_n_fev={} candidate_n_fev={}",
+                case["case_id"].as_str().expect("case_id should be a string"),
+                label,
+                baseline_total_s / candidate_total_s.max(1e-12),
+                baseline_minimum_s / candidate_minimum_s.max(1e-12),
+                (baseline_smoke.q_mu - candidate_smoke.q_mu).abs(),
+                candidate_smoke.upper_limit / baseline_smoke.upper_limit.max(1e-12),
+                baseline_minimum.n_iter,
+                candidate_minimum.n_iter,
+                baseline_minimum.n_fev,
+                candidate_minimum.n_fev,
+            );
+        }
     }
 
     #[test]

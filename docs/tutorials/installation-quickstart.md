@@ -154,13 +154,36 @@ This is optional — everything works on CPU by default.
 | NVIDIA         | `cuda`      | CUDA Toolkit 12.0+ and nvcc in PATH |
 | Apple Silicon  | `metal`     | macOS 14+ (Sonoma or later)         |
 
-```bash
-# Build from source with CUDA support
-cargo build --workspace --features cuda
+The canonical public GPU path is a **source build of the Python bindings**.
+GPU is not part of the default wheel contract.
 
-# Build from source with Metal support (Apple Silicon)
-cargo build --workspace --features metal
+```bash
+# Create and activate a virtualenv first
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install maturin
+pip install maturin
+
+# Build the Python bindings with CUDA support
+cd bindings/ns-py
+maturin develop --release --features cuda
+
+# Verify the runtime sees CUDA
+python3 -c "import nextstat; print(nextstat.has_cuda())"
+
+# Or build the Python bindings with Metal support (Apple Silicon)
+maturin develop --release --features metal
+
+# Verify the runtime sees Metal
+python3 -c "import nextstat; print(nextstat.has_metal())"
 ```
+
+The currently promoted GPU public subset is narrow:
+
+- CUDA WALNUTS for the documented shipped model family
+- published GPU parity contract and self-hosted CI lanes
+- source-build installation, not the default wheel path
 
 ### Troubleshooting
 
@@ -419,10 +442,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Use from R (source build)
+
+```bash
+mkdir -p tmp/r-lib
+R CMD INSTALL --library=tmp/r-lib bindings/ns-r
+```
+
+For the documented stable R surface, see [R Bindings Reference](/docs/references/r-bindings.md).
+
 ### Try it in your browser (no install needed)
 
 Don't want to install anything yet? Try the [WASM Playground](https://nextstat.io/playground) —
 it runs NextStat entirely in your browser via WebAssembly. No server, no Python, no setup.
+
+To build the stable source-build WASM bundle locally instead:
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.108
+make playground-build-wasm
+make playground-serve
+```
+
+For the documented browser boundary, see [WASM Playground Reference](/docs/references/wasm-playground.md).
 
 ### What to explore next
 

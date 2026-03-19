@@ -33,7 +33,7 @@
       },
       "outside_promoted_stable_runtime_boundary_reason": null,
       "performance": {
-        "net_end_to_end_upper_limit_speedup": 4.090414321227116,
+        "net_end_to_end_upper_limit_speedup": 1.9266417121762913,
         "passes": {
           "net_end_to_end_upper_limit_speedup": true
         }
@@ -81,7 +81,7 @@
       },
       "outside_promoted_stable_runtime_boundary_reason": null,
       "performance": {
-        "net_end_to_end_upper_limit_speedup": 4.669604300985934,
+        "net_end_to_end_upper_limit_speedup": 1.9063922871235959,
         "passes": {
           "net_end_to_end_upper_limit_speedup": true
         }
@@ -129,7 +129,7 @@
       },
       "outside_promoted_stable_runtime_boundary_reason": null,
       "performance": {
-        "net_end_to_end_upper_limit_speedup": 4.491745502168687,
+        "net_end_to_end_upper_limit_speedup": 1.9063922871235959,
         "passes": {
           "net_end_to_end_upper_limit_speedup": true
         }
@@ -177,7 +177,7 @@
       },
       "outside_promoted_stable_runtime_boundary_reason": null,
       "performance": {
-        "net_end_to_end_upper_limit_speedup": 2.178026225834447,
+        "net_end_to_end_upper_limit_speedup": 1.2558515460968596,
         "passes": {
           "net_end_to_end_upper_limit_speedup": true
         }
@@ -225,7 +225,7 @@
       },
       "outside_promoted_stable_runtime_boundary_reason": null,
       "performance": {
-        "net_end_to_end_upper_limit_speedup": 1.7309405286565216,
+        "net_end_to_end_upper_limit_speedup": 0.9147416386115276,
         "passes": {
           "net_end_to_end_upper_limit_speedup": true
         }
@@ -273,7 +273,7 @@
       },
       "outside_promoted_stable_runtime_boundary_reason": null,
       "performance": {
-        "net_end_to_end_upper_limit_speedup": 1.4793038284494213,
+        "net_end_to_end_upper_limit_speedup": 0.8777103422927768,
         "passes": {
           "net_end_to_end_upper_limit_speedup": true
         }
@@ -321,7 +321,7 @@
       },
       "outside_promoted_stable_runtime_boundary_reason": null,
       "performance": {
-        "net_end_to_end_upper_limit_speedup": 3.7239828728997093,
+        "net_end_to_end_upper_limit_speedup": 1.6702208664254055,
         "passes": {
           "net_end_to_end_upper_limit_speedup": true
         }
@@ -369,7 +369,7 @@
       },
       "outside_promoted_stable_runtime_boundary_reason": null,
       "performance": {
-        "net_end_to_end_upper_limit_speedup": 3.486032042587964,
+        "net_end_to_end_upper_limit_speedup": 1.5808319659542889,
         "passes": {
           "net_end_to_end_upper_limit_speedup": true
         }
@@ -417,7 +417,7 @@
       },
       "outside_promoted_stable_runtime_boundary_reason": null,
       "performance": {
-        "net_end_to_end_upper_limit_speedup": 3.8968101226253515,
+        "net_end_to_end_upper_limit_speedup": 1.9760145143886485,
         "passes": {
           "net_end_to_end_upper_limit_speedup": true
         }
@@ -443,7 +443,7 @@
   ],
   "catalog_path": "docs/specs/apex2_simplified_likelihood_export_public_case_catalog_v0.example.json",
   "catalog_schema_version": "nextstat_simplified_likelihood_export_public_case_catalog_v0",
-  "generated_at_utc": "2026-03-19T15:23:29Z",
+  "generated_at_utc": "1970-01-01T00:00:00Z",
   "schema_version": "nextstat_simplified_likelihood_export_public_validation_report_v0",
   "status": "ok",
   "summary": {
@@ -464,7 +464,7 @@
     },
     "max_abs_q_mu_diff": 0.09618848026584459,
     "max_upper_limit_ratio_deviation": 0.011190668120821257,
-    "min_net_end_to_end_upper_limit_speedup": 1.4793038284494213,
+    "min_net_end_to_end_upper_limit_speedup": 0.8777103422927768,
     "missing_catalog_case_ids": [],
     "observed_constraint_covariance_sources": [
       "source_model_constraints"

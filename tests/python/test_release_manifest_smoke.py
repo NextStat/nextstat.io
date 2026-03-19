@@ -76,6 +76,9 @@ def test_release_manifest_builds_prepare_contract() -> None:
     assert manifest["mode"] == "prepare"
     assert manifest["version_alignment"]["cargo_toml"] == version
     assert "release-candidate-bundle" in manifest["candidate_artifacts"]["workflow_artifacts"]
+    assert "sota-claim-matrix-report" in manifest["candidate_artifacts"]["workflow_artifacts"]
+    assert "public-sota-bundle" in manifest["candidate_artifacts"]["workflow_artifacts"]
+    assert "v1-sota-policy-report" in manifest["candidate_artifacts"]["workflow_artifacts"]
     assert manifest["candidate_artifacts"]["github_release_asset_globs"] == ["dist/release-assets/*"]
     assert manifest["pharma_release_policy"] == {
         "prerelease_python_install_mode": "local_artifact_only",

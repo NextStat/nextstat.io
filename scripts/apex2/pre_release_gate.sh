@@ -63,6 +63,12 @@ root_manifest="tmp/baselines/latest_root_manifest.json"
 root_report="tmp/root_suite_compare_report.json"
 surface_report="tmp/release_surface_matrix_report.json"
 surface_report_md="tmp/release_surface_matrix_report.md"
+sota_claim_report_json="tmp/sota_claim_matrix_report.json"
+sota_claim_report_md="tmp/sota_claim_matrix_report.md"
+sota_bundle_json="tmp/public_sota_bundle.json"
+sota_bundle_md="tmp/public_sota_bundle.md"
+v1_sota_policy_json="tmp/v1_sota_policy_report.json"
+v1_sota_policy_md="tmp/v1_sota_policy_report.md"
 release_manifest="tmp/release_manifest.json"
 release_manifest_md="tmp/release_manifest.md"
 repo_validation_bundle_json="tmp/repo_validation_bundle.json"
@@ -202,6 +208,72 @@ if ! "${py}" scripts/repo_surface_matrix.py --check; then
 fi
 record_step "governance" "repo_surface_matrix" ok "repo_surface_matrix"
 echo "OK. Repo-wide surface matrix is up to date."
+echo
+
+echo "Validating public SOTA claim matrix..."
+if ! PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.sota_claim_matrix --check; then
+  fail_gate "governance" "sota_claim_matrix" "${exit_governance}" \
+    "Public SOTA claim matrix validation failed."
+fi
+record_step "governance" "sota_claim_matrix" ok "sota_claim_matrix"
+echo "OK. Public SOTA claim matrix check passed."
+echo
+
+echo "Rendering public SOTA claim matrix report..."
+if ! PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.sota_claim_matrix \
+  --out-json "${sota_claim_report_json}" \
+  --out-md "${sota_claim_report_md}"; then
+  fail_gate "governance" "sota_claim_matrix_render" "${exit_governance}" \
+    "Public SOTA claim matrix render failed."
+fi
+record_step "governance" "sota_claim_matrix_render" ok "sota_claim_matrix_render"
+echo "OK. SOTA claim matrix report: ${sota_claim_report_json}"
+echo "OK. SOTA claim matrix report (md): ${sota_claim_report_md}"
+echo
+
+echo "Validating public SOTA bundle..."
+if ! PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.public_sota_bundle --check; then
+  fail_gate "governance" "public_sota_bundle" "${exit_governance}" \
+    "Public SOTA bundle validation failed."
+fi
+record_step "governance" "public_sota_bundle" ok "public_sota_bundle"
+echo "OK. Public SOTA bundle check passed."
+echo
+
+echo "Rendering public SOTA bundle..."
+if ! PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.public_sota_bundle \
+  --out-json "${sota_bundle_json}" \
+  --out-md "${sota_bundle_md}"; then
+  fail_gate "governance" "public_sota_bundle_render" "${exit_governance}" \
+    "Public SOTA bundle render failed."
+fi
+record_step "governance" "public_sota_bundle_render" ok "public_sota_bundle_render"
+echo "OK. Public SOTA bundle: ${sota_bundle_json}"
+echo "OK. Public SOTA bundle (md): ${sota_bundle_md}"
+echo
+
+echo "Validating v1.0 SOTA policy..."
+if ! PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.v1_sota_policy \
+  --release-tag "${release_tag}" \
+  --check; then
+  fail_gate "governance" "v1_sota_policy" "${exit_governance}" \
+    "v1.0 SOTA policy validation failed."
+fi
+record_step "governance" "v1_sota_policy" ok "v1_sota_policy"
+echo "OK. v1.0 SOTA policy check passed."
+echo
+
+echo "Rendering v1.0 SOTA policy report..."
+if ! PYTHONPATH="${repo_root}${py_path:+:${py_path}}" "${py}" -m scripts.v1_sota_policy \
+  --release-tag "${release_tag}" \
+  --out-json "${v1_sota_policy_json}" \
+  --out-md "${v1_sota_policy_md}"; then
+  fail_gate "governance" "v1_sota_policy_render" "${exit_governance}" \
+    "v1.0 SOTA policy render failed."
+fi
+record_step "governance" "v1_sota_policy_render" ok "v1_sota_policy_render"
+echo "OK. v1.0 SOTA policy report: ${v1_sota_policy_json}"
+echo "OK. v1.0 SOTA policy report (md): ${v1_sota_policy_md}"
 echo
 
 echo "Validating HEP validation bundle (141/141 stable)..."

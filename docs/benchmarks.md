@@ -10,6 +10,9 @@ For the policy that defines what benchmark evidence belongs in git vs CI artifac
 
 The canonical machine-readable prerelease outputs are:
 - `tmp/release_surface_matrix_report.json`
+- `tmp/sota_claim_matrix_report.json`
+- `tmp/public_sota_bundle.json`
+- `tmp/v1_sota_policy_report.json`
 - `tmp/release_manifest.json`
 - `tmp/release_candidate_bundle/`
 
