@@ -102,7 +102,7 @@ jobs:
           python3 -m scripts.release_stage_assets --dist-root dist --out-dir dist/release-assets
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           body_path: /tmp/release_notes.md
           files: dist/release-assets/*
