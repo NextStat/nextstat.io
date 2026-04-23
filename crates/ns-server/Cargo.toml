@@ -34,7 +34,7 @@ rayon.workspace = true
 anyhow.workspace = true
 statrs.workspace = true
 nalgebra.workspace = true
-sha2 = "0.10"
+sha2 = "0.11"
 base64 = "0.22"
 
 [features]
